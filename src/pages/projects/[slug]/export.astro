@@ -1,0 +1,10 @@
+---
+import ProjectLayout from '../../../layouts/ProjectLayout.astro';
+import ExportPanel from '../../../islands/ExportPanel.svelte';
+
+const { slug } = Astro.params;
+---
+
+<ProjectLayout slug={slug!} current="export" title="Export">
+	<ExportPanel client:load slug={slug!} />
+</ProjectLayout>

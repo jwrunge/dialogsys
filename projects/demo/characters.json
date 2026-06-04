@@ -1,0 +1,20 @@
+{
+  "characters": [
+    {
+      "id": "bartender",
+      "displayName": "Bartender",
+      "bio": "Runs the tavern. Knows everyone's business.",
+      "portraitPath": "res://portraits/bartender.png",
+      "tags": ["tavern", "friendly"],
+      "voiceNotes": "Warm, slightly gruff."
+    },
+    {
+      "id": "player",
+      "displayName": "Player",
+      "bio": "The protagonist.",
+      "portraitPath": "",
+      "tags": [],
+      "voiceNotes": ""
+    }
+  ]
+}

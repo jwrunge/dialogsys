@@ -1,0 +1,26 @@
+{
+  "name": "dialogsys",
+  "type": "module",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/node": "^10.1.3",
+    "@astrojs/svelte": "^8.1.2",
+    "@xyflow/svelte": "^1.6.0",
+    "astro": "^6.4.4",
+    "isomorphic-dompurify": "^3.15.0",
+    "marked": "^18.0.5",
+    "nanoid": "^5.1.11",
+    "svelte": "^5.56.1",
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
+  }
+}

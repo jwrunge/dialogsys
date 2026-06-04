@@ -1,0 +1,29 @@
+{
+  "global": [
+    {
+      "id": "met_bartender",
+      "type": "bool",
+      "default": false,
+      "description": "Has the player talked to the bartender before?"
+    },
+    {
+      "id": "quest_stage",
+      "type": "int",
+      "default": 0,
+      "description": "Main quest progression"
+    }
+  ],
+  "perCharacter": [
+    {
+      "characterId": "bartender",
+      "vars": [
+        {
+          "id": "trust",
+          "type": "int",
+          "default": 0,
+          "description": "Bartender trust level"
+        }
+      ]
+    }
+  ]
+}

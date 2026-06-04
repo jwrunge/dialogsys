@@ -1,0 +1,10 @@
+---
+import ProjectLayout from '../../../layouts/ProjectLayout.astro';
+import NotesEditor from '../../../islands/NotesEditor.svelte';
+
+const { slug } = Astro.params;
+---
+
+<ProjectLayout slug={slug!} current="notes" title="Notes">
+	<NotesEditor client:load slug={slug!} />
+</ProjectLayout>

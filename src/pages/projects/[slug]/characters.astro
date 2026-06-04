@@ -1,0 +1,10 @@
+---
+import ProjectLayout from '../../../layouts/ProjectLayout.astro';
+import CharacterTable from '../../../islands/CharacterTable.svelte';
+
+const { slug } = Astro.params;
+---
+
+<ProjectLayout slug={slug!} current="characters" title="Characters">
+	<CharacterTable client:load slug={slug!} />
+</ProjectLayout>

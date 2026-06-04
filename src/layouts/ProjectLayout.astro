@@ -1,0 +1,41 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import ProjectNav from '../components/ProjectNav.astro';
+import { getProject } from '../lib/server/projects';
+
+interface Props {
+	slug: string;
+	current?: string;
+	title?: string;
+}
+
+const { slug, current, title } = Astro.props;
+const project = await getProject(slug);
+const pageTitle = title ? `${title} · ${project.displayName}` : project.displayName;
+---
+
+<BaseLayout title={`${pageTitle} · Dialogsys`}>
+	<div class="container">
+		<div class="project-header">
+			<div>
+				<h1>{project.displayName}</h1>
+				<p class="slug">{project.slug}</p>
+			</div>
+		</div>
+		<ProjectNav slug={slug} current={current} />
+		<slot />
+	</div>
+</BaseLayout>
+
+<style>
+	.project-header {
+		margin-bottom: 0.5rem;
+	}
+
+	.slug {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 0.85rem;
+		font-family: var(--mono);
+	}
+</style>

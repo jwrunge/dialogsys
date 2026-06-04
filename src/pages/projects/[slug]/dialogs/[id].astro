@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import DialogGraphEditor from '../../../../islands/DialogGraphEditor.svelte';
+import { getDialog } from '../../../../lib/server/projects';
+
+const { slug, id } = Astro.params;
+const graph = await getDialog(slug!, id!);
+---
+
+<BaseLayout title={`${graph.displayName} · Dialogsys`}>
+	<DialogGraphEditor client:load slug={slug!} dialogId={id!} />
+</BaseLayout>

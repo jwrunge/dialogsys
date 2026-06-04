@@ -1,0 +1,59 @@
+---
+interface Props {
+	slug: string;
+	current?: string;
+}
+
+const { slug, current } = Astro.props;
+const base = `/projects/${slug}`;
+
+const links = [
+	{ href: base, label: 'Dashboard', id: 'dashboard' },
+	{ href: `${base}/characters`, label: 'Characters', id: 'characters' },
+	{ href: `${base}/states`, label: 'States', id: 'states' },
+	{ href: `${base}/notes`, label: 'Notes', id: 'notes' },
+	{ href: `${base}/dialogs`, label: 'Dialogs', id: 'dialogs' },
+	{ href: `${base}/export`, label: 'Export', id: 'export' },
+];
+---
+
+<nav class="project-nav">
+	{links.map((link) => (
+		<a
+			href={link.href}
+			class:list={['nav-link', { active: current === link.id }]}
+		>
+			{link.label}
+		</a>
+	))}
+</nav>
+
+<style>
+	.project-nav {
+		display: flex;
+		gap: 0.25rem;
+		flex-wrap: wrap;
+		margin-bottom: 1.5rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.nav-link {
+		padding: 0.4rem 0.85rem;
+		border-radius: var(--radius);
+		color: var(--text-muted);
+		text-decoration: none;
+		font-size: 0.9rem;
+	}
+
+	.nav-link:hover {
+		background: var(--bg-hover);
+		color: var(--text);
+		text-decoration: none;
+	}
+
+	.nav-link.active {
+		background: var(--accent-dim);
+		color: #fff;
+	}
+</style>

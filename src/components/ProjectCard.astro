@@ -1,0 +1,34 @@
+---
+import type { ProjectMeta } from '../lib/schema/project';
+
+interface Props {
+	project: ProjectMeta;
+}
+
+const { project } = Astro.props;
+---
+
+<a href={`/projects/${project.slug}`} class="card card-link">
+	<h3>{project.displayName}</h3>
+	<p>{project.description || 'No description'}</p>
+	<span class="meta">Updated {new Date(project.updatedAt).toLocaleDateString()}</span>
+</a>
+
+<style>
+	.card-link {
+		display: block;
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.card-link:hover {
+		text-decoration: none;
+	}
+
+	.meta {
+		display: block;
+		margin-top: 0.75rem;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+</style>

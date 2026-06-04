@@ -1,0 +1,56 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ProjectCard from '../components/ProjectCard.astro';
+import CreateProjectForm from '../islands/CreateProjectForm.svelte';
+import { listProjects } from '../lib/server/projects';
+
+const projects = await listProjects();
+---
+
+<BaseLayout title="Dialogsys">
+	<div class="container">
+		<h1>Projects</h1>
+		<p class="lead">Author branching dialog for Godot. Projects are stored as files on disk.</p>
+
+		<section>
+			<h2>Your projects</h2>
+			{projects.length === 0 ? (
+				<>
+					<p class="muted">No projects yet. Create one below or open the bundled demo.</p>
+					<p><a href="/projects/demo" class="btn">Open demo project</a></p>
+				</>
+			) : (
+				<div class="card-grid">
+					{projects.map((project) => (
+						<ProjectCard project={project} />
+					))}
+				</div>
+			)}
+		</section>
+
+		<section>
+			<h2>Create project</h2>
+			<CreateProjectForm client:load />
+		</section>
+	</div>
+</BaseLayout>
+
+<style>
+	.lead {
+		color: var(--text-muted);
+		margin-bottom: 2rem;
+	}
+
+	section {
+		margin-bottom: 2.5rem;
+	}
+
+	section h2 {
+		font-size: 1.1rem;
+		margin-bottom: 1rem;
+	}
+
+	.muted {
+		color: var(--text-muted);
+	}
+</style>
