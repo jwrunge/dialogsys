@@ -16,13 +16,15 @@
 
 	async function load() {
 		status = 'loading';
+		message = '';
 		try {
 			const data = await api<CharactersFile>(`/api/projects/${slug}/characters`);
-			characters = data.characters;
+			characters = Array.isArray(data.characters) ? data.characters : [];
 			status = 'idle';
 		} catch (e) {
 			status = 'error';
 			message = (e as Error).message;
+			characters = [];
 		}
 	}
 
@@ -119,7 +121,11 @@
 	reference a state by id — undefined states appear in <a href={`/projects/${slug}/issues`}>Issues</a>.
 </p>
 
-{#if characters.length === 0}
+{#if status === 'error'}
+	<p class="error-banner">{message}</p>
+{:else if status === 'loading'}
+	<p class="muted">Loading characters…</p>
+{:else if characters.length === 0}
 	<p class="muted">No characters yet. Add one to use in dialog lines.</p>
 {:else}
 	<div class="char-list">
@@ -269,5 +275,14 @@
 	.muted {
 		color: var(--text-muted);
 		font-size: 0.9rem;
+	}
+
+	.error-banner {
+		padding: 1rem;
+		color: var(--error);
+		background: rgba(240, 113, 120, 0.1);
+		border: 1px solid var(--error);
+		border-radius: var(--radius);
+		margin-bottom: 1rem;
 	}
 </style>

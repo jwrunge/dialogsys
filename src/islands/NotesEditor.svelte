@@ -16,9 +16,19 @@
 	let selectedDirection = $state('');
 	let directionContent = $state('');
 	let status = $state('');
-	let previewHtml = $derived(
-		DOMPurify.sanitize(marked.parse(tab === 'overview' ? overview : directionContent) as string),
-	);
+	let loadError = $state('');
+
+	let previewHtml = $derived.by(() => {
+		const raw =
+			tab === 'overview'
+				? overview
+				: directionContent || '_No content yet._';
+		try {
+			return DOMPurify.sanitize(marked.parse(raw) as string);
+		} catch {
+			return '<p>Preview unavailable</p>';
+		}
+	});
 
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -31,9 +41,9 @@
 
 	async function loadDirectionList() {
 		const res = await api<{ files: string[] }>(
-			`/api/projects/${slug}/notes/direction/placeholder.md?list=direction`,
+			`/api/projects/${slug}/notes?list=direction`,
 		);
-		directionFiles = res.files;
+		directionFiles = res.files ?? [];
 		if (directionFiles.length && !selectedDirection) {
 			selectedDirection = directionFiles[0];
 			await loadDirectionFile(selectedDirection);
@@ -73,32 +83,57 @@
 		directionFiles = [...directionFiles, name].sort();
 		selectedDirection = name;
 		directionContent = content;
+		tab = 'direction';
+	}
+
+	async function switchToDirection() {
+		tab = 'direction';
+		loadError = '';
+		try {
+			await loadDirectionList();
+		} catch (e) {
+			loadError = (e as Error).message;
+		}
 	}
 
 	onMount(async () => {
-		await loadOverview();
-		await loadDirectionList();
+		try {
+			await loadOverview();
+		} catch (e) {
+			loadError = (e as Error).message;
+		}
 	});
 </script>
 
-<div class="tabs">
+<p class="scene-hint">
+	<strong>Scene direction in dialog:</strong> For beats like “John looks mournfully at Cassie,” use
+	<strong>+ Direction</strong> nodes in the <a href={`/projects/${slug}/dialogs`}>dialog graph</a>.
+	Project notes below are for high-level docs; linked direction files are optional scene bibles.
+</p>
+
+<div class="tabs" role="tablist">
 	<button
 		type="button"
+		role="tab"
 		class="tab"
+		aria-selected={tab === 'overview'}
 		class:active={tab === 'overview'}
 		onclick={() => (tab = 'overview')}>Overview</button
 	>
 	<button
 		type="button"
+		role="tab"
 		class="tab"
+		aria-selected={tab === 'direction'}
 		class:active={tab === 'direction'}
-		onclick={() => {
-			tab = 'direction';
-			loadDirectionList();
-		}}>Direction notes</button
+		onclick={switchToDirection}>Direction notes</button
 	>
 	<span class="status">{status}</span>
 </div>
+
+{#if loadError}
+	<p class="error">{loadError}</p>
+{/if}
 
 {#if tab === 'overview'}
 	<textarea
@@ -127,6 +162,9 @@
 					</li>
 				{/each}
 			</ul>
+			{#if directionFiles.length === 0}
+				<p class="muted">No direction files yet. Create one or use Direction nodes in dialogs.</p>
+			{/if}
 		</aside>
 		<textarea
 			class="editor"
@@ -147,6 +185,30 @@
 </div>
 
 <style>
+	.scene-hint {
+		font-size: 0.9rem;
+		color: var(--text-muted);
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+	}
+
+	.tabs {
+		position: relative;
+		z-index: 2;
+	}
+
+	.tab {
+		cursor: pointer;
+	}
+
+	.error {
+		color: var(--error);
+		margin: 0.5rem 0;
+	}
+
 	.editor {
 		width: 100%;
 		font-family: var(--mono);
@@ -182,5 +244,10 @@
 	.file-btn:hover {
 		background: var(--bg-hover);
 		color: var(--text);
+	}
+
+	.muted {
+		color: var(--text-muted);
+		font-size: 0.85rem;
 	}
 </style>

@@ -6,5 +6,5 @@ const { slug } = Astro.params;
 ---
 
 <ProjectLayout slug={slug!} current="characters" title="Characters">
-	<CharacterTable client:load slug={slug!} />
+	<CharacterTable client:only="svelte" slug={slug!} />
 </ProjectLayout>

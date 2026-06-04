@@ -250,14 +250,16 @@
 		</div>
 	{:else if node.type === 'direction'}
 		<div class="field">
-			<label>Direction text</label>
+			<label>Direction text (staging — not exported)</label>
 			<textarea
 				value={node.data.directionText ?? ''}
 				oninput={(e) =>
 					updateData({ directionText: (e.currentTarget as HTMLTextAreaElement).value })}
 				rows="5"
+				placeholder="e.g. John looks mournfully at Cassie."
 			></textarea>
 		</div>
+		<p class="hint">Use this for scene blocking in the graph. Player-facing lines use Line nodes.</p>
 		<div class="field">
 			<label>Scene ref</label>
 			<input
