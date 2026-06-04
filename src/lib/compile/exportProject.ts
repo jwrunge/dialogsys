@@ -34,7 +34,7 @@ export async function exportProjectToGodot(slug: string): Promise<{
 	await fs.mkdir(dialogsDir, { recursive: true });
 
 	for (const graph of graphs) {
-		const compiled = compileDialogToGodot(graph);
+		const compiled = compileDialogToGodot(graph, characters.characters);
 		await writeJsonAtomic(
 			path.join(dialogsDir, `${graph.id}.json`),
 			compiled,

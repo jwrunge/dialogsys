@@ -13,7 +13,8 @@
 	import '@xyflow/svelte/dist/style.css';
 	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
-	import type { DialogGraph, GraphNode } from '../lib/schema/graph';
+	import type { Character } from '../lib/schema/characters';
+	import type { DialogGraph, GraphNode, GraphEdge } from '../lib/schema/graph';
 	import DialogNode from './DialogNode.svelte';
 	import NodeInspector from './NodeInspector.svelte';
 
@@ -40,7 +41,7 @@
 	let graphMeta = $state({ displayName: '', description: '' });
 	let selectedNodeId = $state<string | null>(null);
 	let saveStatus = $state('');
-	let characterIds = $state<string[]>([]);
+	let characters = $state<Character[]>([]);
 	let dialogIds = $state<string[]>([]);
 	let searchQuery = $state('');
 
@@ -57,6 +58,17 @@
 			position: found.position,
 			data: (found.data ?? {}) as GraphNode['data'],
 		} as GraphNode;
+	});
+
+	const flowEdges = $derived.by((): GraphEdge[] => {
+		return get(edges).map((edge) => ({
+			id: edge.id,
+			source: edge.source,
+			target: edge.target,
+			sourceHandle: edge.sourceHandle ?? undefined,
+			targetHandle: edge.targetHandle ?? undefined,
+			data: (edge.data ?? {}) as GraphEdge['data'],
+		}));
 	});
 
 	function flowToGraph(): DialogGraph {
@@ -78,7 +90,7 @@
 				target: edge.target,
 				sourceHandle: edge.sourceHandle ?? undefined,
 				targetHandle: edge.targetHandle ?? undefined,
-				data: edge.data as GraphNode extends never ? never : Record<string, unknown>,
+				data: (edge.data ?? {}) as GraphEdge['data'],
 			})),
 		};
 	}
@@ -132,20 +144,26 @@
 	async function load() {
 		const [{ graph }, chars, dialogs] = await Promise.all([
 			api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${dialogId}`),
-			api<{ characters: { id: string }[] }>(`/api/projects/${slug}/characters`),
+			api<{ characters: Character[] }>(`/api/projects/${slug}/characters`),
 			api<{ dialogs: { id: string }[] }>(`/api/projects/${slug}/dialogs`),
 		]);
 		graphMeta = { displayName: graph.displayName, description: graph.description };
 		graphToFlow(graph);
-		characterIds = chars.characters.map((c) => c.id);
+		characters = chars.characters;
 		dialogIds = dialogs.dialogs.map((d) => d.id);
 		loading = false;
+		const hash = window.location.hash.replace(/^#/, '');
+		if (hash) selectedNodeId = hash;
 	}
 
 	function addNode(type: string) {
 		const id = `${type}_${nanoid(6)}`;
 		const defaults: Record<string, Record<string, unknown>> = {
-			line: { speaker: characterIds[0] ?? '', text: '' },
+			line: {
+				speaker: characters[0]?.id ?? '',
+				characterState: characters[0]?.defaultStateId ?? 'default',
+				text: '',
+			},
 			choice: {
 				options: [
 					{ id: nanoid(8), text: 'Option A', conditions: [] },
@@ -171,6 +189,20 @@
 
 	function onNodeClick({ node }: { node: Node }) {
 		selectedNodeId = node.id;
+	}
+
+	function updateEdge(updated: GraphEdge) {
+		edges.update((list) =>
+			list.map((e) =>
+				e.id === updated.id
+					? {
+							...e,
+							data: updated.data,
+						}
+					: e,
+			),
+		);
+		scheduleSave();
 	}
 
 	function updateSelectedNode(updated: GraphNode) {
@@ -262,9 +294,11 @@
 		<aside class="editor-inspector">
 			<NodeInspector
 				node={selectedNode}
-				{characterIds}
+				edges={flowEdges}
+				{characters}
 				{dialogIds}
 				onchange={updateSelectedNode}
+				onedgechange={updateEdge}
 			/>
 		</aside>
 	</div>

@@ -34,7 +34,12 @@
 	);
 	const subtitle = $derived(
 		nodeType === 'line'
-			? (data?.text as string)?.slice(0, 40) || ''
+			? [
+					data?.characterState ? `[${data.characterState}]` : '',
+					(data?.text as string)?.slice(0, 36) || '',
+				]
+					.filter(Boolean)
+					.join(' ')
 			: nodeType === 'choice'
 				? `${(data?.options as unknown[])?.length ?? 0} options`
 				: '',

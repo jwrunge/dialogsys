@@ -6,7 +6,28 @@
       "bio": "Runs the tavern. Knows everyone's business.",
       "portraitPath": "res://portraits/bartender.png",
       "tags": ["tavern", "friendly"],
-      "voiceNotes": "Warm, slightly gruff."
+      "voiceNotes": "Warm, slightly gruff.",
+      "defaultStateId": "default",
+      "states": [
+        {
+          "id": "default",
+          "label": "Default",
+          "portraitPath": "res://portraits/bartender.png",
+          "optOutUnusedWarning": false
+        },
+        {
+          "id": "curious",
+          "label": "Curious",
+          "portraitPath": "res://portraits/bartender_curious.png",
+          "optOutUnusedWarning": false
+        },
+        {
+          "id": "panicked",
+          "label": "Panicked",
+          "portraitPath": "res://portraits/bartender_panicked.png",
+          "optOutUnusedWarning": true
+        }
+      ]
     },
     {
       "id": "player",
@@ -14,7 +35,16 @@
       "bio": "The protagonist.",
       "portraitPath": "",
       "tags": [],
-      "voiceNotes": ""
+      "voiceNotes": "",
+      "defaultStateId": "default",
+      "states": [
+        {
+          "id": "default",
+          "label": "Default",
+          "portraitPath": "",
+          "optOutUnusedWarning": false
+        }
+      ]
     }
   ]
 }

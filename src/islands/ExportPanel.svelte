@@ -73,7 +73,7 @@
 		{/each}
 	</ul>
 {:else}
-	<p class="muted">No validation issues.</p>
+	<p class="muted">No validation issues. See <a href={`/projects/${slug}/issues`}>Issues</a> for full list.</p>
 {/if}
 
 <div class="instructions card">

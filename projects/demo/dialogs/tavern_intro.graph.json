@@ -25,7 +25,7 @@
       "data": {
         "speaker": "bartender",
         "text": "Well, well. What'll it be?",
-        "emotion": "neutral"
+        "characterState": "curious"
       }
     },
     {

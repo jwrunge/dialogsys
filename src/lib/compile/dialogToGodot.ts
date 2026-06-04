@@ -1,3 +1,5 @@
+import { characterById, resolvePortraitPath } from '../characters';
+import type { Character } from '../schema/characters';
 import type { DialogGraph, GraphNode, GraphEdge } from '../schema/graph';
 import type { ConditionGroup } from '../schema/conditions';
 
@@ -7,6 +9,7 @@ export type GodotDialogNode =
 			speaker: string;
 			text: string;
 			portraitPath?: string;
+			characterState?: string;
 			emotion?: string;
 			next: string;
 	  }
@@ -66,7 +69,10 @@ function resolveEnd(nodes: GraphNode[], nextId: string): string {
 	return nextId;
 }
 
-export function compileDialogToGodot(graph: DialogGraph): GodotDialogExport {
+export function compileDialogToGodot(
+	graph: DialogGraph,
+	characters: Character[] = [],
+): GodotDialogExport {
 	const exportableTypes = new Set([
 		'entry',
 		'line',
@@ -95,12 +101,18 @@ export function compileDialogToGodot(graph: DialogGraph): GodotDialogExport {
 
 		if (node.type === 'line') {
 			const nextRaw = singleNext(graph.edges, node.id);
+			const speaker = node.data.speaker ?? '';
+			const char = characterById(characters, speaker);
+			const stateId =
+				node.data.characterState?.trim() || char?.defaultStateId || undefined;
 			nodes[node.id] = {
 				type: 'line',
-				speaker: node.data.speaker ?? '',
+				speaker,
 				text: node.data.text ?? '',
-				portraitPath: node.data.portraitPath || undefined,
-				emotion: node.data.emotion || undefined,
+				portraitPath:
+					resolvePortraitPath(char, stateId, node.data.portraitPath) || undefined,
+				characterState: stateId,
+				emotion: node.data.emotion || stateId || undefined,
 				next: resolveEnd(graph.nodes, nextRaw),
 			};
 			continue;
@@ -133,19 +145,33 @@ export function compileDialogToGodot(graph: DialogGraph): GodotDialogExport {
 		}
 
 		if (node.type === 'condition') {
-			const trueEdge = getOutgoing(graph.edges, node.id).find(
+			const out = getOutgoing(graph.edges, node.id);
+			const forcedEdge = out.find((e) => e.data?.forceUse);
+			const trueEdge = out.find(
 				(e) => e.data?.branch === 'true' || e.sourceHandle === 'true',
 			);
-			const falseEdge = getOutgoing(graph.edges, node.id).find(
+			const falseEdge = out.find(
 				(e) => e.data?.branch === 'false' || e.sourceHandle === 'false',
 			);
+
+			let trueTarget = trueEdge?.target ?? 'end';
+			let falseTarget = falseEdge?.target ?? 'end';
+
+			if (node.data.forceBranch === 'true') {
+				falseTarget = trueTarget;
+			} else if (node.data.forceBranch === 'false') {
+				trueTarget = falseTarget;
+			} else if (forcedEdge) {
+				trueTarget = falseTarget = forcedEdge.target;
+			}
+
 			nodes[node.id] = {
 				type: 'branch',
 				scope: node.data.branchScope ?? 'global',
 				characterId: node.data.branchCharacterId,
 				var: node.data.branchVar ?? '',
-				trueNext: resolveEnd(graph.nodes, trueEdge?.target ?? 'end'),
-				falseNext: resolveEnd(graph.nodes, falseEdge?.target ?? 'end'),
+				trueNext: resolveEnd(graph.nodes, trueTarget),
+				falseNext: resolveEnd(graph.nodes, falseTarget),
 			};
 			continue;
 		}

@@ -1,21 +1,52 @@
 <script lang="ts">
-	import type { GraphNode, GraphNodeData, ChoiceOption } from '../lib/schema/graph';
+	import type { Character } from '../lib/schema/characters';
+	import type { GraphNode, GraphNodeData, GraphEdge, ChoiceOption } from '../lib/schema/graph';
+	import { resolvePortraitPath } from '../lib/characters';
 	import { nanoid } from 'nanoid';
 
 	interface Props {
 		node: GraphNode | null;
-		characterIds: string[];
+		edges: GraphEdge[];
+		characters: Character[];
 		dialogIds: string[];
 		onchange: (node: GraphNode) => void;
+		onedgechange: (edge: GraphEdge) => void;
 	}
 
-	let { node, characterIds, dialogIds, onchange }: Props = $props();
+	let { node, edges, characters, dialogIds, onchange, onedgechange }: Props = $props();
+
+	const speakerChar = $derived(
+		characters.find((c) => c.id === node?.data.speaker),
+	);
+
+	const stateOptions = $derived(speakerChar?.states ?? []);
+
+	const portraitPreview = $derived(
+		resolvePortraitPath(
+			speakerChar,
+			node?.data.characterState || speakerChar?.defaultStateId,
+			node?.data.portraitPath,
+		),
+	);
+
+	const nodeEdges = $derived(
+		node ? edges.filter((e) => e.source === node.id) : [],
+	);
 
 	function updateData(patch: Partial<GraphNodeData>) {
 		if (!node) return;
 		onchange({
 			...node,
 			data: { ...node.data, ...patch },
+		});
+	}
+
+	function updateEdge(edgeId: string, patch: Partial<GraphEdge['data']>) {
+		const edge = edges.find((e) => e.id === edgeId);
+		if (!edge) return;
+		onedgechange({
+			...edge,
+			data: { ...edge.data, ...patch },
 		});
 	}
 
@@ -27,6 +58,13 @@
 		];
 		updateData({ options });
 	}
+
+	function branchLabel(edge: GraphEdge): string {
+		if (edge.sourceHandle === 'true' || edge.data?.branch === 'true') return 'True branch';
+		if (edge.sourceHandle === 'false' || edge.data?.branch === 'false') return 'False branch';
+		const opt = node?.data.options?.find((o) => o.id === edge.sourceHandle);
+		return opt ? `Option: ${opt.text}` : `Branch (${edge.sourceHandle ?? 'default'})`;
+	}
 </script>
 
 {#if !node}
@@ -36,16 +74,68 @@
 
 	{#if node.type === 'line'}
 		<div class="field">
-			<label>Speaker (character id)</label>
+			<label>Speaker</label>
 			<select
 				value={node.data.speaker ?? ''}
-				onchange={(e) => updateData({ speaker: (e.currentTarget as HTMLSelectElement).value })}
+				onchange={(e) => {
+					const speaker = (e.currentTarget as HTMLSelectElement).value;
+					const char = characters.find((c) => c.id === speaker);
+					updateData({
+						speaker,
+						characterState: char?.defaultStateId ?? '',
+						portraitPath: '',
+					});
+				}}
 			>
 				<option value="">—</option>
-				{#each characterIds as id}
-					<option value={id}>{id}</option>
+				{#each characters as c}
+					<option value={c.id}>{c.displayName}</option>
 				{/each}
 			</select>
+		</div>
+		{#if speakerChar}
+			<div class="field">
+				<label>Display state</label>
+				<select
+					value={stateOptions.some((s) => s.id === node.data.characterState)
+						? node.data.characterState
+						: ''}
+					onchange={(e) => {
+						const v = (e.currentTarget as HTMLSelectElement).value;
+						if (v) updateData({ characterState: v });
+					}}
+				>
+					{#each stateOptions as st}
+						<option value={st.id}>{st.label} ({st.id})</option>
+					{/each}
+				</select>
+			</div>
+			<div class="field">
+				<label>State id (type any id, e.g. panicked for Jane)</label>
+				<input
+					value={node.data.characterState ?? speakerChar.defaultStateId}
+					oninput={(e) =>
+						updateData({ characterState: (e.currentTarget as HTMLInputElement).value })}
+				/>
+				{#if node.data.characterState && !stateOptions.some((s) => s.id === node.data.characterState)}
+					<p class="warn">
+						"{node.data.characterState}" is not defined for {speakerChar.displayName} — see
+						Issues.
+					</p>
+				{/if}
+			</div>
+			{#if portraitPreview}
+				<p class="hint">Resolved portrait: <code>{portraitPreview}</code></p>
+			{/if}
+		{/if}
+		<div class="field">
+			<label>Portrait override (optional)</label>
+			<input
+				value={node.data.portraitPath ?? ''}
+				oninput={(e) =>
+					updateData({ portraitPath: (e.currentTarget as HTMLInputElement).value })}
+				placeholder="Leave blank to use state portrait"
+			/>
 		</div>
 		<div class="field">
 			<label>Text</label>
@@ -54,21 +144,6 @@
 				oninput={(e) => updateData({ text: (e.currentTarget as HTMLTextAreaElement).value })}
 				rows="4"
 			></textarea>
-		</div>
-		<div class="field">
-			<label>Portrait path</label>
-			<input
-				value={node.data.portraitPath ?? ''}
-				oninput={(e) =>
-					updateData({ portraitPath: (e.currentTarget as HTMLInputElement).value })}
-			/>
-		</div>
-		<div class="field">
-			<label>Emotion</label>
-			<input
-				value={node.data.emotion ?? ''}
-				oninput={(e) => updateData({ emotion: (e.currentTarget as HTMLInputElement).value })}
-			/>
 		</div>
 	{:else if node.type === 'choice'}
 		{#each node.data.options ?? [] as opt, i}
@@ -88,13 +163,34 @@
 			</div>
 		{/each}
 		<button type="button" class="btn" onclick={addOption}>Add option</button>
+		{#if nodeEdges.length > 0}
+			<BranchEdgeList {nodeEdges} {branchLabel} {updateEdge} />
+		{/if}
 	{:else if node.type === 'condition'}
+		<div class="field">
+			<label>Force branch (ignore other path at export)</label>
+			<select
+				value={node.data.forceBranch ?? ''}
+				onchange={(e) => {
+					const v = (e.currentTarget as HTMLSelectElement).value;
+					updateData({
+						forceBranch: v === '' ? undefined : (v as 'true' | 'false'),
+					});
+				}}
+			>
+				<option value="">None (evaluate variable)</option>
+				<option value="true">Always true branch</option>
+				<option value="false">Always false branch</option>
+			</select>
+		</div>
 		<div class="field">
 			<label>Scope</label>
 			<select
 				value={node.data.branchScope ?? 'global'}
 				onchange={(e) =>
-					updateData({ branchScope: (e.currentTarget as HTMLSelectElement).value as 'global' | 'character' })}
+					updateData({
+						branchScope: (e.currentTarget as HTMLSelectElement).value as 'global' | 'character',
+					})}
 			>
 				<option value="global">global</option>
 				<option value="character">character</option>
@@ -103,11 +199,16 @@
 		{#if node.data.branchScope === 'character'}
 			<div class="field">
 				<label>Character ID</label>
-				<input
+				<select
 					value={node.data.branchCharacterId ?? ''}
-					oninput={(e) =>
-						updateData({ branchCharacterId: (e.currentTarget as HTMLInputElement).value })}
-				/>
+					onchange={(e) =>
+						updateData({ branchCharacterId: (e.currentTarget as HTMLSelectElement).value })}
+				>
+					<option value="">—</option>
+					{#each characters as c}
+						<option value={c.id}>{c.id}</option>
+					{/each}
+				</select>
 			</div>
 		{/if}
 		<div class="field">
@@ -117,9 +218,8 @@
 				oninput={(e) => updateData({ branchVar: (e.currentTarget as HTMLInputElement).value })}
 			/>
 		</div>
-		<p class="hint">Wire "true" / "false" handles to branch targets</p>
+		<BranchEdgeList {nodeEdges} {branchLabel} {updateEdge} />
 	{:else if node.type === 'set_var'}
-		<p class="hint">Configure set operations in node data (advanced). Use inspector after adding ops via graph.</p>
 		<div class="field">
 			<label>JSON ops (setOps array)</label>
 			<textarea
@@ -128,7 +228,7 @@
 					try {
 						updateData({ setOps: JSON.parse((e.currentTarget as HTMLTextAreaElement).value) });
 					} catch {
-						/* ignore invalid json while typing */
+						/* ignore */
 					}
 				}}
 				rows="6"
@@ -170,10 +270,49 @@
 	{/if}
 {/if}
 
+{#snippet BranchEdgeList(nodeEdges: GraphEdge[], branchLabel: (e: GraphEdge) => string, updateEdge: (id: string, patch: Partial<GraphEdge['data']>) => void)}
+	<div class="branch-edges">
+		<h4>Branch wiring</h4>
+		{#each nodeEdges as edge}
+			<div class="edge-card">
+				<strong>{branchLabel(edge)}</strong>
+				<span class="muted">→ {edge.target}</span>
+				<label class="check">
+					<input
+						type="checkbox"
+						checked={edge.data?.forceUse ?? false}
+						onchange={(e) =>
+							updateEdge(edge.id, {
+								forceUse: (e.currentTarget as HTMLInputElement).checked,
+							})}
+					/>
+					Just use this branch (force at export, suppress unused-branch warnings)
+				</label>
+				<label class="check">
+					<input
+						type="checkbox"
+						checked={edge.data?.ignoreUnusedWarning ?? false}
+						onchange={(e) =>
+							updateEdge(edge.id, {
+								ignoreUnusedWarning: (e.currentTarget as HTMLInputElement).checked,
+							})}
+					/>
+					Opt out of unused-branch warning for alternates
+				</label>
+			</div>
+		{/each}
+	</div>
+{/snippet}
+
 <style>
 	h3 {
 		font-size: 0.95rem;
 		margin-bottom: 1rem;
+	}
+
+	h4 {
+		font-size: 0.85rem;
+		margin: 1rem 0 0.5rem;
 	}
 
 	code {
@@ -188,9 +327,31 @@
 		font-size: 0.85rem;
 	}
 
-	.option-card {
+	.warn {
+		color: var(--warning);
+		font-size: 0.8rem;
+		margin: 0.25rem 0 0;
+	}
+
+	.warn-box {
+		padding: 0.5rem;
+		border: 1px solid var(--warning);
+		border-radius: var(--radius);
+	}
+
+	.option-card,
+	.edge-card {
 		margin-bottom: 0.75rem;
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--border);
+	}
+
+	.check {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		margin-top: 0.35rem;
 	}
 </style>

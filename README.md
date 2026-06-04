@@ -26,6 +26,18 @@ Each project is a folder:
 - `dialogs/*.graph.json` — source graph (editor format)
 - `export/godot/` — generated Godot runtime files
 
+## Character display states
+
+Each character can have multiple **display states** (e.g. `curious`, `panicked`), each with its own portrait path. One state is the **default**. Line nodes pick a `characterState` id; export resolves the portrait from the character definition.
+
+Open **Issues** (`/projects/<slug>/issues`) to see warnings such as:
+
+- **Undefined character state** — a line uses `panicked` for Jane but Jane has no `panicked` state defined
+- **Unused character state** — a state is defined but never used (opt out per state on the character)
+- **Unused dialog branch** — condition/choice paths not wired (opt out with “Just use this branch” on an edge)
+
+On condition and choice nodes, use **Force branch** or per-edge **Just use this branch** to always follow one path at export and suppress alternate-branch warnings.
+
 ## Godot integration
 
 1. In Dialogsys, open **Export** and click **Export to Godot**.

@@ -40,6 +40,10 @@ const warnCount = issues.filter((i) => i.level === 'warning').length;
 			<h3>Dialogs</h3>
 			<p>Branching graph editors for each conversation.</p>
 		</a>
+		<a href={`/projects/${slug}/issues`} class="card card-link">
+			<h3>Issues</h3>
+			<p>Undefined states, unused branches, and dialog warnings.</p>
+		</a>
 		<a href={`/projects/${slug}/export`} class="card card-link">
 			<h3>Export</h3>
 			<p>Validate and export Godot JSON + DialogueRunner.</p>

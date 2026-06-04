@@ -30,7 +30,9 @@ export const graphNodeDataSchema = z.object({
 	speaker: z.string().optional(),
 	text: z.string().optional(),
 	portraitPath: z.string().optional(),
+	characterState: z.string().optional(),
 	emotion: z.string().optional(),
+	forceBranch: z.enum(['true', 'false']).optional(),
 	options: z.array(choiceOptionSchema).optional(),
 	branchVar: z.string().optional(),
 	branchScope: z.enum(['global', 'character']).optional(),
@@ -61,6 +63,8 @@ export const graphEdgeSchema = z.object({
 		.object({
 			conditions: conditionsSchema.optional(),
 			branch: z.enum(['true', 'false', 'default']).optional(),
+			forceUse: z.boolean().optional(),
+			ignoreUnusedWarning: z.boolean().optional(),
 		})
 		.optional(),
 });

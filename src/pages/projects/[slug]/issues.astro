@@ -1,0 +1,21 @@
+---
+import ProjectLayout from '../../../layouts/ProjectLayout.astro';
+import IssuesPanel from '../../../islands/IssuesPanel.svelte';
+
+const { slug } = Astro.params;
+---
+
+<ProjectLayout slug={slug!} current="issues" title="Issues">
+	<p class="lead">
+		Project-wide checks: undefined character states, unused states/branches, unreachable
+		dialog nodes, and more.
+	</p>
+	<IssuesPanel client:load slug={slug!} />
+</ProjectLayout>
+
+<style>
+	.lead {
+		color: var(--text-muted);
+		margin-bottom: 1rem;
+	}
+</style>
