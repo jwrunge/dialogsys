@@ -38,6 +38,19 @@ Open **Issues** (`/projects/<slug>/issues`) to see warnings such as:
 
 On condition and choice nodes, use **Force branch** or per-edge **Just use this branch** to always follow one path at export and suppress alternate-branch warnings.
 
+## History and autosave (Git)
+
+Each project folder is a **local Git repository** (not pushed to GitHub). Snapshots are created when you:
+
+- Save characters (immediate), create/delete dialogs (immediate)
+- Save dialogs, notes, or variables (debounced, default 60s)
+- Use **Save snapshot now** on the History page
+- Keep a project page open (interval autosave, default 5 minutes)
+
+Snapshots are stored as `autosave/*` branches and pruned after **7 days** (configurable via `SNAPSHOT_RETENTION_DAYS`). Restore replaces project files with a past snapshot and records a new autosave afterward.
+
+**Git must be installed** (`git` on your PATH). If it is missing, the app still saves project files normally; the **History** page shows an install prompt and autosave is skipped.
+
 ## Godot integration
 
 1. In Dialogsys, open **Export** and click **Export to Godot**.

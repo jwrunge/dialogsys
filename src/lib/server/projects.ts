@@ -4,6 +4,7 @@ import { projectMetaSchema, type ProjectMeta, createProjectInputSchema } from '.
 import { charactersFileSchema, type CharactersFile } from '../schema/characters';
 import { variablesFileSchema, type VariablesFile } from '../schema/variables';
 import { dialogGraphSchema, type DialogGraph } from '../schema/graph';
+import { ensureProjectRepo, scheduleSnapshot } from './versioning';
 
 const DEFAULT_ROOT = './projects';
 
@@ -134,6 +135,13 @@ export async function createProject(input: {
 		'utf-8',
 	);
 
+	try {
+		await ensureProjectRepo(parsed.slug);
+		await scheduleSnapshot(parsed.slug, 'project created', { immediate: true });
+	} catch {
+		/* project works without git; History page shows install prompt */
+	}
+
 	return meta;
 }
 
@@ -148,6 +156,7 @@ export async function updateProject(
 		updatedAt: new Date().toISOString(),
 	};
 	await writeJsonAtomic(projectFilePath(slug, 'project.json'), updated);
+	await scheduleSnapshot(slug, 'project metadata updated');
 	return updated;
 }
 
@@ -161,6 +170,7 @@ export async function saveCharacters(slug: string, data: CharactersFile): Promis
 	const parsed = charactersFileSchema.parse(data);
 	await writeJsonAtomic(projectFilePath(slug, 'characters.json'), parsed);
 	await touchProject(slug);
+	await scheduleSnapshot(slug, 'characters saved', { immediate: true });
 	return parsed;
 }
 
@@ -174,6 +184,7 @@ export async function saveVariables(slug: string, data: VariablesFile): Promise<
 	const parsed = variablesFileSchema.parse(data);
 	await writeJsonAtomic(projectFilePath(slug, 'variables.json'), parsed);
 	await touchProject(slug);
+	await scheduleSnapshot(slug, 'variables saved');
 	return parsed;
 }
 
@@ -194,6 +205,7 @@ export async function writeNote(slug: string, notePath: string, content: string)
 	await ensureDir(path.dirname(file));
 	await fs.writeFile(file, content, 'utf-8');
 	await touchProject(slug);
+	await scheduleSnapshot(slug, `notes: ${notePath}`);
 }
 
 export async function listDirectionNotes(slug: string): Promise<string[]> {
@@ -241,6 +253,7 @@ export async function saveDialog(slug: string, graph: DialogGraph): Promise<Dial
 		parsed,
 	);
 	await touchProject(slug);
+	await scheduleSnapshot(slug, `dialog saved: ${parsed.id}`);
 	return parsed;
 }
 
@@ -282,13 +295,16 @@ export async function createDialog(
 		updatedAt: new Date().toISOString(),
 	};
 
-	return saveDialog(slug, graph);
+	const saved = await saveDialog(slug, graph);
+	await scheduleSnapshot(slug, `dialog created: ${id}`, { immediate: true });
+	return saved;
 }
 
 export async function deleteDialog(slug: string, id: string): Promise<void> {
 	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
 	await fs.unlink(file);
 	await touchProject(slug);
+	await scheduleSnapshot(slug, `dialog deleted: ${id}`, { immediate: true });
 }
 
 async function touchProject(slug: string): Promise<void> {
