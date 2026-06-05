@@ -6,6 +6,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "predev": "node scripts/ensure-demo.mjs",
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",

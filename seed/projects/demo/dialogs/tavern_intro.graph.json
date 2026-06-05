@@ -1,0 +1,87 @@
+{
+  "id": "tavern_intro",
+  "displayName": "Tavern Intro",
+  "description": "First meeting at the bar",
+  "nodes": [
+    {
+      "id": "entry",
+      "type": "entry",
+      "position": { "x": 80, "y": 200 },
+      "data": { "label": "Start" }
+    },
+    {
+      "id": "dir_open",
+      "type": "direction",
+      "position": { "x": 80, "y": 80 },
+      "data": {
+        "directionText": "Player pushes door open, bell chimes.",
+        "sceneRef": "tavern_opening"
+      }
+    },
+    {
+      "id": "line_greet",
+      "type": "line",
+      "position": { "x": 280, "y": 200 },
+      "data": {
+        "speaker": "bartender",
+        "text": "Well, well. What'll it be?",
+        "characterState": "curious"
+      }
+    },
+    {
+      "id": "choice_main",
+      "type": "choice",
+      "position": { "x": 500, "y": 200 },
+      "data": {
+        "options": [
+          { "id": "opt_ale", "text": "An ale, please.", "conditions": [] },
+          { "id": "opt_leave", "text": "Never mind.", "conditions": [] }
+        ]
+      }
+    },
+    {
+      "id": "line_ale",
+      "type": "line",
+      "position": { "x": 720, "y": 120 },
+      "data": {
+        "speaker": "bartender",
+        "text": "Coming right up. First one's on the house."
+      }
+    },
+    {
+      "id": "set_met",
+      "type": "set_var",
+      "position": { "x": 920, "y": 120 },
+      "data": {
+        "setOps": [
+          { "scope": "global", "var": "met_bartender", "value": true }
+        ]
+      }
+    },
+    {
+      "id": "line_leave",
+      "type": "line",
+      "position": { "x": 720, "y": 280 },
+      "data": {
+        "speaker": "bartender",
+        "text": "Suit yourself."
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "position": { "x": 1100, "y": 200 },
+      "data": { "label": "End" }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "entry", "target": "line_greet" },
+    { "id": "e2", "source": "line_greet", "target": "choice_main" },
+    { "id": "e3", "source": "choice_main", "target": "line_ale", "sourceHandle": "opt_ale" },
+    { "id": "e4", "source": "choice_main", "target": "line_leave", "sourceHandle": "opt_leave" },
+    { "id": "e5", "source": "line_ale", "target": "set_met" },
+    { "id": "e6", "source": "set_met", "target": "end" },
+    { "id": "e7", "source": "line_leave", "target": "end" }
+  ],
+  "updatedAt": "2026-06-04T00:00:00.000Z"
+}
