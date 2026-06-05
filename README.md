@@ -1,6 +1,6 @@
 # Dialogsys
 
-Local-first dialog authoring for Godot games. Edit branching conversations in a visual graph editor, manage characters and game state, write direction notes, and export JSON plus a reference `DialogueRunner.gd`.
+Local-first dialog authoring for Godot games. Edit branching conversations in a visual graph editor, manage characters and game state, add scene direction in dialog graphs, and export JSON plus a reference `DialogueRunner.gd`.
 
 ## Quick start
 
@@ -21,9 +21,8 @@ Each project is a folder:
 
 - `project.json` — metadata
 - `characters.json` — character definitions
-- `variables.json` — global and per-character state
-- `notes/` — markdown overview and direction notes
-- `dialogs/*.graph.json` — source graph (editor format)
+- `notes/` — markdown project overview
+- `dialogs/*.graph.json` — source graph (editor format); use **Condition** and **Set var** nodes for branching state
 - `export/godot/` — generated Godot runtime files
 
 ## Character display states
@@ -43,7 +42,7 @@ On condition and choice nodes, use **Force branch** or per-edge **Just use this 
 Each project folder is a **local Git repository** (not pushed to GitHub). Snapshots are created when you:
 
 - Save characters (immediate), create/delete dialogs (immediate)
-- Save dialogs, notes, or variables (debounced, default 60s)
+- Save dialogs or notes (debounced, default 60s)
 - Use **Save snapshot now** on the History page
 - Keep a project page open (interval autosave, default 5 minutes)
 

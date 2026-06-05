@@ -2,7 +2,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { projectMetaSchema, type ProjectMeta, createProjectInputSchema } from '../schema/project';
 import { charactersFileSchema, type CharactersFile } from '../schema/characters';
-import { variablesFileSchema, type VariablesFile } from '../schema/variables';
 import { dialogGraphSchema, type DialogGraph } from '../schema/graph';
 import { ensureProjectRepo, scheduleSnapshot } from './versioning';
 
@@ -120,15 +119,10 @@ export async function createProject(input: {
 
 	await ensureDir(dir);
 	await ensureDir(projectFilePath(parsed.slug, 'dialogs'));
-	await ensureDir(projectFilePath(parsed.slug, 'notes', 'direction'));
 	await ensureDir(projectFilePath(parsed.slug, 'export', 'godot', 'dialogs'));
 
 	await writeJsonAtomic(projectFilePath(parsed.slug, 'project.json'), meta);
 	await writeJsonAtomic(projectFilePath(parsed.slug, 'characters.json'), { characters: [] });
-	await writeJsonAtomic(projectFilePath(parsed.slug, 'variables.json'), {
-		global: [],
-		perCharacter: [],
-	});
 	await fs.writeFile(
 		projectFilePath(parsed.slug, 'notes', 'overview.md'),
 		`# ${parsed.displayName}\n\nProject overview notes.\n`,
@@ -174,20 +168,6 @@ export async function saveCharacters(slug: string, data: CharactersFile): Promis
 	return parsed;
 }
 
-export async function getVariables(slug: string): Promise<VariablesFile> {
-	const file = projectFilePath(slug, 'variables.json');
-	const raw = await readJsonFile(file, { global: [], perCharacter: [] });
-	return variablesFileSchema.parse(raw);
-}
-
-export async function saveVariables(slug: string, data: VariablesFile): Promise<VariablesFile> {
-	const parsed = variablesFileSchema.parse(data);
-	await writeJsonAtomic(projectFilePath(slug, 'variables.json'), parsed);
-	await touchProject(slug);
-	await scheduleSnapshot(slug, 'variables saved');
-	return parsed;
-}
-
 export async function readNote(slug: string, notePath: string): Promise<string> {
 	const file = projectFilePath(slug, 'notes', notePath);
 	try {
@@ -206,13 +186,6 @@ export async function writeNote(slug: string, notePath: string, content: string)
 	await fs.writeFile(file, content, 'utf-8');
 	await touchProject(slug);
 	await scheduleSnapshot(slug, `notes: ${notePath}`);
-}
-
-export async function listDirectionNotes(slug: string): Promise<string[]> {
-	const dir = projectFilePath(slug, 'notes', 'direction');
-	await ensureDir(dir);
-	const files = await fs.readdir(dir);
-	return files.filter((f) => f.endsWith('.md')).sort();
 }
 
 export async function listDialogs(slug: string): Promise<{ id: string; displayName: string }[]> {

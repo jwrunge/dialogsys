@@ -167,6 +167,7 @@
 			<BranchEdgeList {nodeEdges} {branchLabel} {updateEdge} />
 		{/if}
 	{:else if node.type === 'condition'}
+		<p class="hint">Branch on game state using variable names you define here — no separate registry.</p>
 		<div class="field">
 			<label>Force branch (ignore other path at export)</label>
 			<select
@@ -220,6 +221,7 @@
 		</div>
 		<BranchEdgeList {nodeEdges} {branchLabel} {updateEdge} />
 	{:else if node.type === 'set_var'}
+		<p class="hint">Set game state in the graph; wire your Godot handler via <code>run_command</code>.</p>
 		<div class="field">
 			<label>JSON ops (setOps array)</label>
 			<textarea

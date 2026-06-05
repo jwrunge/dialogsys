@@ -1,21 +1,10 @@
 import type { APIRoute } from 'astro';
-import {
-	readNote,
-	writeNote,
-	listDirectionNotes,
-	jsonResponse,
-	errorResponse,
-} from '../../../../../lib/server/projects';
+import { readNote, writeNote, jsonResponse, errorResponse } from '../../../../../lib/server/projects';
 
-export const GET: APIRoute = async ({ params, url }) => {
+export const GET: APIRoute = async ({ params }) => {
 	try {
 		const slug = params.slug!;
 		const notePath = params.path ?? 'overview.md';
-
-		if (url.searchParams.get('list') === 'direction') {
-			const files = await listDirectionNotes(slug);
-			return jsonResponse({ files });
-		}
 
 		const content = await readNote(slug, notePath);
 		return jsonResponse({ path: notePath, content });

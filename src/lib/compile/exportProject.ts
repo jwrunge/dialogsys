@@ -4,7 +4,6 @@ import { compileDialogToGodot } from './dialogToGodot';
 import { validateProject } from './validate';
 import {
 	getCharacters,
-	getVariables,
 	listDialogs,
 	getDialog,
 	projectFilePath,
@@ -18,7 +17,6 @@ export async function exportProjectToGodot(slug: string): Promise<{
 }> {
 	const dialogList = await listDialogs(slug);
 	const characters = await getCharacters(slug);
-	const variables = await getVariables(slug);
 	const graphs = await Promise.all(dialogList.map((d) => getDialog(slug, d.id)));
 
 	const issues = validateProject(graphs, characters);
@@ -47,7 +45,6 @@ export async function exportProjectToGodot(slug: string): Promise<{
 		project: slug,
 		dialogs: dialogList.map((d) => d.id),
 		characters: characters.characters.map((c) => c.id),
-		variables,
 	};
 
 	await writeJsonAtomic(path.join(exportDir, 'manifest.json'), manifest);

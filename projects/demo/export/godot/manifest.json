@@ -1,5 +1,5 @@
 {
-  "exportedAt": "2026-06-04T16:32:58.777Z",
+  "exportedAt": "2026-06-05T03:07:34.338Z",
   "project": "demo",
   "dialogs": [
     "tavern_intro"
@@ -7,34 +7,5 @@
   "characters": [
     "bartender",
     "player"
-  ],
-  "variables": {
-    "global": [
-      {
-        "id": "met_bartender",
-        "type": "bool",
-        "default": false,
-        "description": "Has the player talked to the bartender before?"
-      },
-      {
-        "id": "quest_stage",
-        "type": "int",
-        "default": 0,
-        "description": "Main quest progression"
-      }
-    ],
-    "perCharacter": [
-      {
-        "characterId": "bartender",
-        "vars": [
-          {
-            "id": "trust",
-            "type": "int",
-            "default": 0,
-            "description": "Bartender trust level"
-          }
-        ]
-      }
-    ]
-  }
+  ]
 }
