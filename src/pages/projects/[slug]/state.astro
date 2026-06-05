@@ -1,0 +1,10 @@
+---
+import ProjectLayout from '../../../layouts/ProjectLayout.astro';
+import GameStateEditor from '../../../islands/GameStateEditor.svelte';
+
+const { slug } = Astro.params;
+---
+
+<ProjectLayout slug={slug!} current="state" title="State">
+	<GameStateEditor client:only="svelte" slug={slug!} />
+</ProjectLayout>

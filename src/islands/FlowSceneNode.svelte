@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
+	import { formatConditions } from '../lib/conditions';
+	import type { FlowBranchOption, FlowFirstMeeting } from '../lib/schema/flow';
 
 	let { data, type }: NodeProps = $props();
 
@@ -32,8 +34,15 @@
 			return id ? `Dialog: ${id}` : 'No dialog assigned';
 		}
 		if (nodeType === 'branch') {
-			const opts = (data?.options as { label: string }[]) ?? [];
-			return `${opts.length} path${opts.length === 1 ? '' : 's'}`;
+			const opts = (data?.options as FlowBranchOption[]) ?? [];
+			const labeled = opts
+				.map((o) => {
+					if (o.isDefault) return `${o.label}: default`;
+					const when = formatConditions(o.conditions);
+					return when ? `${o.label}: ${when}` : o.label;
+				})
+				.join(' · ');
+			return labeled || `${opts.length} path${opts.length === 1 ? '' : 's'}`;
 		}
 		return '';
 	});
@@ -51,6 +60,11 @@
 	<strong>{title}</strong>
 	{#if subtitle}
 		<p>{subtitle}</p>
+	{/if}
+	{#if nodeType === 'scene'}
+		{#each (data?.firstMeetings as FlowFirstMeeting[] | undefined) ?? [] as meeting (meeting.characterId)}
+			<p class="meeting">First meeting: {meeting.displayName}</p>
+		{/each}
 	{/if}
 	{#if nodeType === 'branch'}
 		{#each (data?.options ?? []) as opt, i (opt.id ?? i)}
@@ -103,5 +117,10 @@
 		margin: 0.25rem 0 0;
 		font-size: 0.75rem;
 		color: var(--text-muted);
+	}
+
+	.meeting {
+		color: #9ec5ff;
+		font-style: italic;
 	}
 </style>

@@ -3,8 +3,8 @@ import type { FlowBranchOption, FlowGraph, FlowNode } from '../schema/flow';
 
 export function defaultBranchOptions(): FlowBranchOption[] {
 	return [
-		{ id: nanoid(6), label: 'Path A' },
-		{ id: nanoid(6), label: 'Path B' },
+		{ id: nanoid(6), label: 'Path A', conditions: [], isDefault: true },
+		{ id: nanoid(6), label: 'Path B', conditions: [] },
 	];
 }
 

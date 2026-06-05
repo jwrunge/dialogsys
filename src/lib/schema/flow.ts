@@ -1,16 +1,25 @@
 import { z } from 'zod';
+import { conditionsSchema } from './conditions';
 
 export const flowNodeTypeSchema = z.enum(['start', 'scene', 'branch', 'end']);
+
+export const flowFirstMeetingSchema = z.object({
+	characterId: z.string(),
+	displayName: z.string(),
+});
 
 export const flowBranchOptionSchema = z.object({
 	id: z.string(),
 	label: z.string(),
+	conditions: conditionsSchema,
+	isDefault: z.boolean().optional(),
 });
 
 export const flowNodeDataSchema = z.object({
 	label: z.string().optional(),
 	dialogId: z.string().optional(),
 	notes: z.string().optional(),
+	firstMeetings: z.array(flowFirstMeetingSchema).optional(),
 	options: z.array(flowBranchOptionSchema).optional(),
 });
 
@@ -47,3 +56,4 @@ export type FlowNode = z.infer<typeof flowNodeSchema>;
 export type FlowEdge = z.infer<typeof flowEdgeSchema>;
 export type FlowNodeData = z.infer<typeof flowNodeDataSchema>;
 export type FlowBranchOption = z.infer<typeof flowBranchOptionSchema>;
+export type FlowFirstMeeting = z.infer<typeof flowFirstMeetingSchema>;

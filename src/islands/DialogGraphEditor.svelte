@@ -20,9 +20,10 @@
 	interface Props {
 		slug: string;
 		dialogId: string;
+		embedded?: boolean;
 	}
 
-	let { slug, dialogId }: Props = $props();
+	let { slug, dialogId, embedded = false }: Props = $props();
 
 	let loading = $state(true);
 	let ready = $state(false);
@@ -238,7 +239,7 @@
 	});
 </script>
 
-<div class="editor-shell">
+<div class="editor-shell" class:embedded>
 	<div class="editor-meta">
 		<span class="status" class:saved={saveStatus === 'Saved'}>{saveStatus || (loading ? 'Loading…' : '')}</span>
 	</div>
@@ -294,6 +295,16 @@
 	.editor-shell {
 		margin: 0 -1.5rem;
 		width: calc(100% + 3rem);
+	}
+
+	.editor-shell.embedded {
+		margin: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.editor-shell.embedded .editor-meta {
+		padding: 0.35rem 1rem;
 	}
 
 	.editor-meta {

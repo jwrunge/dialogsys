@@ -5,19 +5,33 @@
 	import { api } from '../lib/api';
 	import type { DialogListItem } from '../lib/server/projects';
 	import type { FlowBranchOption, FlowNode, FlowNodeData } from '../lib/schema/flow';
+	import type { GameStateProperty } from '../lib/schema/gameState';
+	import { formatConditions } from '../lib/conditions';
+	import ConditionEditor from './ConditionEditor.svelte';
 
 	interface Props {
 		slug: string;
 		node: FlowNode | null;
 		dialogs: DialogListItem[];
+		gameStateProperties: GameStateProperty[];
 		onchange: (node: FlowNode) => void;
 		onTypeChange: (type: 'scene' | 'branch') => void;
 		ondelete: () => void;
+		onEditDialog: (dialogId: string, title?: string) => void;
 		onDialogsRefresh: () => Promise<void>;
 	}
 
-	let { slug, node, dialogs, onchange, onTypeChange, ondelete, onDialogsRefresh }: Props =
-		$props();
+	let {
+		slug,
+		node,
+		dialogs,
+		gameStateProperties,
+		onchange,
+		onTypeChange,
+		ondelete,
+		onEditDialog,
+		onDialogsRefresh,
+	}: Props = $props();
 
 	let searchQuery = $state('');
 	let createDialogEl = $state<HTMLDialogElement | null>(null);
@@ -85,6 +99,7 @@
 			await onDialogsRefresh();
 			updateData({ dialogId: id, label: displayName });
 			closeCreateModal();
+			onEditDialog(id, displayName);
 		} catch (err) {
 			modalError = (err as Error).message;
 		} finally {
@@ -96,8 +111,25 @@
 		if (!node || node.type !== 'branch') return;
 		const options: FlowBranchOption[] = [
 			...(node.data.options ?? []),
-			{ id: nanoid(6), label: 'New path' },
+			{ id: nanoid(6), label: 'New path', conditions: [] },
 		];
+		updateData({ options });
+	}
+
+	function setPathDefault(optionId: string) {
+		if (!node || node.type !== 'branch') return;
+		const options = (node.data.options ?? []).map((o) => ({
+			...o,
+			isDefault: o.id === optionId,
+		}));
+		updateData({ options });
+	}
+
+	function updatePathConditions(optionId: string, conditions: FlowBranchOption['conditions']) {
+		if (!node || node.type !== 'branch') return;
+		const options = (node.data.options ?? []).map((o) =>
+			o.id === optionId ? { ...o, conditions } : o,
+		);
 		updateData({ options });
 	}
 
@@ -180,36 +212,78 @@
 			{/each}
 		</div>
 
+		{#if node.data.firstMeetings?.length}
+			<div class="meetings-block">
+				<span class="field-label">First meetings</span>
+				<ul>
+					{#each node.data.firstMeetings as meeting (meeting.characterId)}
+						<li>First meeting of {meeting.displayName}</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
+
 		<div class="actions">
 			<button type="button" class="btn" onclick={openCreateModal}>Create new scene…</button>
 			{#if node.data.dialogId}
-				<a class="btn" href={`/projects/${slug}/dialogs/${node.data.dialogId}`}>Edit dialog</a>
+				<button
+					type="button"
+					class="btn btn-primary"
+					onclick={() => onEditDialog(node.data.dialogId!, node.data.label)}
+				>
+					Edit dialog
+				</button>
 			{/if}
 		</div>
 	{:else if node.type === 'branch'}
-		<p class="hint">Connect each path handle to the next scene or branch.</p>
+		<p class="hint">
+			Each path is taken when its conditions match global state. Mark one path as the default
+			fallback when nothing else matches.
+		</p>
 		{#each node.data.options ?? [] as opt, i (opt.id)}
-			<div class="option-row">
-				<div class="field">
-					<label>Path {i + 1}</label>
-					<input
-						value={opt.label}
-						oninput={(e) => {
-							const options = [...(node!.data.options ?? [])];
-							options[i] = { ...opt, label: (e.currentTarget as HTMLInputElement).value };
-							updateData({ options });
-						}}
-					/>
+			<section class="path-block">
+				<div class="option-row">
+					<div class="field">
+						<label>Path {i + 1}</label>
+						<input
+							value={opt.label}
+							oninput={(e) => {
+								const options = [...(node!.data.options ?? [])];
+								options[i] = { ...opt, label: (e.currentTarget as HTMLInputElement).value };
+								updateData({ options });
+							}}
+						/>
+					</div>
+					<button
+						type="button"
+						class="btn btn-danger btn-sm"
+						disabled={(node.data.options?.length ?? 0) <= 1}
+						onclick={() => removeBranchOption(opt.id)}
+					>
+						Remove
+					</button>
 				</div>
-				<button
-					type="button"
-					class="btn btn-danger btn-sm"
-					disabled={(node.data.options?.length ?? 0) <= 1}
-					onclick={() => removeBranchOption(opt.id)}
-				>
-					Remove
-				</button>
-			</div>
+				<label class="default-check">
+					<input
+						type="radio"
+						name={`default-${node.id}`}
+						checked={opt.isDefault === true}
+						onchange={() => setPathDefault(opt.id)}
+					/>
+					Default fallback path
+				</label>
+				<div class="field">
+					<span class="field-label">When global state matches</span>
+					<ConditionEditor
+						conditions={opt.conditions ?? []}
+						properties={gameStateProperties}
+						onchange={(conditions) => updatePathConditions(opt.id, conditions)}
+					/>
+					{#if formatConditions(opt.conditions)}
+						<p class="hint summary">{formatConditions(opt.conditions)}</p>
+					{/if}
+				</div>
+			</section>
 		{/each}
 		<button type="button" class="btn" onclick={addBranchOption}>Add path</button>
 	{:else if node.type === 'start'}
@@ -381,6 +455,17 @@
 		outline-offset: -2px;
 	}
 
+	.meetings-block {
+		margin: 0.75rem 0;
+	}
+
+	.meetings-block ul {
+		margin: 0.35rem 0 0;
+		padding-left: 1.1rem;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+
 	.actions {
 		display: flex;
 		flex-wrap: wrap;
@@ -391,6 +476,39 @@
 		margin-top: 1.5rem;
 		padding-top: 1rem;
 		border-top: 1px solid var(--border);
+	}
+
+	.path-block {
+		margin-bottom: 1rem;
+		padding-bottom: 1rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.path-block:last-of-type {
+		border-bottom: none;
+	}
+
+	.default-check {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin: 0.5rem 0 0.75rem;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+
+	.field-label {
+		display: block;
+		font-size: 0.85rem;
+		margin-bottom: 0.35rem;
+		color: var(--text-muted);
+	}
+
+	.summary {
+		margin-top: 0.35rem;
+		font-family: var(--mono);
+		font-size: 0.75rem;
 	}
 
 	.option-row {

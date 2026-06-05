@@ -1,0 +1,11 @@
+{
+  "properties": [
+    {
+      "id": "met_bartender",
+      "label": "Met bartender",
+      "type": "boolean",
+      "defaultValue": false,
+      "description": "Set true after the tavern intro dialog."
+    }
+  ]
+}

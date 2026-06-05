@@ -3,10 +3,15 @@
 	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
 	import type { DialogListItem } from '../lib/server/projects';
+	import type { DialogGraph } from '../lib/schema/graph';
+	import type { CharactersFile } from '../lib/schema/characters';
 	import type { FlowGraph, FlowNode, FlowEdge } from '../lib/schema/flow';
+	import type { GameStateProperty } from '../lib/schema/gameState';
+	import { analyzeFlowBranches, applyFirstMeetings } from '../lib/flow/branchAnalyzer';
 	import { createSceneNode, defaultBranchOptions } from '../lib/flow/flowFactory';
 	import GameFlowCanvas from './GameFlowCanvas.svelte';
 	import FlowNodeInspector from './FlowNodeInspector.svelte';
+	import DialogEditorModal from './DialogEditorModal.svelte';
 
 	interface Props {
 		slug: string;
@@ -35,11 +40,15 @@
 	let saveStatus = $state('');
 	let selectedNodeId = $state<string | null>(null);
 	let dialogs = $state<DialogListItem[]>([]);
+	let gameStateProperties = $state<GameStateProperty[]>([]);
 	let syncKey = $state('');
 	let confirmDialogEl = $state<HTMLDialogElement | null>(null);
 	let confirmMode = $state<'node' | 'edge'>('node');
 	let confirmMessage = $state('');
 	let pendingEdge = $state<CanvasEdge | null>(null);
+	let editorDialogId = $state<string | null>(null);
+	let editorTitle = $state('Edit scene');
+	let analyzing = $state(false);
 
 	let flowNodes = $state<FlowNode[]>([]);
 	let flowEdges = $state<FlowEdge[]>([]);
@@ -98,6 +107,7 @@
 	}
 
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+	let analyzeTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function scheduleSave() {
 		if (loading || !ready) return;
@@ -105,6 +115,13 @@
 		flowEdges = fromCanvas().edges;
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(save, 450);
+		scheduleAnalyze();
+	}
+
+	function scheduleAnalyze() {
+		if (loading || !ready) return;
+		clearTimeout(analyzeTimer);
+		analyzeTimer = setTimeout(runBranchAnalyzer, 500);
 	}
 
 	async function save() {
@@ -131,6 +148,11 @@
 		dialogs = res.dialogs;
 	}
 
+	async function loadGameState() {
+		const res = await api<{ properties: GameStateProperty[] }>(`/api/projects/${slug}/game-state`);
+		gameStateProperties = res.properties;
+	}
+
 	async function load() {
 		loading = true;
 		ready = false;
@@ -139,11 +161,13 @@
 			const [{ graph }] = await Promise.all([
 				api<{ graph: FlowGraph }>(`/api/projects/${slug}/flow`),
 				loadDialogs(),
+				loadGameState(),
 			]);
 			flowNodes = graph.nodes;
 			flowEdges = graph.edges;
 			toCanvas(graph);
 			ready = true;
+			scheduleAnalyze();
 		} catch (e) {
 			loadError = (e as Error).message;
 		} finally {
@@ -312,6 +336,60 @@
 		return target.isContentEditable;
 	}
 
+	function openDialogEditor(dialogId: string, title?: string) {
+		editorDialogId = dialogId;
+		editorTitle = title?.trim() ? `Edit: ${title.trim()}` : `Edit: ${dialogId}`;
+	}
+
+	async function closeDialogEditor() {
+		editorDialogId = null;
+		await loadDialogs();
+		scheduleAnalyze();
+	}
+
+	async function runBranchAnalyzer() {
+		if (analyzing || loading || !ready) return;
+		analyzing = true;
+		try {
+			const graph = fromCanvas();
+			const sceneDialogIds = [
+				...new Set(
+					graph.nodes
+						.filter((n) => n.type === 'scene' && n.data.dialogId)
+						.map((n) => n.data.dialogId!),
+				),
+			];
+
+			const [charactersRes, ...dialogGraphs] = await Promise.all([
+				api<CharactersFile>(`/api/projects/${slug}/characters`),
+				...sceneDialogIds.map((id) =>
+					api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${id}`),
+				),
+			]);
+
+			const dialogs: Record<string, DialogGraph> = {};
+			sceneDialogIds.forEach((id, i) => {
+				dialogs[id] = dialogGraphs[i]!.graph;
+			});
+
+			const analysis = analyzeFlowBranches(graph, dialogs, charactersRes.characters);
+			const updated = applyFirstMeetings(graph.nodes, analysis);
+
+			canvasNodes = canvasNodes.map((n) => {
+				const match = updated.find((u) => u.id === n.id);
+				if (!match) return n;
+				return { ...n, data: match.data };
+			});
+			syncKey = `local-${Date.now()}`;
+			clearTimeout(saveTimer);
+			await save();
+		} catch {
+			/* analyzer is best-effort; flow edits still save normally */
+		} finally {
+			analyzing = false;
+		}
+	}
+
 	function onKeyDown(event: KeyboardEvent) {
 		if (event.key !== 'Delete' && event.key !== 'Backspace') return;
 		if (isEditableTarget(event.target)) return;
@@ -353,9 +431,11 @@
 					{slug}
 					node={selectedNode}
 					{dialogs}
+					{gameStateProperties}
 					onchange={updateNode}
 					onTypeChange={changeNodeType}
 					ondelete={openDeleteNodeConfirm}
+					onEditDialog={openDialogEditor}
 					onDialogsRefresh={loadDialogs}
 				/>
 			</aside>
@@ -394,6 +474,13 @@
 		</footer>
 	</form>
 </dialog>
+
+<DialogEditorModal
+	{slug}
+	dialogId={editorDialogId}
+	title={editorTitle}
+	onclose={closeDialogEditor}
+/>
 
 <style>
 	.flow-editor {

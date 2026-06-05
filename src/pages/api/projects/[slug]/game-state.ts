@@ -1,0 +1,26 @@
+import type { APIRoute } from 'astro';
+import {
+	getGameState,
+	saveGameState,
+	jsonResponse,
+	errorResponse,
+} from '../../../../lib/server/projects';
+
+export const GET: APIRoute = async ({ params }) => {
+	try {
+		const data = await getGameState(params.slug!);
+		return jsonResponse(data);
+	} catch (e) {
+		return errorResponse((e as Error).message, 500);
+	}
+};
+
+export const PUT: APIRoute = async ({ params, request }) => {
+	try {
+		const body = await request.json();
+		const data = await saveGameState(params.slug!, body);
+		return jsonResponse(data);
+	} catch (e) {
+		return errorResponse((e as Error).message, 400);
+	}
+};
