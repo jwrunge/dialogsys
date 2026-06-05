@@ -3,6 +3,8 @@ import path from 'node:path';
 import { projectMetaSchema, type ProjectMeta, createProjectInputSchema } from '../schema/project';
 import { charactersFileSchema, type CharactersFile } from '../schema/characters';
 import { dialogGraphSchema, type DialogGraph } from '../schema/graph';
+import { flowGraphSchema, type FlowGraph } from '../schema/flow';
+import { createDefaultFlowGraph } from '../flow/flowFactory';
 import { ensureProjectRepo, scheduleSnapshot } from './versioning';
 
 const DEFAULT_ROOT = './projects';
@@ -292,6 +294,28 @@ export async function deleteDialog(slug: string, id: string): Promise<void> {
 	await fs.unlink(file);
 	await touchProject(slug);
 	void scheduleSnapshot(slug, `dialog deleted: ${id}`, { immediate: true });
+}
+
+export async function getFlow(slug: string): Promise<FlowGraph> {
+	const file = projectFilePath(slug, 'flow.graph.json');
+	const raw = await readJsonFile(file, null);
+	if (!raw) {
+		const graph = createDefaultFlowGraph();
+		await saveFlow(slug, graph);
+		return graph;
+	}
+	return flowGraphSchema.parse(raw);
+}
+
+export async function saveFlow(slug: string, graph: FlowGraph): Promise<FlowGraph> {
+	const parsed = flowGraphSchema.parse({
+		...graph,
+		updatedAt: new Date().toISOString(),
+	});
+	await writeJsonAtomic(projectFilePath(slug, 'flow.graph.json'), parsed);
+	await touchProject(slug);
+	void scheduleSnapshot(slug, 'flow saved');
+	return parsed;
 }
 
 async function touchProject(slug: string): Promise<void> {
