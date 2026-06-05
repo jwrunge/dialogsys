@@ -185,6 +185,8 @@ label {
 .editor-canvas {
 	border-right: 1px solid var(--border);
 	min-height: 0;
+	overflow: hidden;
+	height: 100%;
 }
 
 .editor-inspector {

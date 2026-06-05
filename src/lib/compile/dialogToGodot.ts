@@ -89,7 +89,12 @@ export function compileDialogToGodot(
 	start = resolveEnd(graph.nodes, start);
 
 	for (const node of graph.nodes) {
-		if (!exportableTypes.has(node.type) || node.type === 'entry' || node.type === 'direction') {
+		if (
+			!exportableTypes.has(node.type) ||
+			node.type === 'entry' ||
+			node.type === 'direction' ||
+			node.type === 'blank'
+		) {
 			continue;
 		}
 

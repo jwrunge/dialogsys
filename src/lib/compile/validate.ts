@@ -242,6 +242,16 @@ export function validateDialog(
 	}
 
 	for (const node of graph.nodes) {
+		if (node.type === 'blank') {
+			issues.push({
+				level: 'error',
+				code: 'blank_node',
+				message: `Step "${node.id}" has no type — choose Line, Choice, etc. before export`,
+				dialogId: graph.id,
+				nodeId: node.id,
+			});
+		}
+
 		if (node.type === 'line') {
 			validateLineNode(node, graph, charList, issues, stateUsage);
 		}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { api } from '../lib/api';
 
 	interface Props {
@@ -9,9 +9,11 @@
 	let { slug }: Props = $props();
 
 	let dialogs = $state<{ id: string; displayName: string }[]>([]);
-	let newId = $state('');
-	let newName = $state('');
-	let error = $state('');
+	let createDialogEl = $state<HTMLDialogElement | null>(null);
+	let draftId = $state('');
+	let draftName = $state('');
+	let modalError = $state('');
+	let creating = $state(false);
 
 	async function load() {
 		const res = await api<{ dialogs: { id: string; displayName: string }[] }>(
@@ -20,18 +22,39 @@
 		dialogs = res.dialogs;
 	}
 
-	async function create() {
-		error = '';
+	async function openCreateModal() {
+		draftId = '';
+		draftName = '';
+		modalError = '';
+		await tick();
+		createDialogEl?.showModal();
+	}
+
+	function closeCreateModal() {
+		createDialogEl?.close();
+		draftId = '';
+		draftName = '';
+		modalError = '';
+	}
+
+	async function submitCreate(e: Event) {
+		e.preventDefault();
+		if (creating) return;
+		modalError = '';
+		creating = true;
+		const id = draftId.trim();
+		const displayName = draftName.trim();
 		try {
 			await api(`/api/projects/${slug}/dialogs`, {
 				method: 'POST',
-				body: JSON.stringify({ id: newId, displayName: newName || newId }),
+				body: JSON.stringify({ id, displayName }),
 			});
-			newId = '';
-			newName = '';
-			await load();
-		} catch (e) {
-			error = (e as Error).message;
+			createDialogEl?.close();
+			window.location.assign(`/projects/${slug}/dialogs/${id}`);
+		} catch (err) {
+			modalError = (err as Error).message;
+		} finally {
+			creating = false;
 		}
 	}
 
@@ -44,12 +67,11 @@
 	onMount(load);
 </script>
 
-<div class="create-row">
-	<input bind:value={newId} placeholder="dialog_id" pattern="[a-z][a-z0-9_]*" />
-	<input bind:value={newName} placeholder="Display name" />
-	<button type="button" class="btn btn-primary" onclick={create}>New dialog</button>
+<div class="toolbar">
+	<button type="button" class="btn btn-primary toolbar-add" onclick={openCreateModal}>
+		New dialog
+	</button>
 </div>
-{#if error}<p class="error">{error}</p>{/if}
 
 <ul class="dialog-list">
 	{#each dialogs as d}
@@ -67,16 +89,61 @@
 	<p class="muted">No dialogs yet.</p>
 {/if}
 
+<dialog bind:this={createDialogEl} class="modal" onclose={closeCreateModal}>
+	<form class="modal-panel" onsubmit={submitCreate}>
+		<header class="modal-header">
+			<h2>New dialog</h2>
+		</header>
+
+		<div class="modal-body">
+			{#if modalError}
+				<p class="error">{modalError}</p>
+			{/if}
+			<div class="field">
+				<label for="dialog-id">ID</label>
+				<input
+					id="dialog-id"
+					bind:value={draftId}
+					required
+					pattern="[a-z][a-z0-9_]*"
+					placeholder="tavern_intro"
+					autocomplete="off"
+				/>
+			</div>
+			<div class="field">
+				<label for="dialog-name">Display name</label>
+				<input
+					id="dialog-name"
+					bind:value={draftName}
+					required
+					placeholder="Tavern Intro"
+					autocomplete="off"
+				/>
+			</div>
+		</div>
+
+		<footer class="modal-footer">
+			<div class="modal-footer-right">
+				<button type="button" class="btn" onclick={closeCreateModal} disabled={creating}>
+					Cancel
+				</button>
+				<button type="submit" class="btn btn-primary" disabled={creating}>
+					{creating ? 'Creating…' : 'Done'}
+				</button>
+			</div>
+		</footer>
+	</form>
+</dialog>
+
 <style>
-	.create-row {
-		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-		flex-wrap: wrap;
+	.toolbar {
+		background: transparent;
+		border-bottom: none;
+		padding: 0 0 1rem;
 	}
 
-	.create-row input {
-		max-width: 200px;
+	.toolbar-add {
+		margin-left: auto;
 	}
 
 	.dialog-list {
@@ -111,9 +178,77 @@
 
 	.error {
 		color: var(--error);
+		margin: 0 0 1rem;
 	}
 
 	.muted {
 		color: var(--text-muted);
+	}
+
+	.modal {
+		border: none;
+		padding: 0;
+		margin: auto;
+		position: fixed;
+		inset: 0;
+		width: min(480px, calc(100vw - 2rem));
+		height: fit-content;
+		max-height: calc(100vh - 2rem);
+		background: transparent;
+	}
+
+	.modal::backdrop {
+		background: rgba(0, 0, 0, 0.55);
+	}
+
+	.modal-panel {
+		margin: 0;
+		padding: 0;
+		width: 100%;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		max-height: calc(100vh - 3rem);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		color: var(--text);
+	}
+
+	.modal-panel label {
+		color: var(--text);
+	}
+
+	.modal-header {
+		padding: 1rem 1.25rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.modal-header h2 {
+		margin: 0;
+		font-size: 1.1rem;
+	}
+
+	.modal-body {
+		flex: 1;
+		min-height: 0;
+		padding: 1.25rem;
+		overflow-y: auto;
+	}
+
+	.modal-footer {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.75rem;
+		padding: 1rem 1.25rem;
+		border-top: 1px solid var(--border);
+		flex-shrink: 0;
+		background: var(--bg-elevated);
+	}
+
+	.modal-footer-right {
+		display: flex;
+		gap: 0.5rem;
 	}
 </style>

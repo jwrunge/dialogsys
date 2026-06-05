@@ -6,7 +6,7 @@
 	import { nanoid } from 'nanoid';
 
 	interface Props {
-		node: GraphNode | null;
+		node: GraphNode;
 		edges: GraphEdge[];
 		nodes: GraphNode[];
 		characters: Character[];
@@ -20,11 +20,24 @@
 		$props();
 
 	const branchTargets = $derived(
-		nodes.filter((n) => n.id !== node?.id && n.type !== 'entry').map((n) => n.id),
+		nodes.filter((n) => n.id !== node.id && n.type !== 'entry').map((n) => n.id),
 	);
 
+	const speakerChar = $derived(characters.find((c) => c.id === node.data.speaker));
+
+	const stateOptions = $derived(speakerChar?.states ?? []);
+
+	const portraitPreview = $derived(
+		resolvePortraitPath(
+			speakerChar,
+			node.data.characterState || speakerChar?.defaultStateId,
+			node.data.portraitPath,
+		),
+	);
+
+	const nodeEdges = $derived(edges.filter((e) => e.source === node.id));
+
 	function branchTarget(handle: string): string {
-		if (!node) return '';
 		return (
 			edges.find(
 				(e) =>
@@ -34,48 +47,21 @@
 		);
 	}
 
-	const speakerChar = $derived(
-		characters.find((c) => c.id === node?.data.speaker),
-	);
-
-	const stateOptions = $derived(speakerChar?.states ?? []);
-
-	const portraitPreview = $derived(
-		resolvePortraitPath(
-			speakerChar,
-			node?.data.characterState || speakerChar?.defaultStateId,
-			node?.data.portraitPath,
-		),
-	);
-
-	const nodeEdges = $derived(
-		node ? edges.filter((e) => e.source === node.id) : [],
-	);
-
 	function updateData(patch: Partial<GraphNodeData>) {
-		if (!node) return;
-		onchange({
-			...node,
-			data: { ...node.data, ...patch },
-		});
+		onchange({ ...node, data: { ...node.data, ...patch } });
 	}
 
 	function setType(type: string) {
-		if (!node) return;
-		onchange({ ...node, type: type as GraphNode['type'] });
+		onchange({ ...node, type });
 	}
 
 	function updateEdge(edgeId: string, patch: Partial<GraphEdge['data']>) {
 		const edge = edges.find((e) => e.id === edgeId);
 		if (!edge) return;
-		onedgechange({
-			...edge,
-			data: { ...edge.data, ...patch },
-		});
+		onedgechange({ ...edge, data: { ...edge.data, ...patch } });
 	}
 
 	function addOption() {
-		if (!node) return;
 		const options: ChoiceOption[] = [
 			...(node.data.options ?? []),
 			{ id: nanoid(8), text: 'New option', conditions: [] },
@@ -86,33 +72,27 @@
 	function branchLabel(edge: GraphEdge): string {
 		if (edge.sourceHandle === 'true' || edge.data?.branch === 'true') return 'True branch';
 		if (edge.sourceHandle === 'false' || edge.data?.branch === 'false') return 'False branch';
-		const opt = node?.data.options?.find((o) => o.id === edge.sourceHandle);
+		const opt = node.data.options?.find((o) => o.id === edge.sourceHandle);
 		return opt ? `Option: ${opt.text}` : `Branch (${edge.sourceHandle ?? 'default'})`;
 	}
 </script>
 
-{#if !node}
-	<p class="muted">Select a step in the tree to edit.</p>
-{:else}
-	<h3>{node.type} <code>{node.id}</code></h3>
-
-	{#if node.type !== 'entry'}
-		<div class="field">
-			<label for="inspector-type">Type</label>
-			<select
-				id="inspector-type"
-				value={node.type}
-				onchange={(e) => setType((e.currentTarget as HTMLSelectElement).value)}
-			>
-				{#each NODE_TYPE_OPTIONS as opt}
-					<option value={opt.value}>{opt.label}</option>
-				{/each}
-				{#if node.type === 'end'}
-					<option value="end">End</option>
-				{/if}
-			</select>
-		</div>
-	{/if}
+<div class="node-editor">
+	<div class="field">
+		<label for="node-type-{node.id}">Type</label>
+		<select
+			id="node-type-{node.id}"
+			value={node.type}
+			onchange={(e) => setType((e.currentTarget as HTMLSelectElement).value)}
+		>
+			{#each NODE_TYPE_OPTIONS as opt}
+				<option value={opt.value}>{opt.label}</option>
+			{/each}
+			{#if node.type === 'entry'}
+				<option value="entry">Start</option>
+			{/if}
+		</select>
+	</div>
 
 	{#if node.type === 'blank'}
 		<p class="muted">Choose a type above to configure this step.</p>
@@ -154,39 +134,16 @@
 					{/each}
 				</select>
 			</div>
-			<div class="field">
-				<label>State id (type any id, e.g. panicked for Jane)</label>
-				<input
-					value={node.data.characterState ?? speakerChar.defaultStateId}
-					oninput={(e) =>
-						updateData({ characterState: (e.currentTarget as HTMLInputElement).value })}
-				/>
-				{#if node.data.characterState && !stateOptions.some((s) => s.id === node.data.characterState)}
-					<p class="warn">
-						"{node.data.characterState}" is not defined for {speakerChar.displayName} — see
-						Issues.
-					</p>
-				{/if}
-			</div>
 			{#if portraitPreview}
-				<p class="hint">Resolved portrait: <code>{portraitPreview}</code></p>
+				<p class="hint">Portrait: <code>{portraitPreview}</code></p>
 			{/if}
 		{/if}
-		<div class="field">
-			<label>Portrait override (optional)</label>
-			<input
-				value={node.data.portraitPath ?? ''}
-				oninput={(e) =>
-					updateData({ portraitPath: (e.currentTarget as HTMLInputElement).value })}
-				placeholder="Leave blank to use state portrait"
-			/>
-		</div>
 		<div class="field">
 			<label>Text</label>
 			<textarea
 				value={node.data.text ?? ''}
 				oninput={(e) => updateData({ text: (e.currentTarget as HTMLTextAreaElement).value })}
-				rows="4"
+				rows="3"
 			></textarea>
 		</div>
 	{:else if node.type === 'choice'}
@@ -197,7 +154,7 @@
 					<input
 						value={opt.text}
 						oninput={(e) => {
-							const options = [...(node!.data.options ?? [])];
+							const options = [...(node.data.options ?? [])];
 							options[i] = { ...opt, text: (e.currentTarget as HTMLInputElement).value };
 							updateData({ options });
 						}}
@@ -208,11 +165,7 @@
 					<select
 						value={branchTarget(opt.id)}
 						onchange={(e) =>
-							onSetBranchTarget(
-								node!.id,
-								opt.id,
-								(e.currentTarget as HTMLSelectElement).value,
-							)}
+							onSetBranchTarget(node.id, opt.id, (e.currentTarget as HTMLSelectElement).value)}
 					>
 						<option value="">—</option>
 						{#each branchTargets as id}
@@ -224,23 +177,6 @@
 		{/each}
 		<button type="button" class="btn" onclick={addOption}>Add option</button>
 	{:else if node.type === 'condition'}
-		<p class="hint">Branch on game state using variable names you define here — no separate registry.</p>
-		<div class="field">
-			<label>Force branch (ignore other path at export)</label>
-			<select
-				value={node.data.forceBranch ?? ''}
-				onchange={(e) => {
-					const v = (e.currentTarget as HTMLSelectElement).value;
-					updateData({
-						forceBranch: v === '' ? undefined : (v as 'true' | 'false'),
-					});
-				}}
-			>
-				<option value="">None (evaluate variable)</option>
-				<option value="true">Always true branch</option>
-				<option value="false">Always false branch</option>
-			</select>
-		</div>
 		<div class="field">
 			<label>Scope</label>
 			<select
@@ -256,7 +192,7 @@
 		</div>
 		{#if node.data.branchScope === 'character'}
 			<div class="field">
-				<label>Character ID</label>
+				<label>Character</label>
 				<select
 					value={node.data.branchCharacterId ?? ''}
 					onchange={(e) =>
@@ -302,13 +238,9 @@
 				{/each}
 			</select>
 		</div>
-		{#if nodeEdges.length > 0}
-			<BranchEdgeList {nodeEdges} {branchLabel} {updateEdge} />
-		{/if}
 	{:else if node.type === 'set_var'}
-		<p class="hint">Set game state in the graph; wire your Godot handler via <code>run_command</code>.</p>
 		<div class="field">
-			<label>JSON ops (setOps array)</label>
+			<label>JSON ops (setOps)</label>
 			<textarea
 				value={JSON.stringify(node.data.setOps ?? [], null, 2)}
 				onchange={(e) => {
@@ -318,7 +250,7 @@
 						/* ignore */
 					}
 				}}
-				rows="6"
+				rows="4"
 			></textarea>
 		</div>
 	{:else if node.type === 'jump'}
@@ -343,99 +275,39 @@
 				value={node.data.directionText ?? ''}
 				oninput={(e) =>
 					updateData({ directionText: (e.currentTarget as HTMLTextAreaElement).value })}
-				rows="5"
+				rows="3"
 				placeholder="e.g. John looks mournfully at Cassie. The door creaks open."
 			></textarea>
 		</div>
 	{:else if node.type === 'entry'}
-		<p class="muted">Dialog starts here. The first connected step follows Start in the tree.</p>
+		<p class="muted">Dialog begins here.</p>
 	{:else if node.type === 'end'}
 		<p class="muted">End of this branch.</p>
 	{/if}
-{/if}
-
-{#snippet BranchEdgeList(nodeEdges: GraphEdge[], branchLabel: (e: GraphEdge) => string, updateEdge: (id: string, patch: Partial<GraphEdge['data']>) => void)}
-	<div class="branch-edges">
-		<h4>Branch wiring</h4>
-		{#each nodeEdges as edge}
-			<div class="edge-card">
-				<strong>{branchLabel(edge)}</strong>
-				<span class="muted">→ {edge.target}</span>
-				<label class="check">
-					<input
-						type="checkbox"
-						checked={edge.data?.forceUse ?? false}
-						onchange={(e) =>
-							updateEdge(edge.id, {
-								forceUse: (e.currentTarget as HTMLInputElement).checked,
-							})}
-					/>
-					Just use this branch (force at export, suppress unused-branch warnings)
-				</label>
-				<label class="check">
-					<input
-						type="checkbox"
-						checked={edge.data?.ignoreUnusedWarning ?? false}
-						onchange={(e) =>
-							updateEdge(edge.id, {
-								ignoreUnusedWarning: (e.currentTarget as HTMLInputElement).checked,
-							})}
-					/>
-					Opt out of unused-branch warning for alternates
-				</label>
-			</div>
-		{/each}
-	</div>
-{/snippet}
+</div>
 
 <style>
-	h3 {
-		font-size: 0.95rem;
-		margin-bottom: 1rem;
-	}
-
-	h4 {
-		font-size: 0.85rem;
-		margin: 1rem 0 0.5rem;
-	}
-
-	code {
-		font-family: var(--mono);
-		font-size: 0.8rem;
-		color: var(--text-muted);
+	.node-editor {
+		padding: 0.75rem 1rem 1rem;
+		border-top: 1px solid var(--border);
+		background: var(--bg);
 	}
 
 	.hint,
 	.muted {
 		color: var(--text-muted);
 		font-size: 0.85rem;
+		margin: 0;
 	}
 
-	.warn {
-		color: var(--warning);
+	code {
+		font-family: var(--mono);
 		font-size: 0.8rem;
-		margin: 0.25rem 0 0;
 	}
 
-	.warn-box {
-		padding: 0.5rem;
-		border: 1px solid var(--warning);
-		border-radius: var(--radius);
-	}
-
-	.option-card,
-	.edge-card {
+	.option-card {
 		margin-bottom: 0.75rem;
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--border);
-	}
-
-	.check {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		font-size: 0.8rem;
-		color: var(--text-muted);
-		margin-top: 0.35rem;
 	}
 </style>

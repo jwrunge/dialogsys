@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
 	import type { Character, CharactersFile } from '../lib/schema/characters';
 	import type { DialogGraph, GraphNode, GraphEdge } from '../lib/schema/graph';
+	import {
+		insertNodeAfter,
+		insertNodeBefore,
+		moveNodeBefore,
+		setBranchTarget,
+		unlinkNode,
+	} from '../lib/graph/graphEdit';
+	import { createBlankNode } from '../lib/graph/nodeFactory';
+	import { findEntryNode, singleNextTarget } from '../lib/graph/graphUtils';
+	import DialogTreeView from './DialogTreeView.svelte';
 	import NodeInspector from './NodeInspector.svelte';
 
 	interface Props {
@@ -12,25 +21,6 @@
 	}
 
 	let { slug, dialogId }: Props = $props();
-
-	type FlowCanvasComponent = typeof import('./DialogFlowCanvas.svelte').default;
-	type FlowNode = { id: string; type?: string; position: { x: number; y: number }; data?: Record<string, unknown> };
-	type FlowEdge = {
-		id: string;
-		source: string;
-		target: string;
-		sourceHandle?: string | null;
-		targetHandle?: string | null;
-		data?: Record<string, unknown>;
-	};
-	type FlowConnection = {
-		source: string | null;
-		target: string | null;
-		sourceHandle?: string | null;
-		targetHandle?: string | null;
-	};
-
-	let FlowCanvas = $state<FlowCanvasComponent | null>(null);
 
 	let loading = $state(true);
 	let ready = $state(false);
@@ -41,80 +31,34 @@
 	let loadError = $state('');
 	let characters = $state<Character[]>([]);
 	let dialogIds = $state<string[]>([]);
-	let searchQuery = $state('');
 
-	let nodes = $state.raw<FlowNode[]>([]);
-	let edges = $state.raw<FlowEdge[]>([]);
+	let nodes = $state<GraphNode[]>([]);
+	let edges = $state<GraphEdge[]>([]);
+	let activeBranches = $state<Record<string, string>>({});
+	let expandedIds = $state(new Set<string>());
+	let openMenuId = $state<string | null>(null);
+	let dragNodeId = $state<string | null>(null);
 
-	let selectedNode = $derived.by(() => {
-		const found = nodes.find((n) => n.id === selectedNodeId);
-		if (!found) return null;
-		return {
-			id: found.id,
-			type: found.type ?? 'line',
-			position: found.position,
-			data: (found.data ?? {}) as GraphNode['data'],
-		} as GraphNode;
-	});
-
-	const flowSyncKey = $derived(
-		`${nodes.length}:${nodes.map((n) => n.id).join(',')}|${edges.length}:${edges.map((e) => e.id).join(',')}`,
+	const selectedNode = $derived(
+		selectedNodeId ? (nodes.find((n) => n.id === selectedNodeId) ?? null) : null,
 	);
 
-	const flowEdges = $derived(
-		edges.map((edge) => ({
-			id: edge.id,
-			source: edge.source,
-			target: edge.target,
-			sourceHandle: edge.sourceHandle ?? undefined,
-			targetHandle: edge.targetHandle ?? undefined,
-			data: (edge.data ?? {}) as GraphEdge['data'],
-		})),
-	);
-
-	function flowToGraph(): DialogGraph {
+	function toGraph(): DialogGraph {
 		return {
 			id: dialogId,
 			displayName: graphMeta.displayName,
 			description: graphMeta.description,
-			nodes: nodes.map((node) => ({
-				id: node.id,
-				type: node.type ?? 'line',
-				position: node.position,
-				data: (node.data ?? {}) as GraphNode['data'],
-			})),
-			edges: edges.map((edge) => ({
-				id: edge.id,
-				source: edge.source,
-				target: edge.target,
-				sourceHandle: edge.sourceHandle ?? undefined,
-				targetHandle: edge.targetHandle ?? undefined,
-				data: (edge.data ?? {}) as GraphEdge['data'],
-			})),
+			nodes,
+			edges,
 		};
 	}
 
-	function graphToFlow(graph: DialogGraph) {
-		if (!Array.isArray(graph.nodes)) {
-			throw new Error('Dialog has no nodes array');
-		}
-		if (!Array.isArray(graph.edges)) {
-			throw new Error('Dialog has no edges array');
-		}
-		nodes = graph.nodes.map((n) => ({
-			id: n.id,
-			type: n.type,
-			position: { x: n.position.x, y: n.position.y },
-			data: { ...n.data, label: n.data.label ?? n.type },
-		}));
-		edges = graph.edges.map((e) => ({
-			id: e.id,
-			source: e.source,
-			target: e.target,
-			sourceHandle: e.sourceHandle ?? null,
-			targetHandle: e.targetHandle ?? null,
-			data: e.data ?? {},
-		}));
+	function loadGraph(graph: DialogGraph) {
+		if (!Array.isArray(graph.nodes)) throw new Error('Dialog has no nodes array');
+		if (!Array.isArray(graph.edges)) throw new Error('Dialog has no edges array');
+		nodes = graph.nodes;
+		edges = graph.edges;
+		expandedIds = new Set(graph.nodes.map((n) => n.id));
 	}
 
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -128,10 +72,9 @@
 	async function save() {
 		saveStatus = 'Saving…';
 		try {
-			const graph = flowToGraph();
 			await api(`/api/projects/${slug}/dialogs/${dialogId}`, {
 				method: 'PUT',
-				body: JSON.stringify({ graph }),
+				body: JSON.stringify({ graph: toGraph() }),
 			});
 			saveStatus = 'Saved';
 			setTimeout(() => {
@@ -153,12 +96,9 @@
 				api<{ dialogs: { id: string }[] }>(`/api/projects/${slug}/dialogs`),
 			]);
 			graphMeta = { displayName: graph.displayName, description: graph.description };
-			graphToFlow(graph);
+			loadGraph(graph);
 			characters = Array.isArray(chars.characters) ? chars.characters : [];
 			dialogIds = dialogs.dialogs.map((d) => d.id);
-
-			const mod = await import('./DialogFlowCanvas.svelte');
-			FlowCanvas = mod.default;
 			ready = true;
 
 			const hash = window.location.hash.replace(/^#/, '');
@@ -170,86 +110,105 @@
 		}
 	}
 
-	function addNode(type: string) {
-		const id = `${type}_${nanoid(6)}`;
-		const defaults: Record<string, Record<string, unknown>> = {
-			line: {
-				speaker: characters[0]?.id ?? '',
-				characterState: characters[0]?.defaultStateId ?? 'default',
-				text: '',
-			},
-			choice: {
-				options: [
-					{ id: nanoid(8), text: 'Option A', conditions: [] },
-					{ id: nanoid(8), text: 'Option B', conditions: [] },
-				],
-			},
-			condition: { branchScope: 'global', branchVar: '' },
-			set_var: { setOps: [] },
-			jump: { targetDialogId: dialogIds[0] ?? '' },
-			direction: { directionText: '' },
-		};
-		nodes = [
-			...nodes,
-			{
-				id,
-				type,
-				position: { x: 150 + nodes.length * 30, y: 100 + nodes.length * 40 },
-				data: { label: type, ...(defaults[type] ?? {}) },
-			},
-		];
+	function insertBlank(relativeId: string, position: 'before' | 'after') {
+		const relative = nodes.find((n) => n.id === relativeId);
+		if (!relative || relative.type === 'entry') return;
+
+		const blank = createBlankNode();
+		let sourceHandle: string | undefined;
+
+		if (position === 'after') {
+			if (relative.type === 'choice') {
+				sourceHandle = activeBranches[relativeId] ?? relative.data.options?.[0]?.id;
+			} else if (relative.type === 'condition') {
+				sourceHandle = activeBranches[relativeId] ?? 'true';
+			}
+			const result = insertNodeAfter(nodes, edges, relativeId, blank, sourceHandle);
+			nodes = result.nodes;
+			edges = result.edges;
+		} else {
+			const result = insertNodeBefore(nodes, edges, relativeId, blank);
+			nodes = result.nodes;
+			edges = result.edges;
+		}
+
+		expandedIds = new Set([...expandedIds, blank.id]);
+		selectedNodeId = blank.id;
 		scheduleSave();
 	}
 
-	function handleConnect(params: FlowConnection) {
-		edges = [
-			...edges,
-			{
-				id: `e-${params.source}-${params.target}-${nanoid(4)}`,
-				source: params.source!,
-				target: params.target!,
-				sourceHandle: params.sourceHandle ?? null,
-				targetHandle: params.targetHandle ?? null,
-				data:
-					params.sourceHandle === 'true' || params.sourceHandle === 'false'
-						? { branch: params.sourceHandle }
-						: {},
-			},
-		];
+	function updateNode(updated: GraphNode) {
+		nodes = nodes.map((n) => (n.id === updated.id ? updated : n));
 		scheduleSave();
 	}
 
 	function updateEdge(updated: GraphEdge) {
-		edges = edges.map((e) =>
-			e.id === updated.id ? { ...e, data: updated.data ?? {} } : e,
-		);
+		edges = edges.map((e) => (e.id === updated.id ? updated : e));
 		scheduleSave();
 	}
 
-	function updateSelectedNode(updated: GraphNode) {
-		nodes = nodes.map((n) =>
-			n.id === updated.id
-				? {
-						...n,
-						data: { ...updated.data, label: updated.data.speaker || updated.type },
-					}
-				: n,
-		);
+	function handleSetBranchTarget(sourceId: string, handle: string, targetId: string) {
+		if (!targetId) return;
+		edges = setBranchTarget(edges, sourceId, handle, targetId);
 		scheduleSave();
 	}
 
-	function focusSearch() {
-		const q = searchQuery.trim().toLowerCase();
-		if (!q) return;
-		const match = nodes.find(
-			(n) =>
-				n.id.toLowerCase().includes(q) ||
-				JSON.stringify(n.data).toLowerCase().includes(q),
-		);
-		if (match) selectedNodeId = match.id;
+	function handleBranchChange(nodeId: string, branchId: string) {
+		activeBranches = { ...activeBranches, [nodeId]: branchId };
+		expandedIds = new Set([...expandedIds, nodeId]);
 	}
 
-	onMount(load);
+	function toggleExpanded(id: string) {
+		const next = new Set(expandedIds);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		expandedIds = next;
+	}
+
+	function selectNode(id: string) {
+		selectedNodeId = id;
+		openMenuId = null;
+		window.location.hash = id;
+	}
+
+	function deleteNode(id: string) {
+		const node = nodes.find((n) => n.id === id);
+		if (!node || node.type === 'entry') return;
+		if (!confirm(`Delete this step?`)) return;
+		const result = unlinkNode(nodes, edges, id);
+		nodes = result.nodes;
+		edges = result.edges;
+		if (selectedNodeId === id) selectedNodeId = null;
+		scheduleSave();
+	}
+
+	function handleDropBefore(dragId: string, beforeId: string) {
+		const result = moveNodeBefore(nodes, edges, dragId, beforeId);
+		nodes = result.nodes;
+		edges = result.edges;
+		scheduleSave();
+	}
+
+	/** If tree has only entry→end, add a blank step after entry on first edit. */
+	function ensureFirstStep() {
+		const entry = findEntryNode(nodes);
+		if (!entry) return;
+		const next = singleNextTarget(edges, entry.id);
+		const nextNode = nodes.find((n) => n.id === next);
+		if (nextNode?.type === 'end') {
+			const blank = createBlankNode();
+			const result = insertNodeBefore(nodes, edges, next, blank);
+			nodes = result.nodes;
+			edges = result.edges;
+			selectedNodeId = blank.id;
+			scheduleSave();
+		}
+	}
+
+	onMount(async () => {
+		await load();
+		ensureFirstStep();
+	});
 </script>
 
 <div class="editor-shell">
@@ -257,52 +216,49 @@
 		<a href="/" class="btn">← Projects</a>
 		<a href={`/projects/${slug}/dialogs`} class="btn">Dialogs</a>
 		<strong>{graphMeta.displayName || dialogId}</strong>
-		<button type="button" class="btn" onclick={() => addNode('line')} disabled={!ready}>+ Line</button>
-		<button type="button" class="btn" onclick={() => addNode('choice')} disabled={!ready}>+ Choice</button>
-		<button type="button" class="btn" onclick={() => addNode('condition')} disabled={!ready}
-			>+ Condition</button
-		>
-		<button type="button" class="btn" onclick={() => addNode('set_var')} disabled={!ready}>+ Set var</button>
-		<button type="button" class="btn" onclick={() => addNode('jump')} disabled={!ready}>+ Jump</button>
-		<button type="button" class="btn" onclick={() => addNode('direction')} disabled={!ready}
-			>+ Direction</button
-		>
-		<button type="button" class="btn btn-primary" onclick={save} disabled={!ready}>Save</button>
-		<input
-			class="search"
-			bind:value={searchQuery}
-			placeholder="Find node…"
-			onkeydown={(e) => e.key === 'Enter' && focusSearch()}
-		/>
 		<span class="status" class:saved={saveStatus === 'Saved'}>{saveStatus || (loading ? 'Loading…' : '')}</span>
 	</div>
 
 	{#if loadError}
 		<p class="error-banner">{loadError}</p>
-	{:else if ready && FlowCanvas}
+	{:else if ready}
 		<div class="editor-layout">
-			<FlowCanvas
-				{nodes}
-				{edges}
-				syncKey={flowSyncKey}
-				setNodes={(n) => {
-					nodes = n;
-				}}
-				setEdges={(e) => {
-					edges = e;
-				}}
-				onNodeSelect={(id) => (selectedNodeId = id)}
-				onConnect={handleConnect}
-				onDragStop={scheduleSave}
-			/>
+			<div class="editor-canvas">
+				<DialogTreeView
+					{nodes}
+					{edges}
+					{characters}
+					{dialogIds}
+					{selectedNodeId}
+					{activeBranches}
+					{expandedIds}
+					{openMenuId}
+					{dragNodeId}
+					onSelect={selectNode}
+					onBranchChange={handleBranchChange}
+					onToggle={toggleExpanded}
+					onInsertBefore={(id) => insertBlank(id, 'before')}
+					onInsertAfter={(id) => insertBlank(id, 'after')}
+					onDelete={deleteNode}
+					onMenuToggle={(id) => (openMenuId = id)}
+					onDragStart={(id) => (dragNodeId = id)}
+					onDragEnd={() => (dragNodeId = null)}
+					onDropBefore={handleDropBefore}
+					onNodeChange={updateNode}
+					onEdgeChange={updateEdge}
+					onSetBranchTarget={handleSetBranchTarget}
+				/>
+			</div>
 			<aside class="editor-inspector">
 				<NodeInspector
 					node={selectedNode}
-					edges={flowEdges}
+					{nodes}
+					{edges}
 					{characters}
 					{dialogIds}
-					onchange={updateSelectedNode}
+					onchange={updateNode}
 					onedgechange={updateEdge}
+					onSetBranchTarget={handleSetBranchTarget}
 				/>
 			</aside>
 		</div>
@@ -315,21 +271,9 @@
 		width: calc(100% + 3rem);
 	}
 
-	.editor-layout {
-		display: grid;
-		grid-template-columns: 1fr 320px;
-		height: calc(100vh - 56px);
-	}
 
-	.search {
-		max-width: 160px;
-	}
-
-	.editor-inspector {
-		overflow-y: auto;
-		padding: 1rem;
-		background: var(--bg-elevated);
-		border-left: 1px solid var(--border);
+	.status.saved {
+		color: var(--success);
 	}
 
 	.error-banner {

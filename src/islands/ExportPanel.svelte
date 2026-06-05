@@ -76,7 +76,7 @@
 	<p class="muted">No validation issues. See <a href={`/projects/${slug}/issues`}>Issues</a> for full list.</p>
 {/if}
 
-<div class="instructions card">
+<div class="instructions">
 	<h3>Godot setup</h3>
 	<ol>
 		<li>Export writes to <code>projects/&lt;slug&gt;/export/godot/</code></li>
@@ -117,6 +117,14 @@
 
 	.instructions {
 		margin-top: 1.5rem;
+		padding: 1.25rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+	}
+
+	.instructions h3 {
+		margin: 0 0 0.35rem;
 	}
 
 	.instructions ol {

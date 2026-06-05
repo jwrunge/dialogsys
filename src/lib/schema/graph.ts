@@ -3,6 +3,7 @@ import { conditionsSchema } from './conditions';
 
 export const nodeTypeSchema = z.enum([
 	'entry',
+	'blank',
 	'line',
 	'choice',
 	'condition',

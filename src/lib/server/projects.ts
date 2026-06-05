@@ -226,7 +226,7 @@ export async function saveDialog(slug: string, graph: DialogGraph): Promise<Dial
 		parsed,
 	);
 	await touchProject(slug);
-	await scheduleSnapshot(slug, `dialog saved: ${parsed.id}`);
+	void scheduleSnapshot(slug, `dialog saved: ${parsed.id}`);
 	return parsed;
 }
 
@@ -269,7 +269,7 @@ export async function createDialog(
 	};
 
 	const saved = await saveDialog(slug, graph);
-	await scheduleSnapshot(slug, `dialog created: ${id}`, { immediate: true });
+	void scheduleSnapshot(slug, `dialog created: ${id}`, { immediate: true });
 	return saved;
 }
 
@@ -277,7 +277,7 @@ export async function deleteDialog(slug: string, id: string): Promise<void> {
 	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
 	await fs.unlink(file);
 	await touchProject(slug);
-	await scheduleSnapshot(slug, `dialog deleted: ${id}`, { immediate: true });
+	void scheduleSnapshot(slug, `dialog deleted: ${id}`, { immediate: true });
 }
 
 async function touchProject(slug: string): Promise<void> {
