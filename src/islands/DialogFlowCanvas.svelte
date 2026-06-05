@@ -1,65 +1,97 @@
 <script lang="ts">
-	import {
-		SvelteFlow,
-		Controls,
-		Background,
-		BackgroundVariant,
-		MiniMap,
-		type Node,
-		type Edge,
-		type Connection,
-	} from '@xyflow/svelte';
-	import '@xyflow/svelte/dist/style.css';
-	import DialogNode from './DialogNode.svelte';
+	import { onMount } from 'svelte';
+
+	/** Loaded only in the browser — never statically imports @xyflow/svelte. */
+	type InnerComponent = typeof import('./DialogFlowCanvasInner.svelte').default;
+
+	type FlowNode = {
+		id: string;
+		type?: string;
+		position: { x: number; y: number };
+		data?: Record<string, unknown>;
+	};
+	type FlowEdge = {
+		id: string;
+		source: string;
+		target: string;
+		sourceHandle?: string | null;
+		targetHandle?: string | null;
+		data?: Record<string, unknown>;
+	};
+	type FlowConnection = {
+		source: string | null;
+		target: string | null;
+		sourceHandle?: string | null;
+		targetHandle?: string | null;
+	};
 
 	interface Props {
-		nodes: Node[];
-		edges: Edge[];
-		setNodes: (nodes: Node[]) => void;
-		setEdges: (edges: Edge[]) => void;
+		nodes: FlowNode[];
+		edges: FlowEdge[];
+		syncKey: string;
+		setNodes: (nodes: FlowNode[]) => void;
+		setEdges: (edges: FlowEdge[]) => void;
 		onNodeSelect: (nodeId: string) => void;
-		onConnect: (connection: Connection) => void;
+		onConnect: (connection: FlowConnection) => void;
 		onDragStop: () => void;
 	}
 
-	let { nodes, edges, setNodes, setEdges, onNodeSelect, onConnect, onDragStop }: Props =
-		$props();
+	let {
+		nodes,
+		edges,
+		syncKey,
+		setNodes,
+		setEdges,
+		onNodeSelect,
+		onConnect,
+		onDragStop,
+	}: Props = $props();
 
-	const nodeTypes = {
-		entry: DialogNode,
-		line: DialogNode,
-		choice: DialogNode,
-		condition: DialogNode,
-		set_var: DialogNode,
-		jump: DialogNode,
-		direction: DialogNode,
-		end: DialogNode,
-	};
+	let Inner = $state<InnerComponent | null>(null);
+	let loadError = $state('');
+
+	onMount(async () => {
+		try {
+			const mod = await import('./DialogFlowCanvasInner.svelte');
+			Inner = mod.default;
+		} catch (e) {
+			loadError = (e as Error).message;
+		}
+	});
 </script>
 
-<div class="editor-canvas">
-	<SvelteFlow
-		bind:nodes={() => (Array.isArray(nodes) ? nodes : []), setNodes}
-		bind:edges={() => (Array.isArray(edges) ? edges : []), setEdges}
-		{nodeTypes}
-		fitView
-		onnodeclick={({ node }) => onNodeSelect(node.id)}
-		onconnect={(params) => onConnect(params)}
-		onnodedragstop={onDragStop}
-	>
-		<Controls />
-		<Background variant={BackgroundVariant.Dots} />
-		<MiniMap />
-	</SvelteFlow>
+<div class="editor-canvas-wrap">
+	{#if loadError}
+		<p class="canvas-error">{loadError}</p>
+	{:else if Inner}
+		<Inner
+			{nodes}
+			{edges}
+			{syncKey}
+			{setNodes}
+			{setEdges}
+			{onNodeSelect}
+			{onConnect}
+			{onDragStop}
+		/>
+	{:else}
+		<p class="canvas-loading">Loading graph…</p>
+	{/if}
 </div>
 
 <style>
-	.editor-canvas {
+	.editor-canvas-wrap {
 		height: 100%;
 		min-height: 500px;
 	}
 
-	:global(.svelte-flow) {
-		background: var(--bg);
+	.canvas-loading,
+	.canvas-error {
+		padding: 2rem;
+		color: var(--text-muted);
+	}
+
+	.canvas-error {
+		color: var(--error);
 	}
 </style>

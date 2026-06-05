@@ -57,6 +57,10 @@
 		} as GraphNode;
 	});
 
+	const flowSyncKey = $derived(
+		`${nodes.length}:${nodes.map((n) => n.id).join(',')}|${edges.length}:${edges.map((e) => e.id).join(',')}`,
+	);
+
 	const flowEdges = $derived(
 		edges.map((edge) => ({
 			id: edge.id,
@@ -280,6 +284,7 @@
 			<FlowCanvas
 				{nodes}
 				{edges}
+				syncKey={flowSyncKey}
 				setNodes={(n) => {
 					nodes = n;
 				}}
