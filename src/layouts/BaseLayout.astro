@@ -15,11 +15,6 @@ const { title = 'Dialogsys' } = Astro.props;
 		<title>{title}</title>
 	</head>
 	<body>
-		<header class="site-header">
-			<div class="container header-inner">
-				<a href="/" class="logo" title="All projects">Dialogsys</a>
-			</div>
-		</header>
 		<main>
 			<slot />
 		</main>
@@ -28,28 +23,4 @@ const { title = 'Dialogsys' } = Astro.props;
 
 <style is:global>
 	@import '../styles/global.css';
-
-	.site-header {
-		border-bottom: 1px solid var(--border);
-		background: var(--bg-elevated);
-	}
-
-	.header-inner {
-		display: flex;
-		align-items: center;
-		padding-top: 0.75rem;
-		padding-bottom: 0.75rem;
-	}
-
-	.logo {
-		font-weight: 700;
-		font-size: 1.1rem;
-		color: var(--text);
-		text-decoration: none;
-	}
-
-	.logo:hover {
-		color: var(--accent);
-		text-decoration: none;
-	}
 </style>

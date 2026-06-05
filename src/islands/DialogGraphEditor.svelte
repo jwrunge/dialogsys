@@ -7,11 +7,13 @@
 		insertNodeAfter,
 		insertNodeBefore,
 		moveNodeBefore,
+		removeChoiceOption,
 		setBranchTarget,
 		unlinkNode,
 	} from '../lib/graph/graphEdit';
 	import { createBlankNode } from '../lib/graph/nodeFactory';
 	import { findEntryNode, singleNextTarget } from '../lib/graph/graphUtils';
+	import { getBlockMemberIds, getSiblingIds } from '../lib/graph/pathTree';
 	import DialogTreeView from './DialogTreeView.svelte';
 	import NodeInspector from './NodeInspector.svelte';
 
@@ -153,6 +155,25 @@
 		scheduleSave();
 	}
 
+	function handleRemoveChoiceOption(optionId: string) {
+		if (!selectedNode || selectedNode.type !== 'choice') return;
+		const nodeId = selectedNode.id;
+		const result = removeChoiceOption(nodes, edges, nodeId, optionId);
+		if (!result) return;
+		nodes = result.nodes;
+		edges = result.edges;
+		if (activeBranches[nodeId] === optionId) {
+			const nextId = result.nodes.find((n) => n.id === nodeId)?.data.options?.[0]?.id;
+			if (nextId) {
+				activeBranches = { ...activeBranches, [nodeId]: nextId };
+			} else {
+				const { [nodeId]: _, ...rest } = activeBranches;
+				activeBranches = rest;
+			}
+		}
+		scheduleSave();
+	}
+
 	function handleBranchChange(nodeId: string, branchId: string) {
 		activeBranches = { ...activeBranches, [nodeId]: branchId };
 		expandedIds = new Set([...expandedIds, nodeId]);
@@ -183,7 +204,13 @@
 	}
 
 	function handleDropBefore(dragId: string, beforeId: string) {
-		const result = moveNodeBefore(nodes, edges, dragId, beforeId);
+		if (dragId === beforeId) return;
+		const siblings = getSiblingIds(nodes, edges, activeBranches, dragId);
+		if (!siblings.includes(beforeId)) return;
+		const block = getBlockMemberIds(nodes, edges, activeBranches, dragId);
+		if (block.includes(beforeId)) return;
+
+		const result = moveNodeBefore(nodes, edges, dragId, beforeId, activeBranches);
 		nodes = result.nodes;
 		edges = result.edges;
 		scheduleSave();
@@ -256,6 +283,7 @@
 					onchange={updateNode}
 					onedgechange={updateEdge}
 					onSetBranchTarget={handleSetBranchTarget}
+					onRemoveChoiceOption={handleRemoveChoiceOption}
 				/>
 			</aside>
 		</div>

@@ -14,10 +14,22 @@
 		onchange: (node: GraphNode) => void;
 		onedgechange: (edge: GraphEdge) => void;
 		onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
+		onRemoveChoiceOption: (optionId: string) => void;
 	}
 
-	let { node, edges, nodes, characters, dialogIds, onchange, onedgechange, onSetBranchTarget }: Props =
-		$props();
+	let {
+		node,
+		edges,
+		nodes,
+		characters,
+		dialogIds,
+		onchange,
+		onedgechange,
+		onSetBranchTarget,
+		onRemoveChoiceOption,
+	}: Props = $props();
+
+	const optionCount = $derived(node?.type === 'choice' ? (node.data.options?.length ?? 0) : 0);
 
 	const branchTargets = $derived(
 		nodes.filter((n) => n.id !== node?.id && n.type !== 'entry').map((n) => n.id),
@@ -81,6 +93,11 @@
 			{ id: nanoid(8), text: 'New option', conditions: [] },
 		];
 		updateData({ options });
+	}
+
+	function removeOption(optionId: string) {
+		if (!node || node.type !== 'choice' || optionCount <= 1) return;
+		onRemoveChoiceOption(optionId);
 	}
 
 	function branchLabel(edge: GraphEdge): string {
@@ -192,8 +209,19 @@
 	{:else if node.type === 'choice'}
 		{#each node.data.options ?? [] as opt, i}
 			<div class="option-card">
-				<div class="field">
+				<div class="option-head">
 					<label>Option {i + 1}</label>
+					<button
+						type="button"
+						class="btn btn-danger btn-sm"
+						disabled={optionCount <= 1}
+						title={optionCount <= 1 ? 'A choice needs at least one option' : 'Remove option'}
+						onclick={() => removeOption(opt.id)}
+					>
+						Remove
+					</button>
+				</div>
+				<div class="field">
 					<input
 						value={opt.text}
 						oninput={(e) => {
@@ -428,6 +456,23 @@
 		margin-bottom: 0.75rem;
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--border);
+	}
+
+	.option-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.35rem;
+	}
+
+	.option-head label {
+		margin: 0;
+	}
+
+	.btn-sm {
+		padding: 0.2rem 0.5rem;
+		font-size: 0.75rem;
 	}
 
 	.check {

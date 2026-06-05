@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Character } from '../lib/schema/characters';
 	import type { GraphEdge, GraphNode } from '../lib/schema/graph';
-	import { buildMainPathTree, flattenActivePath } from '../lib/graph/pathTree';
+	import { buildMainPathTree, flattenActivePath, getSiblingIds } from '../lib/graph/pathTree';
 	import DialogTreeItem from './DialogTreeItem.svelte';
 
 	interface Props {
@@ -57,6 +57,9 @@
 	const mainTree = $derived(buildMainPathTree(nodes, edges, activeBranches));
 	const pathOrder = $derived(flattenActivePath(nodes, edges, activeBranches));
 	const canDrag = $derived(pathOrder.length > 1);
+	const dragSiblings = $derived(
+		dragNodeId ? getSiblingIds(nodes, edges, activeBranches, dragNodeId) : [],
+	);
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
@@ -73,6 +76,7 @@
 			{activeBranches}
 			{openMenuId}
 			{dragNodeId}
+			{dragSiblings}
 			{canDrag}
 			{onToggle}
 			{onSelect}

@@ -15,6 +15,7 @@
 		activeBranches: Record<string, string>;
 		openMenuId: string | null;
 		dragNodeId: string | null;
+		dragSiblings: string[];
 		canDrag: boolean;
 		onToggle: (id: string) => void;
 		onSelect: (id: string) => void;
@@ -42,6 +43,7 @@
 		activeBranches,
 		openMenuId,
 		dragNodeId,
+		dragSiblings,
 		canDrag,
 		onToggle,
 		onSelect,
@@ -64,6 +66,26 @@
 	const isEntry = $derived(node.type === 'entry');
 	const menuOpen = $derived(openMenuId === node.id);
 	const isDragging = $derived(dragNodeId === node.id);
+	const isDraggable = $derived(
+		canDrag &&
+			!isEntry &&
+			!item.isMerge &&
+			!['choice', 'condition', 'end', 'jump', 'blank'].includes(node.type),
+	);
+	const isDropTarget = $derived(
+		dragNodeId != null &&
+			dragNodeId !== node.id &&
+			dragSiblings.includes(node.id) &&
+			!item.isMerge &&
+			!isEntry,
+	);
+	const isInDragBlock = $derived(
+		dragNodeId != null &&
+			item.depth > 0 &&
+			dragSiblings.length > 0 &&
+			!dragSiblings.includes(node.id) &&
+			dragNodeId !== node.id,
+	);
 
 	const speakerName = $derived.by(() => {
 		if (node.type !== 'line') return '';
@@ -119,12 +141,16 @@
 	}
 
 	function handleDragOver(e: DragEvent) {
-		if (!dragNodeId || dragNodeId === node.id) return;
+		if (!isDropTarget) return;
 		e.preventDefault();
 	}
 
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
+		if (item.isMerge || isEntry) {
+			onDragEnd();
+			return;
+		}
 		if (dragNodeId && dragNodeId !== node.id) {
 			onDropBefore(dragNodeId, node.id);
 		}
@@ -135,16 +161,18 @@
 <div
 	class="tree-item"
 	class:dragging={isDragging}
-	style:--depth={item.depth}
+	class:in-drag-block={isInDragBlock}
 	ondragover={handleDragOver}
 	ondrop={handleDrop}
 >
 	<div
 		class="tree-row"
 		class:selected
+		class:drop-target={isDropTarget}
 		class:merge={item.isMerge}
 		class:blank={node.type === 'blank'}
 		class:direction={node.type === 'direction'}
+		class:branching={node.type === 'choice' || node.type === 'condition'}
 	>
 		<button
 			type="button"
@@ -161,7 +189,7 @@
 			{/if}
 		</button>
 
-		{#if canDrag && !isEntry}
+		{#if isDraggable}
 			<button
 				type="button"
 				class="drag-handle"
@@ -243,66 +271,103 @@
 
 	{#if expanded || selected}
 		{#if item.divergence}
-			<div class="branch-tabs" style:--depth={item.depth + 1}>
-				{#each item.divergence.branches as branch}
-					<button
-						type="button"
-						class="branch-tab"
-						class:active={item.divergence!.activeBranchId === branch.id}
-						disabled={!branch.targetId}
-						onclick={() => onBranchChange(node.id, branch.id)}
-					>
-						{branch.label}
-					</button>
+			<div class="branch-block">
+				<div class="branch-tabs">
+					{#each item.divergence.branches as branch}
+						<button
+							type="button"
+							class="branch-tab"
+							class:active={item.divergence!.activeBranchId === branch.id}
+							disabled={!branch.targetId}
+							onclick={() => onBranchChange(node.id, branch.id)}
+						>
+							{branch.label}
+						</button>
+					{/each}
+				</div>
+
+				{#each item.children as child}
+					<Self
+						item={child}
+						{nodes}
+						{edges}
+						{characters}
+						{dialogIds}
+						{expandedIds}
+						{selectedNodeId}
+						{activeBranches}
+						{openMenuId}
+						{dragNodeId}
+						{dragSiblings}
+						{canDrag}
+						{onToggle}
+						{onSelect}
+						{onBranchChange}
+						{onInsertBefore}
+						{onInsertAfter}
+						{onDelete}
+						{onMenuToggle}
+						{onDragStart}
+						{onDragEnd}
+						{onDropBefore}
+						{onNodeChange}
+						{onEdgeChange}
+						{onSetBranchTarget}
+					/>
 				{/each}
 			</div>
+		{:else}
+			{#each item.children as child}
+				<Self
+					item={child}
+					{nodes}
+					{edges}
+					{characters}
+					{dialogIds}
+					{expandedIds}
+					{selectedNodeId}
+					{activeBranches}
+					{openMenuId}
+					{dragNodeId}
+					{dragSiblings}
+					{canDrag}
+					{onToggle}
+					{onSelect}
+					{onBranchChange}
+					{onInsertBefore}
+					{onInsertAfter}
+					{onDelete}
+					{onMenuToggle}
+					{onDragStart}
+					{onDragEnd}
+					{onDropBefore}
+					{onNodeChange}
+					{onEdgeChange}
+					{onSetBranchTarget}
+				/>
+			{/each}
 		{/if}
-
-		{#each item.children as child}
-			<Self
-				item={child}
-				{nodes}
-				{edges}
-				{characters}
-				{dialogIds}
-				{expandedIds}
-				{selectedNodeId}
-				{activeBranches}
-				{openMenuId}
-				{dragNodeId}
-				{canDrag}
-				{onToggle}
-				{onSelect}
-				{onBranchChange}
-				{onInsertBefore}
-				{onInsertAfter}
-				{onDelete}
-				{onMenuToggle}
-				{onDragStart}
-				{onDragEnd}
-				{onDropBefore}
-				{onNodeChange}
-				{onEdgeChange}
-				{onSetBranchTarget}
-			/>
-		{/each}
 	{/if}
 </div>
 
 <style>
-	.tree-item {
-		--indent: calc(var(--depth, 0) * 1.25rem);
-	}
-
 	.tree-item.dragging .tree-row {
 		opacity: 0.45;
+	}
+
+	.tree-item.in-drag-block .tree-row {
+		opacity: 0.65;
 	}
 
 	.tree-row {
 		display: flex;
 		align-items: stretch;
 		gap: 0.2rem;
-		margin-left: var(--indent);
+	}
+
+	.tree-row.drop-target .row-body {
+		border-color: var(--accent);
+		box-shadow: 0 0 0 1px var(--accent-dim);
 	}
 
 	.tree-row.selected .row-body {
@@ -469,12 +534,17 @@
 		font-style: italic;
 	}
 
+	.branch-block {
+		margin: 0.35rem 0 0.5rem 1.25rem;
+		padding-left: 1rem;
+		border-left: 2px solid var(--border);
+	}
+
 	.branch-tabs {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.35rem;
-		margin: 0.35rem 0 0.5rem;
-		margin-left: calc(var(--indent) + 1.5rem);
+		margin-bottom: 0.5rem;
 	}
 
 	.branch-tab {

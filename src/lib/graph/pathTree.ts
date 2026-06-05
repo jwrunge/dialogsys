@@ -16,6 +16,7 @@ export type TreeBranch = {
 
 export type PathTreeItem = {
 	node: GraphNode;
+	/** 0 = main spine; increases when entering a choice/condition branch. */
 	depth: number;
 	children: PathTreeItem[];
 	divergence?: {
@@ -24,6 +25,10 @@ export type PathTreeItem = {
 	};
 	isMerge?: boolean;
 };
+
+export type PathStep = { id: string; depth: number };
+
+const BRANCHING_TYPES = new Set(['choice', 'condition']);
 
 export function getChoiceBranches(node: GraphNode, edges: GraphEdge[]): TreeBranch[] {
 	return (node.data.options ?? []).map((opt) => ({
@@ -80,9 +85,7 @@ export function buildPathTree(
 	if (node.type === 'blank') {
 		const nextId = singleNextTarget(edges, nodeId);
 		const children = nextId
-			? [buildPathTree(nodes, edges, activeBranches, nextId, nextVisited, depth + 1)].filter(
-					Boolean,
-				)
+			? [buildPathTree(nodes, edges, activeBranches, nextId, nextVisited, depth)].filter(Boolean)
 			: [];
 		return {
 			node,
@@ -129,7 +132,7 @@ export function buildPathTree(
 
 	const nextId = singleNextTarget(edges, nodeId);
 	const children = nextId
-		? [buildPathTree(nodes, edges, activeBranches, nextId, nextVisited, depth + 1)].filter(Boolean)
+		? [buildPathTree(nodes, edges, activeBranches, nextId, nextVisited, depth)].filter(Boolean)
 		: [];
 	return {
 		node,
@@ -170,42 +173,101 @@ export function getUnreachableNodes(nodes: GraphNode[], edges: GraphEdge[]): Gra
 	return nodes.filter((n) => !reachable.has(n.id) && n.type !== 'entry');
 }
 
-export function flattenActivePath(
+export function flattenActivePathWithDepth(
 	nodes: GraphNode[],
 	edges: GraphEdge[],
 	activeBranches: Record<string, string>,
-): string[] {
-	const result: string[] = [];
+): PathStep[] {
+	const result: PathStep[] = [];
 
-	function walk(nodeId: string, visited: Set<string>) {
+	function walk(nodeId: string, depth: number, visited: Set<string>) {
 		const node = nodeById(nodes, nodeId);
 		if (!node || visited.has(nodeId)) return;
 		visited.add(nodeId);
-		result.push(nodeId);
+		result.push({ id: nodeId, depth });
 
 		if (node.type === 'end' || node.type === 'jump') return;
 
 		if (node.type === 'choice') {
 			const bid = activeBranches[node.id] ?? node.data.options?.[0]?.id ?? '';
 			const target = bid ? getEdgeForHandle(edges, node.id, bid)?.target : null;
-			if (target) walk(target, visited);
+			if (target) walk(target, depth + 1, visited);
 			return;
 		}
 
 		if (node.type === 'condition') {
 			const bid = node.data.forceBranch ?? activeBranches[node.id] ?? 'true';
 			const target = getEdgeForHandle(edges, node.id, bid)?.target;
-			if (target) walk(target, visited);
+			if (target) walk(target, depth + 1, visited);
 			return;
 		}
 
 		const nextId = singleNextTarget(edges, nodeId);
-		if (nextId) walk(nextId, visited);
+		if (nextId) walk(nextId, depth, visited);
 	}
 
 	const startId = getStartNodeId(nodes, edges);
-	if (startId) walk(startId, new Set());
+	if (startId) walk(startId, 0, new Set());
 	return result;
+}
+
+export function flattenActivePath(
+	nodes: GraphNode[],
+	edges: GraphEdge[],
+	activeBranches: Record<string, string>,
+): string[] {
+	return flattenActivePathWithDepth(nodes, edges, activeBranches).map((s) => s.id);
+}
+
+/** Consecutive steps at the same depth — valid reorder peers. */
+export function getSiblingIds(
+	nodes: GraphNode[],
+	edges: GraphEdge[],
+	activeBranches: Record<string, string>,
+	nodeId: string,
+): string[] {
+	const path = flattenActivePathWithDepth(nodes, edges, activeBranches);
+	const idx = path.findIndex((s) => s.id === nodeId);
+	if (idx < 0) return [];
+
+	const depth = path[idx].depth;
+	const siblings: string[] = [];
+	for (let i = idx; i >= 0; i--) {
+		if (path[i].depth !== depth) break;
+		siblings.unshift(path[i].id);
+	}
+	for (let i = idx + 1; i < path.length; i++) {
+		if (path[i].depth !== depth) break;
+		siblings.push(path[i].id);
+	}
+	return siblings;
+}
+
+/** Nodes that move together: branching node + nested branch path; linear node moves alone. */
+export function getBlockMemberIds(
+	nodes: GraphNode[],
+	edges: GraphEdge[],
+	activeBranches: Record<string, string>,
+	nodeId: string,
+): string[] {
+	const node = nodeById(nodes, nodeId);
+	if (!isBranchingNode(node)) return [nodeId];
+
+	const path = flattenActivePathWithDepth(nodes, edges, activeBranches);
+	const headIdx = path.findIndex((s) => s.id === nodeId);
+	if (headIdx < 0) return [nodeId];
+
+	const headDepth = path[headIdx].depth;
+	const members: string[] = [];
+	for (let i = headIdx; i < path.length; i++) {
+		if (i > headIdx && path[i].depth < headDepth) break;
+		members.push(path[i].id);
+	}
+	return members;
+}
+
+export function isBranchingNode(node: GraphNode | undefined): boolean {
+	return node != null && BRANCHING_TYPES.has(node.type);
 }
 
 export function getPathTailNodeId(

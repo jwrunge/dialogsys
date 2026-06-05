@@ -88,6 +88,12 @@
 </div>
 
 <style>
+	.toolbar {
+		background: transparent;
+		border-bottom: none;
+		padding: 0 0 1rem;
+	}
+
 	.issues {
 		list-style: none;
 		padding: 0;

@@ -1,6 +1,20 @@
 import { nanoid } from 'nanoid';
 import type { GraphEdge, GraphNode } from '../schema/graph';
-import { getEdgeForHandle, getOutgoing } from './graphUtils';
+import { findEntryNode, getEdgeForHandle, getOutgoing, nodeById } from './graphUtils';
+import {
+	flattenActivePathWithDepth,
+	getBlockMemberIds,
+	type PathStep,
+} from './pathTree';
+
+const NON_DRAGGABLE_TYPES = new Set([
+	'entry',
+	'end',
+	'choice',
+	'condition',
+	'jump',
+	'blank',
+]);
 
 export function setBranchTarget(
 	edges: GraphEdge[],
@@ -104,58 +118,132 @@ export function insertNodeBefore(
 	return { nodes: [...nodes, newNode], edges: nextEdges };
 }
 
-/** Move `moveId` to sit immediately before `beforeId` in the edge chain. */
+function cloneEdge(edge: GraphEdge, source: string, target: string): GraphEdge {
+	return {
+		...edge,
+		id: `e-${source}-${target}-${nanoid(4)}`,
+		source,
+		target,
+	};
+}
+
+function stepIndex(path: PathStep[], nodeId: string): number {
+	return path.findIndex((s) => s.id === nodeId);
+}
+
+function sameDepthPred(path: PathStep[], idx: number, entryId: string | null): string | null {
+	const depth = path[idx].depth;
+	for (let i = idx - 1; i >= 0; i--) {
+		if (path[i].depth === depth) return path[i].id;
+		if (path[i].depth < depth) return path[i].id;
+	}
+	return entryId;
+}
+
+function sameDepthSucc(path: PathStep[], idx: number): string | null {
+	const depth = path[idx].depth;
+	for (let i = idx + 1; i < path.length; i++) {
+		if (path[i].depth === depth) return path[i].id;
+		if (path[i].depth < depth) return null;
+	}
+	return null;
+}
+
+function linkEdge(
+	edges: GraphEdge[],
+	sourceId: string,
+	targetId: string,
+): GraphEdge | undefined {
+	return edges.find((e) => e.source === sourceId && e.target === targetId);
+}
+
+/** Move `moveId` before `beforeId` among same-depth peers on the active path. */
 export function moveNodeBefore(
 	nodes: GraphNode[],
 	edges: GraphEdge[],
 	moveId: string,
 	beforeId: string,
+	activeBranches: Record<string, string>,
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
 	if (moveId === beforeId) return { nodes, edges };
 
-	const incomingToMove = edges.filter((e) => e.target === moveId);
-	const outgoingFromMove = edges.filter((e) => e.source === moveId);
-	const incomingToBefore = edges.filter((e) => e.target === beforeId);
+	const path = flattenActivePathWithDepth(nodes, edges, activeBranches);
+	const fromIdx = stepIndex(path, moveId);
+	const toIdx = stepIndex(path, beforeId);
+	if (fromIdx < 0 || toIdx < 0) return { nodes, edges };
+	if (path[fromIdx].depth !== path[toIdx].depth) return { nodes, edges };
 
-	const defaultOut =
-		outgoingFromMove.find((e) => !e.sourceHandle) ?? outgoingFromMove[0];
-	const succId = defaultOut?.target;
+	const moveNode = nodeById(nodes, moveId);
+	if (!moveNode || NON_DRAGGABLE_TYPES.has(moveNode.type)) return { nodes, edges };
 
-	let nextEdges = edges.filter((e) => e.source !== moveId && e.target !== moveId);
+	const blockMembers = getBlockMemberIds(nodes, edges, activeBranches, moveId);
+	if (blockMembers.includes(beforeId) && beforeId !== moveId) return { nodes, edges };
 
-	for (const inc of incomingToMove) {
-		if (succId) {
-			nextEdges.push({
-				...inc,
-				id: `e-${inc.source}-${succId}-${nanoid(4)}`,
-				target: succId,
-			});
-		}
+	const entry = findEntryNode(nodes);
+	const predId = sameDepthPred(path, fromIdx, entry?.id ?? null);
+	const succId = sameDepthSucc(path, fromIdx);
+	const predBeforeId = sameDepthPred(path, toIdx, entry?.id ?? null);
+
+	if (!predId || !predBeforeId) return { nodes, edges };
+
+	const predMoveEdge = linkEdge(edges, predId, moveId);
+	const moveSuccEdge = succId ? linkEdge(edges, moveId, succId) : undefined;
+	const predBeforeEdge = linkEdge(edges, predBeforeId, beforeId);
+
+	if (!predMoveEdge || !predBeforeEdge) return { nodes, edges };
+	if (succId && !moveSuccEdge) return { nodes, edges };
+
+	const removeIds = new Set(
+		[predMoveEdge.id, predBeforeEdge.id, moveSuccEdge?.id].filter(Boolean) as string[],
+	);
+	let nextEdges = edges.filter((e) => !removeIds.has(e.id));
+
+	if (succId) {
+		nextEdges.push(cloneEdge(predMoveEdge, predId, succId));
 	}
 
-	for (const inc of incomingToBefore) {
-		nextEdges.push({
-			...inc,
-			id: `e-${inc.source}-${moveId}-${nanoid(4)}`,
-			target: moveId,
-		});
-	}
-
+	nextEdges.push(cloneEdge(predBeforeEdge, predBeforeId, moveId));
 	nextEdges.push({
 		id: `e-${moveId}-${beforeId}-${nanoid(4)}`,
 		source: moveId,
 		target: beforeId,
-		sourceHandle: defaultOut?.sourceHandle ?? undefined,
-		data: defaultOut?.data,
+		data: moveSuccEdge?.data,
 	});
 
-	for (const out of outgoingFromMove) {
-		if (out.id !== defaultOut?.id) {
-			nextEdges.push(out);
-		}
-	}
-
 	return { nodes, edges: nextEdges };
+}
+
+export function removeChoiceOption(
+	nodes: GraphNode[],
+	edges: GraphEdge[],
+	nodeId: string,
+	optionId: string,
+): { nodes: GraphNode[]; edges: GraphEdge[] } | null {
+	const node = nodes.find((n) => n.id === nodeId);
+	if (!node || node.type !== 'choice') return null;
+	const options = node.data.options ?? [];
+	if (options.length <= 1) return null;
+
+	return {
+		nodes: nodes.map((n) =>
+			n.id === nodeId
+				? {
+						...n,
+						data: {
+							...n.data,
+							options: options.filter((o) => o.id !== optionId),
+						},
+					}
+				: n,
+		),
+		edges: edges.filter(
+			(e) =>
+				!(
+					e.source === nodeId &&
+					(e.sourceHandle === optionId || e.data?.branch === optionId)
+				),
+		),
+	};
 }
 
 export function unlinkNode(

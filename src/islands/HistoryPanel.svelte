@@ -165,6 +165,12 @@
 {/if}
 
 <style>
+	.toolbar {
+		background: transparent;
+		border-bottom: none;
+		padding: 0 0 1rem;
+	}
+
 	.alert {
 		padding: 1rem 1.25rem;
 		margin-bottom: 1.5rem;
