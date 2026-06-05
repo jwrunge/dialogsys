@@ -16,10 +16,10 @@
 	const CODE_LABELS: Record<string, string> = {
 		undefined_character_state: 'Undefined character state',
 		unused_character_state: 'Unused character state',
-		unused_branch: 'Unused dialog branch',
+		unused_branch: 'Unused scene branch',
 		unused_choice_branch: 'Unused choice branch',
-		unreachable_dialog: 'Unreachable dialog node',
-		unused_dialog: 'Unused dialog',
+		unreachable_dialog: 'Unreachable scene node',
+		unused_dialog: 'Unused scene',
 		unknown_speaker: 'Unknown speaker',
 		empty_line: 'Empty line',
 		empty_choice: 'Empty choice',
@@ -65,7 +65,7 @@
 			return `/projects/${slug}/flow#${issue.flowNodeId}`;
 		}
 		if (issue.dialogId && issue.nodeId) {
-			return `/projects/${slug}/dialogs/${issue.dialogId}#${issue.nodeId}`;
+			return `/projects/${slug}/scenes/${issue.dialogId}#${issue.nodeId}`;
 		}
 		return null;
 	}

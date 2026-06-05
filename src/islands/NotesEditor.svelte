@@ -16,7 +16,7 @@ Brief description of the setting and story.
 
 ## Tone
 
-How should dialog feel? (e.g. cozy, tense, comic)
+How should scenes feel? (e.g. cozy, tense, comic)
 
 ## Pillars
 

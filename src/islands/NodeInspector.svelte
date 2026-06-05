@@ -351,7 +351,7 @@
 		</div>
 	{:else if node.type === 'jump'}
 		<div class="field">
-			<label>Target dialog</label>
+			<label>Target scene</label>
 			<select
 				value={node.data.targetDialogId ?? ''}
 				onchange={(e) =>
@@ -376,7 +376,7 @@
 			></textarea>
 		</div>
 	{:else if node.type === 'entry'}
-		<p class="muted">Dialog starts here. The first connected step follows Start in the tree.</p>
+		<p class="muted">Scene starts here. The first connected step follows Start in the tree.</p>
 	{:else if node.type === 'end'}
 		<p class="muted">End of this branch.</p>
 	{/if}

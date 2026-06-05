@@ -57,7 +57,7 @@
 
 {#if result}
 	<p class="success">
-		Exported {result.dialogCount} dialog(s) at {new Date(result.exportedAt).toLocaleString()}
+		Exported {result.dialogCount} scene(s) at {new Date(result.exportedAt).toLocaleString()}
 	</p>
 {/if}
 
@@ -82,7 +82,7 @@
 		<li>Export writes to <code>projects/&lt;slug&gt;/export/godot/</code></li>
 		<li>Copy or symlink that folder into your game as <code>res://dialogue/</code></li>
 		<li>Autoload <code>DialogueRunner.gd</code> from the export</li>
-		<li>Call <code>start("dialog_id")</code> and connect <code>line_shown</code>, <code>choices_shown</code>, <code>dialogue_ended</code></li>
+		<li>Call <code>start("scene_id")</code> and connect <code>line_shown</code>, <code>choices_shown</code>, <code>dialogue_ended</code></li>
 		<li>Handle <code>run_command</code> for <code>set_var</code> and gameplay hooks</li>
 	</ol>
 </div>

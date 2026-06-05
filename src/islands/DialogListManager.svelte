@@ -94,7 +94,7 @@
 				body: JSON.stringify({ id, displayName }),
 			});
 			createDialogEl?.close();
-			window.location.assign(`/projects/${slug}/dialogs/${id}`);
+			window.location.assign(`/projects/${slug}/scenes/${id}`);
 		} catch (err) {
 			modalError = (err as Error).message;
 		} finally {
@@ -111,27 +111,27 @@
 		type="search"
 		bind:value={searchQuery}
 		placeholder="Search by name or description…"
-		aria-label="Search dialogs"
+		aria-label="Search scenes"
 		disabled={!ready}
 	/>
 	<button type="button" class="btn btn-primary toolbar-add" onclick={openCreateModal} disabled={!ready}>
-		Add dialog
+		Add scene
 	</button>
 </div>
 
 {#if loadError}
 	<p class="error-banner">{loadError}</p>
 {:else if !ready}
-	<p class="muted">Loading dialogs…</p>
+	<p class="muted">Loading scenes…</p>
 {:else if dialogs.length === 0}
-	<p class="muted">No dialogs yet. Click <strong>Add dialog</strong> to create one.</p>
+	<p class="muted">No scenes yet. Click <strong>Add scene</strong> to create one.</p>
 {:else if listedDialogs.length === 0}
-	<p class="muted">No dialogs match “{searchQuery.trim()}”.</p>
+	<p class="muted">No scenes match “{searchQuery.trim()}”.</p>
 {:else}
 	<div class="summary-list">
 		{#each listedDialogs as { dialog } (dialog.id)}
 			<article class="summary-card">
-				<div class="scene-icon" title="Dialog scene">
+				<div class="scene-icon" title="Scene">
 					<span class="scene-icon-fallback">{dialog.displayName.charAt(0).toUpperCase()}</span>
 				</div>
 				<div class="summary-body">
@@ -140,7 +140,7 @@
 							<h3>{dialog.displayName}</h3>
 							<p class="id">{dialog.id}</p>
 						</div>
-						<a class="btn" href={`/projects/${slug}/dialogs/${dialog.id}`}>Edit</a>
+						<a class="btn" href={`/projects/${slug}/scenes/${dialog.id}`}>Edit</a>
 					</div>
 					<p class="summary-desc">{descriptionPreview(dialog.description)}</p>
 					<p class="summary-meta">{stepLabel(dialog.stepCount)}</p>
@@ -153,7 +153,7 @@
 <dialog bind:this={createDialogEl} class="modal" onclose={closeCreateModal}>
 	<form class="modal-panel" onsubmit={submitCreate}>
 		<header class="modal-header">
-			<h2>Add dialog</h2>
+			<h2>Add scene</h2>
 		</header>
 
 		<div class="modal-body">

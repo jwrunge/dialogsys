@@ -31,7 +31,7 @@
 	const subtitle = $derived.by(() => {
 		if (nodeType === 'scene') {
 			const id = data?.dialogId as string | undefined;
-			return id ? `Dialog: ${id}` : 'No dialog assigned';
+			return id ? `Scene: ${id}` : 'No scene assigned';
 		}
 		if (nodeType === 'branch') {
 			const stateId = data?.branchStateId as string | undefined;

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import Fuse from 'fuse.js';
 	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
 	import { defaultValidValues } from '../lib/flow/branchState';
@@ -28,6 +29,29 @@
 	let addingValue = $state(false);
 	let addValueDraft = $state('');
 	let addValueInput = $state<HTMLInputElement | null>(null);
+	let searchQuery = $state('');
+
+	type ListedProperty = { prop: GameStateProperty; index: number };
+
+	const listedProperties = $derived.by((): ListedProperty[] => {
+		const q = searchQuery.trim();
+		if (!q) {
+			return properties.map((prop, index) => ({ prop, index }));
+		}
+		const fuse = new Fuse(properties, {
+			keys: [
+				{ name: 'label', weight: 0.5 },
+				{ name: 'id', weight: 0.35 },
+				{ name: 'description', weight: 0.15 },
+			],
+			threshold: 0.4,
+			ignoreLocation: true,
+		});
+		return fuse.search(q).map((result) => ({
+			prop: result.item,
+			index: properties.findIndex((p) => p.id === result.item.id),
+		}));
+	});
 
 	function cloneProperty(prop: GameStateProperty): GameStateProperty {
 		return JSON.parse(JSON.stringify(prop)) as GameStateProperty;
@@ -44,7 +68,7 @@
 		const type: GameStatePropertyType = 'boolean';
 		return {
 			id,
-			label: 'New property',
+			label: 'New state',
 			type,
 			defaultValue: false,
 			useValidValues: true,
@@ -124,13 +148,19 @@
 		addValueDraft = '';
 	}
 
-	async function startAddValue() {
-		if (!draft || draft.useValidValues !== true) return;
+	function startAddValue(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (!draft) return;
 		addingValue = true;
 		addValueDraft = '';
-		await tick();
-		addValueInput?.focus();
 	}
+
+	$effect(() => {
+		if (addingValue && addValueInput) {
+			addValueInput.focus();
+		}
+	});
 
 	function commitAddValue() {
 		if (!draft || !addingValue) return;
@@ -216,57 +246,73 @@
 		return typeof value === 'string' ? value : String(value);
 	}
 
+	function descriptionPreview(description?: string): string {
+		const t = description?.trim() ?? '';
+		if (!t) return 'No description';
+		return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+	}
+
+	function metaLabel(prop: GameStateProperty): string {
+		const typeLabel = prop.type.charAt(0).toUpperCase() + prop.type.slice(1);
+		const defaultVal = `default: ${formatValidValue(prop.defaultValue)}`;
+		if (prop.type === 'boolean') return `${typeLabel} · ${defaultVal}`;
+		if (prop.useValidValues === true && prop.validValues?.length) {
+			const count = prop.validValues.length;
+			return `${typeLabel} · ${defaultVal} · ${count} value${count === 1 ? '' : 's'}`;
+		}
+		return `${typeLabel} · ${defaultVal} · comparisons`;
+	}
+
 	onMount(load);
 </script>
 
-<div class="state-editor">
-	<div class="toolbar">
-		<button type="button" class="btn btn-primary" onclick={openAdd} disabled={!ready}>
-			Add property
-		</button>
+<div class="toolbar">
+	<input
+		class="search"
+		type="search"
+		bind:value={searchQuery}
+		placeholder="Search by name or description…"
+		aria-label="Search state"
+		disabled={!ready}
+	/>
+	{#if saveStatus}
 		<span class="status" class:saved={saveStatus === 'Saved'}>{saveStatus}</span>
-	</div>
-
-	{#if loadError}
-		<p class="error">{loadError}</p>
-	{:else if !ready}
-		<p class="muted">Loading…</p>
-	{:else if properties.length === 0}
-		<p class="muted">
-			No global state properties yet. Add booleans, numbers, or strings that drive scene branches in
-			the Flow editor.
-		</p>
-	{:else}
-		<div class="property-list">
-			{#each properties as prop, i (prop.id)}
-				<article class="property-card">
-					<div class="property-head">
-						<strong>{prop.label}</strong>
-						<code>{prop.id}</code>
-					</div>
-					<p class="property-meta">
-						<span class="type">{prop.type}</span>
-						<span>default: {String(prop.defaultValue)}</span>
-						{#if prop.type !== 'boolean' && prop.useValidValues === true && prop.validValues?.length}
-							<span>
-								values: {prop.validValues.map(formatValidValue).join(', ')}
-							</span>
-						{/if}
-					</p>
-					{#if prop.description}
-						<p class="property-desc">{prop.description}</p>
-					{/if}
-					<div class="property-actions">
-						<button type="button" class="btn" onclick={() => openEdit(i)}>Edit</button>
-						<button type="button" class="btn btn-danger" onclick={() => removeProperty(i)}>
-							Remove
-						</button>
-					</div>
-				</article>
-			{/each}
-		</div>
 	{/if}
+	<button type="button" class="btn btn-primary toolbar-add" onclick={openAdd} disabled={!ready}>
+		Add State
+	</button>
 </div>
+
+{#if loadError}
+	<p class="error-banner">{loadError}</p>
+{:else if !ready}
+	<p class="muted">Loading state…</p>
+{:else if properties.length === 0}
+	<p class="muted">No state yet. Click <strong>Add State</strong> to create one.</p>
+{:else if listedProperties.length === 0}
+	<p class="muted">No state matches “{searchQuery.trim()}”.</p>
+{:else}
+	<div class="summary-list">
+		{#each listedProperties as { prop, index } (prop.id)}
+			<article class="summary-card">
+				<div class="state-icon" title={prop.type}>
+					<span class="state-icon-fallback">{prop.label.charAt(0).toUpperCase()}</span>
+				</div>
+				<div class="summary-body">
+					<div class="summary-head">
+						<div>
+							<h3>{prop.label}</h3>
+							<p class="id">{prop.id}</p>
+						</div>
+						<button type="button" class="btn" onclick={() => openEdit(index)}>Edit</button>
+					</div>
+					<p class="summary-desc">{descriptionPreview(prop.description)}</p>
+					<p class="summary-meta">{metaLabel(prop)}</p>
+				</div>
+			</article>
+		{/each}
+	</div>
+{/if}
 
 <dialog bind:this={dialogEl} class="modal" onclose={closeModal}>
 	{#if draft}
@@ -278,7 +324,7 @@
 			}}
 		>
 			<header class="modal-header">
-				<h2>{editIndex === null ? 'Add property' : 'Edit property'}</h2>
+				<h2>{editIndex === null ? 'Add state' : 'Edit state'}</h2>
 			</header>
 			<div class="modal-body">
 				<div class="field">
@@ -419,16 +465,31 @@
 												onkeydown={onAddValueKeydown}
 											/>
 										{/if}
+										<button
+											type="button"
+											class="remove-btn"
+											aria-label="Cancel"
+											onclick={resetAddValue}
+										>
+											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+												<path
+													d="M6 6l12 12M18 6L6 18"
+													stroke="currentColor"
+													stroke-width="2"
+													stroke-linecap="round"
+												/>
+											</svg>
+										</button>
 									</div>
+								{:else}
+									<button
+										type="button"
+										class="value-row add-value-btn"
+										onclick={startAddValue}
+									>
+										Add value
+									</button>
 								{/if}
-								<button
-									type="button"
-									class="value-row add-value-btn"
-									disabled={addingValue}
-									onclick={startAddValue}
-								>
-									Add value
-								</button>
 							</div>
 						</div>
 					{/if}
@@ -439,6 +500,18 @@
 				</div>
 			</div>
 			<footer class="modal-footer">
+				{#if editIndex !== null}
+					<button
+						type="button"
+						class="btn btn-danger"
+						onclick={() => {
+							removeProperty(editIndex!);
+							closeModal();
+						}}
+					>
+						Remove
+					</button>
+				{/if}
 				<div class="modal-footer-right">
 					<button type="button" class="btn" onclick={closeModal}>Cancel</button>
 					<button type="submit" class="btn btn-primary">Done</button>
@@ -450,91 +523,113 @@
 
 <style>
 	.toolbar {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
+		background: transparent;
+		border-bottom: none;
+		padding: 0 0 1rem;
 	}
 
-	.status {
+	.toolbar .search {
+		flex: 1;
+		min-width: 180px;
+		max-width: 420px;
+	}
+
+	.toolbar-add {
 		margin-left: auto;
-		font-size: 0.85rem;
-		color: var(--text-muted);
+		flex-shrink: 0;
 	}
 
-	.status.saved {
-		color: var(--success);
-	}
-
-	.property-list {
+	.summary-list {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 	}
 
-	.property-card {
-		padding: 0.85rem 1rem;
+	.summary-card {
+		display: flex;
+		gap: 1rem;
+		align-items: flex-start;
+		padding: 1rem;
+		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
-		background: var(--bg-elevated);
 	}
 
-	.property-head {
+	.summary-body {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.state-icon {
+		flex-shrink: 0;
+		width: 72px;
+		height: 72px;
+		border-radius: 10px;
+		overflow: hidden;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.state-icon-fallback {
+		font-size: 1.4rem;
+		font-weight: 600;
+		color: var(--text-muted);
+	}
+
+	.summary-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 0.75rem;
 		margin-bottom: 0.35rem;
 	}
 
-	code {
+	.summary-head h3 {
+		margin: 0;
+		font-size: 1.05rem;
+	}
+
+	.id {
+		margin: 0.15rem 0 0;
 		font-family: var(--mono);
 		font-size: 0.8rem;
 		color: var(--text-muted);
 	}
 
-	.property-meta {
-		margin: 0;
-		font-size: 0.85rem;
-		color: var(--text-muted);
-		display: flex;
-		gap: 0.75rem;
-	}
-
-	.type {
-		text-transform: uppercase;
-		font-size: 0.7rem;
-		font-weight: 700;
-		letter-spacing: 0.04em;
-		color: var(--accent);
-	}
-
-	.property-desc {
+	.summary-desc,
+	.summary-meta {
 		margin: 0.35rem 0 0;
-		font-size: 0.85rem;
+		font-size: 0.9rem;
 		color: var(--text-muted);
 	}
 
-	.property-actions {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: 0.75rem;
-	}
-
-	.muted,
-	.error {
+	.muted {
 		color: var(--text-muted);
+		font-size: 0.9rem;
 	}
 
-	.error {
+	.error-banner {
+		padding: 1rem;
 		color: var(--error);
+		background: rgba(240, 113, 120, 0.1);
+		border: 1px solid var(--error);
+		border-radius: var(--radius);
+		margin-bottom: 1rem;
 	}
 
 	.modal {
 		border: none;
 		padding: 0;
 		margin: auto;
+		position: fixed;
+		inset: 0;
+		width: min(480px, calc(100vw - 2rem));
+		height: fit-content;
+		max-height: calc(100vh - 2rem);
 		background: transparent;
-		max-width: min(28rem, calc(100vw - 2rem));
 	}
 
 	.modal::backdrop {
@@ -542,9 +637,20 @@
 	}
 
 	.modal-panel {
+		margin: 0;
+		padding: 0;
+		width: 100%;
 		background: var(--bg-elevated);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
+		max-height: calc(100vh - 3rem);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		color: var(--text);
+	}
+
+	.modal-panel label {
 		color: var(--text);
 	}
 
@@ -559,18 +665,27 @@
 	}
 
 	.modal-body {
+		flex: 1;
+		min-height: 0;
 		padding: 1.25rem;
+		overflow-y: auto;
 	}
 
 	.modal-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
 		padding: 1rem 1.25rem;
 		border-top: 1px solid var(--border);
+		flex-shrink: 0;
+		background: var(--bg-elevated);
 	}
 
 	.modal-footer-right {
 		display: flex;
-		justify-content: flex-end;
 		gap: 0.5rem;
+		margin-left: auto;
 	}
 
 	.checkbox-field {
@@ -610,9 +725,10 @@
 	}
 
 	.value-list {
+		display: flex;
+		flex-direction: column;
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
-		overflow: hidden;
 		background: var(--bg);
 	}
 
@@ -627,9 +743,10 @@
 		border: none;
 		border-bottom: 1px solid var(--border);
 		background: transparent;
+		box-sizing: border-box;
 	}
 
-	.value-row:last-child {
+	.value-list > :last-child {
 		border-bottom: none;
 	}
 
@@ -681,20 +798,17 @@
 
 	.add-value-btn {
 		justify-content: flex-start;
-		color: var(--text-muted);
+		color: var(--accent);
 		font: inherit;
 		font-size: 0.9rem;
+		font-weight: 500;
 		cursor: pointer;
 		text-align: left;
+		pointer-events: auto;
 	}
 
-	.add-value-btn:hover:not(:disabled) {
+	.add-value-btn:hover {
 		background: var(--bg-hover);
 		color: var(--text);
-	}
-
-	.add-value-btn:disabled {
-		opacity: 0.55;
-		cursor: default;
 	}
 </style>

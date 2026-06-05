@@ -1,0 +1,10 @@
+---
+import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
+import DialogListManager from '../../../../islands/DialogListManager.svelte';
+
+const { slug } = Astro.params;
+---
+
+<ProjectLayout slug={slug!} current="scenes" title="Scenes">
+	<DialogListManager client:load slug={slug!} />
+</ProjectLayout>

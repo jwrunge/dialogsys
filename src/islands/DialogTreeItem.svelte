@@ -112,7 +112,7 @@
 			case 'direction':
 				return node.data.directionText?.trim() || '(direction)';
 			case 'end':
-				return 'End of dialog';
+				return 'End of scene';
 			case 'entry':
 				return 'Start';
 			default:

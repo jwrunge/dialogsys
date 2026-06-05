@@ -1,6 +1,6 @@
 # Demo Tavern
 
-A small sample project showing branching dialog, character lines, and choices.
+A small sample project showing branching scenes, character lines, and choices.
 
 ## Tone
 

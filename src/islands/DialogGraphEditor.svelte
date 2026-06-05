@@ -57,8 +57,8 @@
 	}
 
 	function loadGraph(graph: DialogGraph) {
-		if (!Array.isArray(graph.nodes)) throw new Error('Dialog has no nodes array');
-		if (!Array.isArray(graph.edges)) throw new Error('Dialog has no edges array');
+		if (!Array.isArray(graph.nodes)) throw new Error('Scene has no nodes array');
+		if (!Array.isArray(graph.edges)) throw new Error('Scene has no edges array');
 		nodes = graph.nodes;
 		edges = graph.edges;
 		expandedIds = new Set(graph.nodes.map((n) => n.id));

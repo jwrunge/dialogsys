@@ -1,6 +1,6 @@
 # Dialogsys
 
-Local-first dialog authoring for Godot games. Edit branching conversations in a visual graph editor, manage characters and game state, add scene direction in dialog graphs, and export JSON plus a reference `DialogueRunner.gd`.
+Local-first scene authoring for Godot games. Edit branching conversations in a visual graph editor, manage characters and game state, add direction in scene graphs, and export JSON plus a reference `DialogueRunner.gd`.
 
 ## Quick start
 
@@ -22,7 +22,7 @@ Each project is a folder:
 - `project.json` — metadata
 - `characters.json` — character definitions
 - `notes/` — markdown project overview
-- `dialogs/*.graph.json` — source graph (editor format); use **Condition** and **Set var** nodes for branching state
+- `dialogs/*.graph.json` — scene source graphs (editor format); use **Condition** and **Set var** nodes for branching state
 - `export/godot/` — generated Godot runtime files
 
 ## Character display states
@@ -33,7 +33,7 @@ Open **Issues** (`/projects/<slug>/issues`) to see warnings such as:
 
 - **Undefined character state** — a line uses `panicked` for Jane but Jane has no `panicked` state defined
 - **Unused character state** — a state is defined but never used (opt out per state on the character)
-- **Unused dialog branch** — condition/choice paths not wired (opt out with “Just use this branch” on an edge)
+- **Unused scene branch** — condition/choice paths not wired (opt out with “Just use this branch” on an edge)
 
 On condition and choice nodes, use **Force branch** or per-edge **Just use this branch** to always follow one path at export and suppress alternate-branch warnings.
 
@@ -41,8 +41,8 @@ On condition and choice nodes, use **Force branch** or per-edge **Just use this 
 
 Each project folder is a **local Git repository** (not pushed to GitHub). Snapshots are created when you:
 
-- Save characters (immediate), create/delete dialogs (immediate)
-- Save dialogs or notes (debounced, default 60s)
+- Save characters (immediate), create/delete scenes (immediate)
+- Save scenes or notes (debounced, default 60s)
 - Use **Save snapshot now** on the History page
 - Keep a project page open (interval autosave, default 5 minutes)
 
@@ -69,5 +69,5 @@ Snapshots are stored as `autosave/*` branches and pruned after **7 days** (confi
 
 - [Astro](https://astro.build) + Node adapter (API + pages)
 - [Svelte](https://svelte.dev) islands (graph editor, forms)
-- [@xyflow/svelte](https://svelteflow.dev) (dialog graph)
+- [@xyflow/svelte](https://svelteflow.dev) (scene graph)
 - [Zod](https://zod.dev) (validation)

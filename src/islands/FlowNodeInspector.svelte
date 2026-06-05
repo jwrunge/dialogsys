@@ -49,6 +49,7 @@
 		{ value: 'lte', label: '≤' },
 	];
 	let selectSceneDialogEl = $state<HTMLDialogElement | null>(null);
+	let selectStateDialogEl = $state<HTMLDialogElement | null>(null);
 	let createDialogEl = $state<HTMLDialogElement | null>(null);
 	let draftId = $state('');
 	let draftName = $state('');
@@ -58,6 +59,12 @@
 	const assignedDialog = $derived(
 		node?.type === 'scene' && node.data.dialogId
 			? dialogs.find((d) => d.id === node.data.dialogId)
+			: null,
+	);
+
+	const assignedState = $derived(
+		node?.type === 'branch' && node.data.branchStateId
+			? gameStateProperties.find((p) => p.id === node.data.branchStateId)
 			: null,
 	);
 
@@ -191,8 +198,24 @@
 		}
 	});
 
-	function selectBranchState(prop: GameStateProperty) {
+	async function openSelectStateModal() {
 		if (!node || node.type !== 'branch') return;
+		stateSearchQuery = '';
+		await tick();
+		selectStateDialogEl?.showModal();
+	}
+
+	function closeSelectStateModal() {
+		selectStateDialogEl?.close();
+	}
+
+	function selectBranchState(prop: GameStateProperty | null) {
+		if (!node || node.type !== 'branch') return;
+		if (!prop) {
+			updateData({ branchStateId: undefined, options: [] });
+			closeSelectStateModal();
+			return;
+		}
 		const options = usesEnumValues(prop) ? syncEnumBranchOptions(prop) : [];
 		onchange({
 			...node,
@@ -203,10 +226,12 @@
 				options,
 			},
 		});
+		closeSelectStateModal();
 	}
 
-	function clearBranchState() {
-		updateData({ branchStateId: undefined, options: [] });
+	function openAddStatePage() {
+		closeSelectStateModal();
+		window.location.assign(`/projects/${slug}/state`);
 	}
 
 	function setPathDefault(optionId: string) {
@@ -300,38 +325,19 @@
 			{/if}
 		</button>
 	{:else if node.type === 'branch'}
-		<div class="field">
-			<label for="flow-state-search">Branch on state</label>
-			<input
-				id="flow-state-search"
-				class="search"
-				type="search"
-				bind:value={stateSearchQuery}
-				placeholder="Search state…"
-			/>
-		</div>
-
-		<div class="dialog-pick-list">
-			<button
-				type="button"
-				class="pick-item"
-				class:selected={!node.data.branchStateId}
-				onclick={clearBranchState}
-			>
-				<span class="pick-name">— None —</span>
-			</button>
-			{#each listedStates as prop (prop.id)}
-				<button
-					type="button"
-					class="pick-item"
-					class:selected={node.data.branchStateId === prop.id}
-					onclick={() => selectBranchState(prop)}
-				>
-					<span class="pick-name">{prop.label}</span>
-					<span class="pick-id">{prop.id}</span>
-				</button>
-			{/each}
-		</div>
+		<button
+			type="button"
+			class="scene-box"
+			class:empty={!assignedState}
+			onclick={openSelectStateModal}
+		>
+			{#if assignedState}
+				<span class="pick-name">{assignedState.label}</span>
+				<span class="pick-id">{assignedState.id}</span>
+			{:else}
+				<span class="select-placeholder">Select State</span>
+			{/if}
+		</button>
 
 		{#if !branchProperty}
 			<p class="hint">
@@ -499,7 +505,7 @@
 						class="btn btn-primary"
 						onclick={() => onEditDialog(node.data.dialogId!, node.data.label)}
 					>
-						Edit dialog
+						Edit scene
 					</button>
 				{/if}
 				<button type="button" class="btn btn-danger" onclick={ondelete}>Delete node</button>
@@ -507,6 +513,45 @@
 		</div>
 	{/if}
 {/if}
+
+<dialog bind:this={selectStateDialogEl} class="modal" onclose={closeSelectStateModal}>
+	<div class="modal-panel">
+		<header class="modal-header">
+			<h2>Select state</h2>
+		</header>
+		<div class="modal-body">
+			<div class="field">
+				<label for="select-state-search">Search</label>
+				<input
+					id="select-state-search"
+					class="search"
+					type="search"
+					bind:value={stateSearchQuery}
+					placeholder="Search state…"
+				/>
+			</div>
+			<div class="dialog-pick-list modal-pick-list">
+				<button type="button" class="pick-item" onclick={() => selectBranchState(null)}>
+					<span class="pick-name">— None —</span>
+				</button>
+				{#each listedStates as prop (prop.id)}
+					<button type="button" class="pick-item" onclick={() => selectBranchState(prop)}>
+						<span class="pick-name">{prop.label}</span>
+						<span class="pick-id">{prop.id}</span>
+					</button>
+				{/each}
+			</div>
+		</div>
+		<footer class="modal-footer">
+			<div class="modal-footer-right">
+				<button type="button" class="btn" onclick={closeSelectStateModal}>Cancel</button>
+				<button type="button" class="btn btn-primary" onclick={openAddStatePage}>
+					Add state…
+				</button>
+			</div>
+		</footer>
+	</div>
+</dialog>
 
 <dialog bind:this={selectSceneDialogEl} class="modal" onclose={closeSelectSceneModal}>
 	<div class="modal-panel">
@@ -567,7 +612,7 @@
 				<label for="new-scene-name">Display name</label>
 				<input id="new-scene-name" bind:value={draftName} required autocomplete="off" />
 			</div>
-			<p class="hint">The new dialog is created and assigned to this flow node automatically.</p>
+			<p class="hint">The new scene is created and assigned to this flow node automatically.</p>
 		</div>
 		<footer class="modal-footer">
 			<div class="modal-footer-right">

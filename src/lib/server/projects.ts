@@ -234,7 +234,7 @@ export async function getDialog(slug: string, id: string): Promise<DialogGraph> 
 	assertSafeRelative(id);
 	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
 	const raw = await readJsonFile(file, null);
-	if (!raw) throw new Error('Dialog not found');
+	if (!raw) throw new Error('Scene not found');
 	return dialogGraphSchema.parse(raw);
 }
 
@@ -258,12 +258,12 @@ export async function createDialog(
 	displayName: string,
 ): Promise<DialogGraph> {
 	assertSafeRelative(id);
-	if (!/^[a-z][a-z0-9_]*$/.test(id)) throw new Error('Invalid dialog id');
+	if (!/^[a-z][a-z0-9_]*$/.test(id)) throw new Error('Invalid scene id');
 
 	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
 	try {
 		await fs.access(file);
-		throw new Error('Dialog already exists');
+		throw new Error('Scene already exists');
 	} catch (e) {
 		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
 	}

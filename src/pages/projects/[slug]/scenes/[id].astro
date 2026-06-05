@@ -1,0 +1,28 @@
+---
+import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
+import DialogGraphEditor from '../../../../islands/DialogGraphEditor.svelte';
+import { getDialog } from '../../../../lib/server/projects';
+
+const { slug, id } = Astro.params;
+
+let sceneTitle = id!;
+try {
+	const graph = await getDialog(slug!, id!);
+	sceneTitle = graph.displayName || id!;
+} catch {
+	/* use id as fallback */
+}
+---
+
+<ProjectLayout slug={slug!} current="scenes" title={sceneTitle}>
+	<h2 class="scene-title">{sceneTitle}</h2>
+	<DialogGraphEditor client:only="svelte" slug={slug!} dialogId={id!} />
+</ProjectLayout>
+
+<style>
+	.scene-title {
+		margin: 0 0 0.75rem;
+		font-size: 1.15rem;
+		font-weight: 600;
+	}
+</style>

@@ -12,14 +12,14 @@ export function validateFlow(graph: FlowGraph, dialogIds: string[]): ValidationI
 				issues.push({
 					level: 'warning',
 					code: 'unassigned_scene',
-					message: `Scene "${node.data.label || node.id}" has no dialog assigned`,
+					message: `Flow node "${node.data.label || node.id}" has no linked scene`,
 					flowNodeId: node.id,
 				});
 			} else if (!dialogIdSet.has(node.data.dialogId)) {
 				issues.push({
 					level: 'error',
 					code: 'missing_scene',
-					message: `Scene "${node.data.label || node.id}" references missing dialog "${node.data.dialogId}"`,
+					message: `Scene "${node.data.label || node.id}" references missing scene "${node.data.dialogId}"`,
 					flowNodeId: node.id,
 				});
 			}

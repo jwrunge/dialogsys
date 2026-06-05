@@ -1,10 +1,4 @@
 ---
-import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
-import DialogListManager from '../../../../islands/DialogListManager.svelte';
-
 const { slug } = Astro.params;
+return Astro.redirect(`/projects/${slug}/scenes`);
 ---
-
-<ProjectLayout slug={slug!} current="dialogs" title="Dialogs">
-	<DialogListManager client:load slug={slug!} />
-</ProjectLayout>

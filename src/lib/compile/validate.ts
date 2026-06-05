@@ -280,7 +280,7 @@ export function validateDialog(
 				issues.push({
 					level: 'error',
 					code: 'invalid_jump',
-					message: `Jump target dialog "${target ?? ''}" not found`,
+					message: `Jump target scene "${target ?? ''}" not found`,
 					dialogId: graph.id,
 					nodeId: node.id,
 				});
@@ -351,7 +351,7 @@ export function validateProject(
 					globalUnused.push({
 						level: 'warning',
 						code: 'unused_character_state',
-						message: `State "${state.label}" (${state.id}) is defined for ${char.displayName} but never used in any dialog`,
+						message: `State "${state.label}" (${state.id}) is defined for ${char.displayName} but never used in any scene`,
 						characterId: char.id,
 						stateId: state.id,
 					});
@@ -374,7 +374,7 @@ export function validateProject(
 				globalUnused.push({
 					level: 'warning',
 					code: 'unused_dialog',
-					message: `Dialog "${graph.displayName}" (${graph.id}) is never referenced by a jump from another dialog`,
+					message: `Scene "${graph.displayName}" (${graph.id}) is never referenced by a jump from another scene`,
 					dialogId: graph.id,
 				});
 			}
