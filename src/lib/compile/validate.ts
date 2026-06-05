@@ -329,11 +329,7 @@ export function validateProject(
 	for (const char of characters.characters) {
 		const used = projectStateUsage.get(char.id) ?? new Set<string>();
 		for (const state of char.states) {
-			if (
-				!used.has(state.id) &&
-				!state.optOutUnusedWarning &&
-				state.id !== char.defaultStateId
-			) {
+			if (!used.has(state.id) && state.id !== char.defaultStateId) {
 				const already = perDialog.some(
 					(i) =>
 						i.code === 'unused_character_state' &&

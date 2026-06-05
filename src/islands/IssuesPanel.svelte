@@ -66,28 +66,13 @@
 
 <div class="toolbar">
 	<button type="button" class="btn btn-primary" onclick={refresh} disabled={loading}>
-		{loading ? 'Checking…' : 'Refresh issues'}
+		{loading ? 'Checking…' : 'Refresh'}
 	</button>
-	<div class="filters">
-		<button
-			type="button"
-			class="btn"
-			class:active={filter === 'all'}
-			onclick={() => (filter = 'all')}>All</button
-		>
-		<button
-			type="button"
-			class="btn"
-			class:active={filter === 'error'}
-			onclick={() => (filter = 'error')}>Errors</button
-		>
-		<button
-			type="button"
-			class="btn"
-			class:active={filter === 'warning'}
-			onclick={() => (filter = 'warning')}>Warnings</button
-		>
-	</div>
+	<select class="filter-select" bind:value={filter} aria-label="Filter issues">
+		<option value="all">All</option>
+		<option value="error">Errors</option>
+		<option value="warning">Warnings</option>
+	</select>
 </div>
 
 {#if loading}
@@ -122,14 +107,16 @@
 {/if}
 
 <style>
-	.filters {
-		display: flex;
-		gap: 0.35rem;
+	.toolbar {
+		background: transparent;
+		border-bottom: none;
+		padding: 0 0 1rem;
 	}
 
-	.filters .btn.active {
-		background: var(--accent-dim);
-		color: #fff;
+	.filter-select {
+		margin-left: auto;
+		width: auto;
+		min-width: 8rem;
 	}
 
 	.summary {

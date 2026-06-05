@@ -10,13 +10,31 @@
 
 	let { slug }: Props = $props();
 
+	const EXAMPLE = `# Project overview
+
+Brief description of the setting and story.
+
+## Tone
+
+How should dialog feel? (e.g. cozy, tense, comic)
+
+## Pillars
+
+- Key theme or constraint
+- Another design goal
+`;
+
 	let overview = $state('');
+	let loadedContent = $state('');
+	let editing = $state(false);
 	let status = $state('');
 	let loadError = $state('');
 
+	let previewSource = $derived(overview.trim() || EXAMPLE);
+
 	let previewHtml = $derived.by(() => {
 		try {
-			return DOMPurify.sanitize(marked.parse(overview || '_No content yet._') as string);
+			return DOMPurify.sanitize(marked.parse(previewSource) as string);
 		} catch {
 			return '<p>Preview unavailable</p>';
 		}
@@ -29,22 +47,45 @@
 			`/api/projects/${slug}/notes/overview.md`,
 		);
 		overview = res.content;
+		loadedContent = res.content;
+	}
+
+	async function saveNow(content: string) {
+		await api(`/api/projects/${slug}/notes/overview.md`, {
+			method: 'PUT',
+			body: JSON.stringify({ content }),
+		});
+		loadedContent = content;
+		status = 'Saved';
+		setTimeout(() => (status = ''), 1500);
 	}
 
 	function scheduleSave(content: string) {
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(async () => {
 			try {
-				await api(`/api/projects/${slug}/notes/overview.md`, {
-					method: 'PUT',
-					body: JSON.stringify({ content }),
-				});
-				status = 'Saved';
-				setTimeout(() => (status = ''), 1500);
+				await saveNow(content);
 			} catch (e) {
 				status = (e as Error).message;
 			}
 		}, 400);
+	}
+
+	function enterEditMode() {
+		if (!overview.trim()) overview = EXAMPLE;
+		editing = true;
+	}
+
+	async function exitEditMode() {
+		editing = false;
+		clearTimeout(saveTimer);
+		if (overview !== loadedContent) {
+			try {
+				await saveNow(overview);
+			} catch (e) {
+				status = (e as Error).message;
+			}
+		}
 	}
 
 	onMount(async () => {
@@ -56,56 +97,100 @@
 	});
 </script>
 
-<p class="scene-hint">
-	<strong>Scene direction in dialog:</strong> For beats like “John looks mournfully at Cassie,” use
-	<strong>+ Direction</strong> nodes in the <a href={`/projects/${slug}/dialogs`}>dialog graph</a>.
-</p>
-
 <div class="header">
 	<h2>Overview</h2>
-	<span class="status">{status}</span>
+	{#if status}
+		<span class="status">{status}</span>
+	{/if}
+	<div class="header-actions">
+		{#if editing}
+			<button type="button" class="icon-btn" onclick={exitEditMode} aria-label="Show preview">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<path
+						d="M5 12.5l4.5 4.5L19 7.5"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
+			</button>
+		{:else}
+			<button type="button" class="icon-btn" onclick={enterEditMode} aria-label="Edit markdown">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<path
+						d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M13.5 6.5l3 3"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
+			</button>
+		{/if}
+	</div>
 </div>
 
 {#if loadError}
 	<p class="error">{loadError}</p>
+{:else if editing}
+	<textarea
+		class="editor"
+		bind:value={overview}
+		oninput={() => scheduleSave(overview)}
+		rows="16"
+		aria-label="Overview markdown"
+	></textarea>
+{:else}
+	<div class="preview-pane" class:example={!overview.trim()}>
+		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+		{@html previewHtml}
+	</div>
 {/if}
 
-<textarea
-	class="editor"
-	bind:value={overview}
-	oninput={() => scheduleSave(overview)}
-	rows="16"
-	placeholder="Project overview, tone, pillars…"
-></textarea>
-
-<div class="preview-pane">
-	<h3>Preview</h3>
-	<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-	{@html previewHtml}
-</div>
-
 <style>
-	.scene-hint {
-		font-size: 0.9rem;
-		color: var(--text-muted);
-		margin-bottom: 1rem;
-		padding: 0.75rem 1rem;
-		background: var(--bg-elevated);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-	}
-
 	.header {
 		display: flex;
-		align-items: baseline;
-		gap: 1rem;
-		margin-bottom: 0.5rem;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
 	}
 
 	.header h2 {
 		margin: 0;
 		font-size: 1rem;
 		font-weight: 600;
+	}
+
+	.header-actions {
+		margin-left: auto;
+	}
+
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--bg-elevated);
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+
+	.icon-btn:hover {
+		color: var(--text);
+		border-color: var(--accent-dim);
+		background: var(--bg-hover);
 	}
 
 	.error {
@@ -118,5 +203,9 @@
 		font-family: var(--mono);
 		font-size: 0.9rem;
 		min-height: 280px;
+	}
+
+	.preview-pane.example {
+		color: var(--text-muted);
 	}
 </style>

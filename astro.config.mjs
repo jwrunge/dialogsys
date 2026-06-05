@@ -17,6 +17,9 @@ export default defineConfig({
   integrations: [svelte()],
   vite: {
     plugins: [xyflowSsrStub()],
+    optimizeDeps: {
+      include: ['marked', 'isomorphic-dompurify'],
+    },
     ssr: {
       noExternal: [],
     },

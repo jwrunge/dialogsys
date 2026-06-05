@@ -22,6 +22,19 @@ export function resolvePortraitPath(
 	return state?.portraitPath ?? character.portraitPath ?? '';
 }
 
+/** Browser-loadable portrait URL, or null for Godot res:// paths (show placeholder). */
+export function portraitPreviewUrl(path: string | undefined): string | null {
+	const p = path?.trim() ?? '';
+	if (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('/')) {
+		return p;
+	}
+	return null;
+}
+
+export function defaultPortraitPath(character: Character): string {
+	return resolvePortraitPath(character, character.defaultStateId);
+}
+
 export function characterById(
 	characters: Character[],
 	id: string | undefined,
