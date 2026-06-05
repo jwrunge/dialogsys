@@ -1,10 +1,28 @@
 ---
-import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
 import DialogGraphEditor from '../../../../islands/DialogGraphEditor.svelte';
+import { getDialog } from '../../../../lib/server/projects';
 
 const { slug, id } = Astro.params;
+
+let dialogTitle = id!;
+try {
+	const graph = await getDialog(slug!, id!);
+	dialogTitle = graph.displayName || id!;
+} catch {
+	/* use id as fallback */
+}
 ---
 
-<BaseLayout title="Dialog editor · Dialogsys">
+<ProjectLayout slug={slug!} current="dialogs" title={dialogTitle}>
+	<h2 class="dialog-title">{dialogTitle}</h2>
 	<DialogGraphEditor client:only="svelte" slug={slug!} dialogId={id!} />
-</BaseLayout>
+</ProjectLayout>
+
+<style>
+	.dialog-title {
+		margin: 0 0 0.75rem;
+		font-size: 1.15rem;
+		font-weight: 600;
+	}
+</style>

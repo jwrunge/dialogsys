@@ -179,7 +179,7 @@ label {
 .editor-layout {
 	display: grid;
 	grid-template-columns: 1fr 320px;
-	height: calc(100vh - 56px);
+	height: max(28rem, calc(100dvh - 15rem));
 }
 
 .editor-canvas {

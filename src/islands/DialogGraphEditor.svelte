@@ -212,10 +212,7 @@
 </script>
 
 <div class="editor-shell">
-	<div class="toolbar">
-		<a href="/" class="btn">← Projects</a>
-		<a href={`/projects/${slug}/dialogs`} class="btn">Dialogs</a>
-		<strong>{graphMeta.displayName || dialogId}</strong>
+	<div class="editor-meta">
 		<span class="status" class:saved={saveStatus === 'Saved'}>{saveStatus || (loading ? 'Loading…' : '')}</span>
 	</div>
 
@@ -267,10 +264,21 @@
 
 <style>
 	.editor-shell {
-		margin: -1.5rem;
+		margin: 0 -1.5rem;
 		width: calc(100% + 3rem);
 	}
 
+	.editor-meta {
+		display: flex;
+		justify-content: flex-end;
+		padding: 0 1.5rem 0.5rem;
+		min-height: 1.25rem;
+	}
+
+	.status {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
 
 	.status.saved {
 		color: var(--success);

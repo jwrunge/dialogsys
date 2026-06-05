@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import Fuse from 'fuse.js';
 	import { api } from '../lib/api';
+	import type { DialogListItem } from '../lib/server/projects';
 
 	interface Props {
 		slug: string;
@@ -8,18 +10,60 @@
 
 	let { slug }: Props = $props();
 
-	let dialogs = $state<{ id: string; displayName: string }[]>([]);
+	let dialogs = $state<DialogListItem[]>([]);
+	let ready = $state(false);
+	let loadError = $state('');
+	let searchQuery = $state('');
+
 	let createDialogEl = $state<HTMLDialogElement | null>(null);
 	let draftId = $state('');
 	let draftName = $state('');
 	let modalError = $state('');
 	let creating = $state(false);
 
+	type ListedDialog = { dialog: DialogListItem; index: number };
+
+	const listedDialogs = $derived.by((): ListedDialog[] => {
+		const q = searchQuery.trim();
+		if (!q) {
+			return dialogs.map((dialog, index) => ({ dialog, index }));
+		}
+		const fuse = new Fuse(dialogs, {
+			keys: [
+				{ name: 'displayName', weight: 0.5 },
+				{ name: 'id', weight: 0.35 },
+				{ name: 'description', weight: 0.15 },
+			],
+			threshold: 0.4,
+			ignoreLocation: true,
+		});
+		return fuse.search(q).map((result) => ({
+			dialog: result.item,
+			index: dialogs.findIndex((d) => d.id === result.item.id),
+		}));
+	});
+
+	function descriptionPreview(description: string): string {
+		const t = description.trim();
+		if (!t) return 'No description';
+		return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+	}
+
+	function stepLabel(count: number): string {
+		return `${count} step${count === 1 ? '' : 's'}`;
+	}
+
 	async function load() {
-		const res = await api<{ dialogs: { id: string; displayName: string }[] }>(
-			`/api/projects/${slug}/dialogs`,
-		);
-		dialogs = res.dialogs;
+		ready = false;
+		loadError = '';
+		try {
+			const res = await api<{ dialogs: DialogListItem[] }>(`/api/projects/${slug}/dialogs`);
+			dialogs = res.dialogs;
+			ready = true;
+		} catch (e) {
+			loadError = (e as Error).message;
+			dialogs = [];
+		}
 	}
 
 	async function openCreateModal() {
@@ -58,41 +102,58 @@
 		}
 	}
 
-	async function remove(id: string) {
-		if (!confirm(`Delete dialog "${id}"?`)) return;
-		await api(`/api/projects/${slug}/dialogs/${id}`, { method: 'DELETE' });
-		await load();
-	}
-
 	onMount(load);
 </script>
 
 <div class="toolbar">
-	<button type="button" class="btn btn-primary toolbar-add" onclick={openCreateModal}>
-		New dialog
+	<input
+		class="search"
+		type="search"
+		bind:value={searchQuery}
+		placeholder="Search by name or description…"
+		aria-label="Search dialogs"
+		disabled={!ready}
+	/>
+	<button type="button" class="btn btn-primary toolbar-add" onclick={openCreateModal} disabled={!ready}>
+		Add dialog
 	</button>
 </div>
 
-<ul class="dialog-list">
-	{#each dialogs as d}
-		<li>
-			<a href={`/projects/${slug}/dialogs/${d.id}`}>
-				<strong>{d.displayName}</strong>
-				<span class="id">{d.id}</span>
-			</a>
-			<button type="button" class="btn btn-danger" onclick={() => remove(d.id)}>Delete</button>
-		</li>
-	{/each}
-</ul>
-
-{#if dialogs.length === 0}
-	<p class="muted">No dialogs yet.</p>
+{#if loadError}
+	<p class="error-banner">{loadError}</p>
+{:else if !ready}
+	<p class="muted">Loading dialogs…</p>
+{:else if dialogs.length === 0}
+	<p class="muted">No dialogs yet. Click <strong>Add dialog</strong> to create one.</p>
+{:else if listedDialogs.length === 0}
+	<p class="muted">No dialogs match “{searchQuery.trim()}”.</p>
+{:else}
+	<div class="summary-list">
+		{#each listedDialogs as { dialog } (dialog.id)}
+			<article class="summary-card">
+				<div class="scene-icon" title="Dialog scene">
+					<span class="scene-icon-fallback">{dialog.displayName.charAt(0).toUpperCase()}</span>
+				</div>
+				<div class="summary-body">
+					<div class="summary-head">
+						<div>
+							<h3>{dialog.displayName}</h3>
+							<p class="id">{dialog.id}</p>
+						</div>
+						<a class="btn" href={`/projects/${slug}/dialogs/${dialog.id}`}>Edit</a>
+					</div>
+					<p class="summary-desc">{descriptionPreview(dialog.description)}</p>
+					<p class="summary-meta">{stepLabel(dialog.stepCount)}</p>
+				</div>
+			</article>
+		{/each}
+	</div>
 {/if}
 
 <dialog bind:this={createDialogEl} class="modal" onclose={closeCreateModal}>
 	<form class="modal-panel" onsubmit={submitCreate}>
 		<header class="modal-header">
-			<h2>New dialog</h2>
+			<h2>Add dialog</h2>
 		</header>
 
 		<div class="modal-body">
@@ -142,38 +203,82 @@
 		padding: 0 0 1rem;
 	}
 
+	.toolbar .search {
+		flex: 1;
+		min-width: 180px;
+		max-width: 420px;
+	}
+
 	.toolbar-add {
 		margin-left: auto;
+		flex-shrink: 0;
 	}
 
-	.dialog-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
+	.summary-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
 	}
 
-	.dialog-list li {
+	.summary-card {
+		display: flex;
+		gap: 1rem;
+		align-items: flex-start;
+		padding: 1rem;
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+	}
+
+	.summary-body {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.scene-icon {
+		flex-shrink: 0;
+		width: 72px;
+		height: 72px;
+		border-radius: 10px;
+		overflow: hidden;
+		background: var(--bg);
+		border: 1px solid var(--border);
 		display: flex;
 		align-items: center;
+		justify-content: center;
+	}
+
+	.scene-icon-fallback {
+		font-size: 1.4rem;
+		font-weight: 600;
+		color: var(--text-muted);
+	}
+
+	.summary-head {
+		display: flex;
 		justify-content: space-between;
-		padding: 0.75rem;
-		border-bottom: 1px solid var(--border);
+		align-items: flex-start;
+		gap: 0.75rem;
+		margin-bottom: 0.35rem;
 	}
 
-	.dialog-list a {
-		color: inherit;
-		text-decoration: none;
-	}
-
-	.dialog-list a:hover strong {
-		color: var(--accent);
+	.summary-head h3 {
+		margin: 0;
+		font-size: 1.05rem;
 	}
 
 	.id {
-		display: block;
+		margin: 0.15rem 0 0;
+		font-family: var(--mono);
 		font-size: 0.8rem;
 		color: var(--text-muted);
-		font-family: var(--mono);
+	}
+
+	.summary-desc,
+	.summary-meta {
+		margin: 0.35rem 0 0;
+		font-size: 0.9rem;
+		color: var(--text-muted);
 	}
 
 	.error {
@@ -183,6 +288,16 @@
 
 	.muted {
 		color: var(--text-muted);
+		font-size: 0.9rem;
+	}
+
+	.error-banner {
+		padding: 1rem;
+		color: var(--error);
+		background: rgba(240, 113, 120, 0.1);
+		border: 1px solid var(--error);
+		border-radius: var(--radius);
+		margin-bottom: 1rem;
 	}
 
 	.modal {

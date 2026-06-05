@@ -188,20 +188,34 @@ export async function writeNote(slug: string, notePath: string, content: string)
 	await scheduleSnapshot(slug, `notes: ${notePath}`);
 }
 
-export async function listDialogs(slug: string): Promise<{ id: string; displayName: string }[]> {
+export type DialogListItem = {
+	id: string;
+	displayName: string;
+	description: string;
+	stepCount: number;
+};
+
+export async function listDialogs(slug: string): Promise<DialogListItem[]> {
 	const dir = projectFilePath(slug, 'dialogs');
 	await ensureDir(dir);
 	const files = await fs.readdir(dir);
-	const results: { id: string; displayName: string }[] = [];
+	const results: DialogListItem[] = [];
 
 	for (const file of files) {
 		if (!file.endsWith('.graph.json')) continue;
 		const id = file.replace(/\.graph\.json$/, '');
 		try {
 			const graph = await getDialog(slug, id);
-			results.push({ id, displayName: graph.displayName });
+			results.push({
+				id,
+				displayName: graph.displayName,
+				description: graph.description ?? '',
+				stepCount: graph.nodes.filter(
+					(n) => n.type !== 'entry' && n.type !== 'blank',
+				).length,
+			});
 		} catch {
-			results.push({ id, displayName: id });
+			results.push({ id, displayName: id, description: '', stepCount: 0 });
 		}
 	}
 
