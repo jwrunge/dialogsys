@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
 	import type { DialogListItem } from '../lib/server/projects';
 	import type { FlowGraph, FlowNode, FlowEdge } from '../lib/schema/flow';
-	import { createBranchNode, createSceneNode } from '../lib/flow/flowFactory';
+	import { createSceneNode, defaultBranchOptions } from '../lib/flow/flowFactory';
 	import GameFlowCanvas from './GameFlowCanvas.svelte';
 	import FlowNodeInspector from './FlowNodeInspector.svelte';
 
@@ -36,6 +36,10 @@
 	let selectedNodeId = $state<string | null>(null);
 	let dialogs = $state<DialogListItem[]>([]);
 	let syncKey = $state('');
+	let confirmDialogEl = $state<HTMLDialogElement | null>(null);
+	let confirmMode = $state<'node' | 'edge'>('node');
+	let confirmMessage = $state('');
+	let pendingEdge = $state<CanvasEdge | null>(null);
 
 	let flowNodes = $state<FlowNode[]>([]);
 	let flowEdges = $state<FlowEdge[]>([]);
@@ -172,60 +176,102 @@
 		scheduleSave();
 	}
 
-	function onConnect(connection: {
-		source: string | null;
-		target: string | null;
-		sourceHandle?: string | null;
-		targetHandle?: string | null;
-	}) {
-		if (!connection.source || !connection.target) return;
-		const id = `e-${connection.source}-${connection.target}-${nanoid(4)}`;
-		canvasEdges = [
-			...canvasEdges,
-			{
-				id,
-				source: connection.source,
-				target: connection.target,
-				sourceHandle: connection.sourceHandle,
-				targetHandle: connection.targetHandle,
-			},
-		];
+	function onConnect() {
 		scheduleSave();
 	}
 
-	function addSceneNode() {
-		const node = createSceneNode({ x: 280 + canvasNodes.length * 20, y: 180 });
-		canvasNodes = [...canvasNodes, node];
-		selectedNodeId = node.id;
+	function changeNodeType(type: 'scene' | 'branch') {
+		if (!selectedNodeId) return;
+		const node = canvasNodes.find((n) => n.id === selectedNodeId);
+		if (!node || (node.type !== 'scene' && node.type !== 'branch') || node.type === type) return;
+
+		if (type === 'branch') {
+			const options = defaultBranchOptions();
+			canvasNodes = canvasNodes.map((n) =>
+				n.id === selectedNodeId
+					? {
+							...n,
+							type: 'branch',
+							data: {
+								label: (n.data?.label as string | undefined) || 'Branch',
+								options,
+							},
+						}
+					: n,
+			);
+			const firstHandle = options[0]?.id ?? null;
+			canvasEdges = canvasEdges.map((e) =>
+				e.source === selectedNodeId ? { ...e, sourceHandle: firstHandle } : e,
+			);
+		} else {
+			canvasNodes = canvasNodes.map((n) =>
+				n.id === selectedNodeId
+					? {
+							...n,
+							type: 'scene',
+							data: { label: (n.data?.label as string | undefined) || 'New scene' },
+						}
+					: n,
+			);
+			canvasEdges = canvasEdges.map((e) =>
+				e.source === selectedNodeId ? { ...e, sourceHandle: null } : e,
+			);
+		}
+		syncKey = `local-${Date.now()}`;
 		scheduleSave();
 	}
 
-	function addBranchNode() {
-		const node = createBranchNode({ x: 280 + canvasNodes.length * 20, y: 180 });
-		canvasNodes = [...canvasNodes, node];
-		selectedNodeId = node.id;
-		scheduleSave();
-	}
-
-	function deleteSelected() {
+	async function openDeleteNodeConfirm() {
 		if (!selectedNodeId) return;
 		const node = canvasNodes.find((n) => n.id === selectedNodeId);
 		if (!node || node.type === 'start') return;
 		const label = (node.data?.label as string | undefined) ?? node.id;
-		if (!confirm(`Delete "${label}" from the flow chart?`)) return;
-		canvasNodes = canvasNodes.filter((n) => n.id !== selectedNodeId);
-		canvasEdges = canvasEdges.filter(
-			(e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
-		);
-		selectedNodeId = null;
-		syncKey = `local-${Date.now()}`;
-		scheduleSave();
+		confirmMode = 'node';
+		pendingEdge = null;
+		confirmMessage = `Delete "${label}" from the flow chart?`;
+		await tick();
+		confirmDialogEl?.showModal();
 	}
 
-	function deleteEdge(edgeId: string) {
-		if (!confirm('Remove this connection from the flow chart?')) return;
-		canvasEdges = canvasEdges.filter((e) => e.id !== edgeId);
+	function edgeMatches(a: CanvasEdge, b: CanvasEdge): boolean {
+		return (
+			a.source === b.source &&
+			a.target === b.target &&
+			(a.sourceHandle ?? null) === (b.sourceHandle ?? null) &&
+			(a.targetHandle ?? null) === (b.targetHandle ?? null)
+		);
+	}
+
+	async function requestDeleteEdge(edge: CanvasEdge) {
+		confirmMode = 'edge';
+		pendingEdge = edge;
+		confirmMessage = 'Remove this connection from the flow chart?';
+		await tick();
+		confirmDialogEl?.showModal();
+	}
+
+	function closeConfirmDialog() {
+		confirmDialogEl?.close();
+		pendingEdge = null;
+	}
+
+	function applyConfirmDelete() {
+		if (confirmMode === 'node') {
+			if (!selectedNodeId) return;
+			canvasNodes = canvasNodes.filter((n) => n.id !== selectedNodeId);
+			canvasEdges = canvasEdges.filter(
+				(e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
+			);
+			selectedNodeId = null;
+		} else if (pendingEdge) {
+			const target = pendingEdge;
+			canvasEdges = canvasEdges.filter(
+				(e) => e.id !== target.id && !edgeMatches(e, target),
+			);
+			pendingEdge = null;
+		}
 		syncKey = `local-${Date.now()}`;
+		closeConfirmDialog();
 		scheduleSave();
 	}
 
@@ -273,7 +319,7 @@
 		const node = canvasNodes.find((n) => n.id === selectedNodeId);
 		if (!node || node.type === 'start') return;
 		event.preventDefault();
-		deleteSelected();
+		openDeleteNodeConfirm();
 	}
 
 	onMount(() => {
@@ -284,22 +330,6 @@
 </script>
 
 <div class="flow-editor">
-	<div class="toolbar">
-		<button type="button" class="btn btn-primary" onclick={addSceneNode} disabled={!ready}>
-			Add scene
-		</button>
-		<button type="button" class="btn" onclick={addBranchNode} disabled={!ready}>Add branch</button>
-		<button
-			type="button"
-			class="btn btn-danger"
-			onclick={deleteSelected}
-			disabled={!selectedNodeId || selectedNode?.type === 'start'}
-		>
-			Delete node
-		</button>
-		<span class="status" class:saved={saveStatus === 'Saved'}>{saveStatus || (loading ? 'Loading…' : '')}</span>
-	</div>
-
 	{#if loadError}
 		<p class="error-banner">{loadError}</p>
 	{:else if ready}
@@ -314,7 +344,7 @@
 					onNodeSelect={selectNode}
 					{onConnect}
 					onDragStop={scheduleSave}
-					onEdgeClick={deleteEdge}
+					onEdgeClick={requestDeleteEdge}
 					{onConnectEndToPane}
 				/>
 			</div>
@@ -324,36 +354,69 @@
 					node={selectedNode}
 					{dialogs}
 					onchange={updateNode}
+					onTypeChange={changeNodeType}
+					ondelete={openDeleteNodeConfirm}
 					onDialogsRefresh={loadDialogs}
 				/>
 			</aside>
 		</div>
 	{/if}
+
+	{#if saveStatus || loading}
+		<span class="status-toast" class:saved={saveStatus === 'Saved'}>
+			{saveStatus || (loading ? 'Loading…' : '')}
+		</span>
+	{/if}
 </div>
+
+<dialog bind:this={confirmDialogEl} class="modal" onclose={closeConfirmDialog}>
+	<form
+		method="dialog"
+		class="modal-panel modal-panel-sm"
+		onsubmit={(e) => {
+			e.preventDefault();
+			applyConfirmDelete();
+		}}
+	>
+		<header class="modal-header">
+			<h2>{confirmMode === 'node' ? 'Delete node' : 'Remove connection'}</h2>
+		</header>
+		<div class="modal-body">
+			<p>{confirmMessage}</p>
+		</div>
+		<footer class="modal-footer">
+			<div class="modal-footer-right">
+				<button type="button" class="btn" onclick={closeConfirmDialog}>Cancel</button>
+				<button type="submit" class="btn btn-danger">
+					{confirmMode === 'node' ? 'Delete' : 'Remove'}
+				</button>
+			</div>
+		</footer>
+	</form>
+</dialog>
 
 <style>
 	.flow-editor {
+		position: relative;
 		margin: 0 -1.5rem;
 		width: calc(100% + 3rem);
 	}
 
-	.toolbar {
-		background: transparent;
-		border-bottom: none;
-		padding: 0 1.5rem 0.75rem;
-	}
-
 	.flow-layout {
-		height: max(32rem, calc(100dvh - 14rem));
+		height: max(32rem, calc(100dvh - 12rem));
 	}
 
-	.status {
-		margin-left: auto;
+	.status-toast {
+		position: absolute;
+		right: 1.5rem;
+		bottom: 0.75rem;
+		z-index: 10;
 		font-size: 0.85rem;
 		color: var(--text-muted);
+		pointer-events: none;
 	}
 
-	.status.saved {
+	.status-toast.saved {
 		color: var(--success);
 	}
 
@@ -364,5 +427,65 @@
 		background: rgba(240, 113, 120, 0.1);
 		border: 1px solid var(--error);
 		border-radius: var(--radius);
+	}
+
+	.modal {
+		border: none;
+		padding: 0;
+		background: transparent;
+		max-width: min(28rem, calc(100vw - 2rem));
+	}
+
+	.modal::backdrop {
+		background: rgba(0, 0, 0, 0.55);
+	}
+
+	.modal-panel {
+		display: flex;
+		flex-direction: column;
+		max-height: min(90dvh, 40rem);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		color: var(--text);
+	}
+
+	.modal-panel label {
+		color: var(--text);
+	}
+
+	.modal-panel-sm {
+		max-width: 24rem;
+	}
+
+	.modal-header {
+		padding: 1rem 1.25rem 0.75rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.modal-header h2 {
+		margin: 0;
+		font-size: 1.1rem;
+	}
+
+	.modal-body {
+		padding: 1rem 1.25rem;
+		overflow-y: auto;
+	}
+
+	.modal-body p {
+		margin: 0;
+		color: var(--text-muted);
+	}
+
+	.modal-footer {
+		padding: 0.75rem 1.25rem 1rem;
+		border-top: 1px solid var(--border);
+	}
+
+	.modal-footer-right {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
 	}
 </style>

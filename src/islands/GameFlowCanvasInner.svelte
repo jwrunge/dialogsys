@@ -6,7 +6,6 @@
 		useSvelteFlow,
 		type Node,
 		type Edge,
-		type Connection,
 		type OnConnectEnd,
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
@@ -19,9 +18,9 @@
 		setNodes: (nodes: Node[]) => void;
 		setEdges: (edges: Edge[]) => void;
 		onNodeSelect: (nodeId: string) => void;
-		onConnect: (connection: Connection) => void;
+		onConnect: () => void;
 		onDragStop: () => void;
-		onEdgeClick: (edgeId: string) => void;
+		onEdgeClick: (edge: Edge) => void;
 		onConnectEndToPane: (params: {
 			sourceNodeId: string;
 			sourceHandle: string | null;
@@ -73,7 +72,7 @@
 	};
 
 	const handleConnectEnd: OnConnectEnd = (event, connectionState) => {
-		if (connectionState.isValid !== false || !connectionState.fromNode) return;
+		if (connectionState.isValid || !connectionState.fromNode) return;
 
 		const clientX = 'clientX' in event ? event.clientX : event.changedTouches[0]?.clientX;
 		const clientY = 'clientY' in event ? event.clientY : event.changedTouches[0]?.clientY;
@@ -92,11 +91,15 @@
 		bind:nodes={flowNodes}
 		bind:edges={flowEdges}
 		{nodeTypes}
+		connectionRadius={80}
 		fitView
 		onnodeclick={({ node }) => onNodeSelect(node.id)}
-		onconnect={(params) => onConnect(params)}
+		onconnect={() => {
+			pushToParent();
+			onConnect();
+		}}
 		onconnectend={handleConnectEnd}
-		onedgeclick={({ edge }) => onEdgeClick(edge.id)}
+		onedgeclick={({ edge }) => onEdgeClick(edge)}
 		onnodedragstop={() => {
 			pushToParent();
 			onDragStop();
@@ -114,5 +117,26 @@
 
 	:global(.svelte-flow) {
 		background: var(--bg);
+	}
+
+	/* xyflow defaults to 6px handles with pointer-events: none — enlarge visual + hit area */
+	.editor-canvas :global(.svelte-flow__handle) {
+		width: 18px;
+		height: 18px;
+		min-width: 18px;
+		min-height: 18px;
+		border-width: 2px;
+		pointer-events: all;
+		cursor: crosshair;
+	}
+
+	.editor-canvas :global(.svelte-flow__handle::before) {
+		content: '';
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		width: 54px;
+		height: 54px;
+		transform: translate(-50%, -50%);
 	}
 </style>

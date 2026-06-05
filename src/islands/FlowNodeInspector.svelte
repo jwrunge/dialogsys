@@ -11,10 +11,13 @@
 		node: FlowNode | null;
 		dialogs: DialogListItem[];
 		onchange: (node: FlowNode) => void;
+		onTypeChange: (type: 'scene' | 'branch') => void;
+		ondelete: () => void;
 		onDialogsRefresh: () => Promise<void>;
 	}
 
-	let { slug, node, dialogs, onchange, onDialogsRefresh }: Props = $props();
+	let { slug, node, dialogs, onchange, onTypeChange, ondelete, onDialogsRefresh }: Props =
+		$props();
 
 	let searchQuery = $state('');
 	let createDialogEl = $state<HTMLDialogElement | null>(null);
@@ -111,6 +114,25 @@
 {:else}
 	<h3>{node.type} <code>{node.id}</code></h3>
 
+	{#if node.type === 'scene' || node.type === 'branch'}
+		<div class="type-toggle" role="group" aria-label="Node type">
+			<button
+				type="button"
+				class:active={node.type === 'scene'}
+				onclick={() => onTypeChange('scene')}
+			>
+				Scene
+			</button>
+			<button
+				type="button"
+				class:active={node.type === 'branch'}
+				onclick={() => onTypeChange('branch')}
+			>
+				Branch
+			</button>
+		</div>
+	{/if}
+
 	<div class="field">
 		<label for="flow-label">Label</label>
 		<input
@@ -202,6 +224,12 @@
 				oninput={(e) => updateData({ notes: (e.currentTarget as HTMLTextAreaElement).value })}
 				rows="3"
 			></textarea>
+		</div>
+	{/if}
+
+	{#if node.type !== 'start'}
+		<div class="inspector-actions">
+			<button type="button" class="btn btn-danger" onclick={ondelete}>Delete node</button>
 		</div>
 	{/if}
 {/if}
@@ -308,10 +336,61 @@
 		color: var(--text-muted);
 	}
 
+	.type-toggle {
+		display: flex;
+		gap: 0;
+		margin-bottom: 1rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		overflow: hidden;
+	}
+
+	.type-toggle button {
+		flex: 1;
+		padding: 0.45rem 0.75rem;
+		border: none;
+		background: var(--bg);
+		color: var(--text-muted);
+		font: inherit;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+
+	.type-toggle button:first-child {
+		border-radius: calc(var(--radius) - 1px) 0 0 calc(var(--radius) - 1px);
+	}
+
+	.type-toggle button:last-child {
+		border-radius: 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0;
+	}
+
+	.type-toggle button + button {
+		border-left: 1px solid var(--border);
+	}
+
+	.type-toggle button:hover {
+		background: var(--bg-hover);
+		color: var(--text);
+	}
+
+	.type-toggle button.active {
+		background: var(--bg-hover);
+		color: var(--text);
+		font-weight: 600;
+		outline: 2px solid var(--accent);
+		outline-offset: -2px;
+	}
+
 	.actions {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
+	}
+
+	.inspector-actions {
+		margin-top: 1.5rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--border);
 	}
 
 	.option-row {

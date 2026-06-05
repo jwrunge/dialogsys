@@ -18,13 +18,6 @@
 		targetHandle?: string | null;
 		data?: Record<string, unknown>;
 	};
-	type FlowConnection = {
-		source: string | null;
-		target: string | null;
-		sourceHandle?: string | null;
-		targetHandle?: string | null;
-	};
-
 	interface Props {
 		nodes: FlowNode[];
 		edges: FlowEdge[];
@@ -32,9 +25,9 @@
 		setNodes: (nodes: FlowNode[]) => void;
 		setEdges: (edges: FlowEdge[]) => void;
 		onNodeSelect: (nodeId: string) => void;
-		onConnect: (connection: FlowConnection) => void;
+		onConnect: () => void;
 		onDragStop: () => void;
-		onEdgeClick: (edgeId: string) => void;
+		onEdgeClick: (edge: FlowEdge) => void;
 		onConnectEndToPane: (params: {
 			sourceNodeId: string;
 			sourceHandle: string | null;
