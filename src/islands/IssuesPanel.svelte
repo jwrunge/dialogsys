@@ -27,6 +27,10 @@
 		invalid_jump: 'Invalid jump',
 		dangling_edge: 'Dangling edge',
 		missing_entry: 'Missing entry',
+		unassigned_scene: 'Unassigned scene',
+		missing_scene: 'Missing scene',
+		dead_end_branch: 'Dead-end branch',
+		dangling_flow_edge: 'Dangling flow connection',
 	};
 
 	let filtered = $derived(
@@ -56,9 +60,14 @@
 		}
 	}
 
-	function nodeLink(issue: ValidationIssue): string | null {
-		if (!issue.dialogId || !issue.nodeId) return null;
-		return `/projects/${slug}/dialogs/${issue.dialogId}#${issue.nodeId}`;
+	function issueLink(issue: ValidationIssue): string | null {
+		if (issue.flowNodeId) {
+			return `/projects/${slug}/flow#${issue.flowNodeId}`;
+		}
+		if (issue.dialogId && issue.nodeId) {
+			return `/projects/${slug}/dialogs/${issue.dialogId}#${issue.nodeId}`;
+		}
+		return null;
 	}
 
 	onMount(refresh);
@@ -94,8 +103,8 @@
 							>{issue.level}</span
 						>
 						{issue.message}
-						{#if nodeLink(issue)}
-							<a href={nodeLink(issue)!} class="link">Open in editor</a>
+						{#if issueLink(issue)}
+							<a href={issueLink(issue)!} class="link">Open in editor</a>
 						{:else if issue.characterId}
 							<a href={`/projects/${slug}/characters`} class="link">Characters</a>
 						{/if}

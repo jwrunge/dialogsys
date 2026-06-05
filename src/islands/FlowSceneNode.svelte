@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import { formatConditions } from '../lib/conditions';
+	import { formatBranchPathSummary } from '../lib/flow/branchState';
 	import type { FlowBranchOption, FlowFirstMeeting } from '../lib/schema/flow';
 
 	let { data, type }: NodeProps = $props();
@@ -34,15 +34,13 @@
 			return id ? `Dialog: ${id}` : 'No dialog assigned';
 		}
 		if (nodeType === 'branch') {
+			const stateId = data?.branchStateId as string | undefined;
 			const opts = (data?.options as FlowBranchOption[]) ?? [];
+			if (!stateId) return 'No state selected';
 			const labeled = opts
-				.map((o) => {
-					if (o.isDefault) return `${o.label}: default`;
-					const when = formatConditions(o.conditions);
-					return when ? `${o.label}: ${when}` : o.label;
-				})
+				.map((o) => `${o.label}: ${formatBranchPathSummary(o)}`)
 				.join(' · ');
-			return labeled || `${opts.length} path${opts.length === 1 ? '' : 's'}`;
+			return labeled ? `${stateId} — ${labeled}` : stateId;
 		}
 		return '';
 	});

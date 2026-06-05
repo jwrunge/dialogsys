@@ -8,7 +8,7 @@
 	import type { FlowGraph, FlowNode, FlowEdge } from '../lib/schema/flow';
 	import type { GameStateProperty } from '../lib/schema/gameState';
 	import { analyzeFlowBranches, applyFirstMeetings } from '../lib/flow/branchAnalyzer';
-	import { createSceneNode, defaultBranchOptions } from '../lib/flow/flowFactory';
+	import { createSceneNode } from '../lib/flow/flowFactory';
 	import GameFlowCanvas from './GameFlowCanvas.svelte';
 	import FlowNodeInspector from './FlowNodeInspector.svelte';
 	import DialogEditorModal from './DialogEditorModal.svelte';
@@ -167,6 +167,7 @@
 			flowEdges = graph.edges;
 			toCanvas(graph);
 			ready = true;
+			selectFromHash();
 			scheduleAnalyze();
 		} catch (e) {
 			loadError = (e as Error).message;
@@ -187,6 +188,20 @@
 
 	function selectNode(id: string) {
 		selectedNodeId = id;
+		if (typeof window !== 'undefined') {
+			const hash = id ? `#${id}` : '';
+			if (window.location.hash !== hash) {
+				history.replaceState(null, '', `${window.location.pathname}${hash}`);
+			}
+		}
+	}
+
+	function selectFromHash() {
+		if (typeof window === 'undefined') return;
+		const id = window.location.hash.replace(/^#/, '');
+		if (id && canvasNodes.some((n) => n.id === id)) {
+			selectedNodeId = id;
+		}
 	}
 
 	function updateNode(updated: FlowNode) {
@@ -210,7 +225,6 @@
 		if (!node || (node.type !== 'scene' && node.type !== 'branch') || node.type === type) return;
 
 		if (type === 'branch') {
-			const options = defaultBranchOptions();
 			canvasNodes = canvasNodes.map((n) =>
 				n.id === selectedNodeId
 					? {
@@ -218,15 +232,13 @@
 							type: 'branch',
 							data: {
 								label: (n.data?.label as string | undefined) || 'Branch',
-								options,
+								branchStateId: undefined,
+								options: [],
 							},
 						}
 					: n,
 			);
-			const firstHandle = options[0]?.id ?? null;
-			canvasEdges = canvasEdges.map((e) =>
-				e.source === selectedNodeId ? { ...e, sourceHandle: firstHandle } : e,
-			);
+			canvasEdges = canvasEdges.filter((e) => e.source !== selectedNodeId);
 		} else {
 			canvasNodes = canvasNodes.map((n) =>
 				n.id === selectedNodeId

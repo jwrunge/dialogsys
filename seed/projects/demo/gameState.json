@@ -5,6 +5,8 @@
       "label": "Met bartender",
       "type": "boolean",
       "defaultValue": false,
+      "useValidValues": true,
+      "validValues": [false, true],
       "description": "Set true after the tavern intro dialog."
     }
   ]

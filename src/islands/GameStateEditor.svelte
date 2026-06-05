@@ -2,10 +2,14 @@
 	import { onMount, tick } from 'svelte';
 	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
-	import type {
-		GameStateFile,
-		GameStateProperty,
-		GameStatePropertyType,
+	import { defaultValidValues } from '../lib/flow/branchState';
+	import {
+		defaultUseValidValues,
+		normalizeGameStateProperty,
+		type GameStateFile,
+		type GameStateProperty,
+		type GameStatePropertyType,
+		type GameStateValue,
 	} from '../lib/schema/gameState';
 
 	interface Props {
@@ -21,6 +25,9 @@
 	let dialogEl = $state<HTMLDialogElement | null>(null);
 	let draft = $state<GameStateProperty | null>(null);
 	let editIndex = $state<number | null>(null);
+	let addingValue = $state(false);
+	let addValueDraft = $state('');
+	let addValueInput = $state<HTMLInputElement | null>(null);
 
 	function cloneProperty(prop: GameStateProperty): GameStateProperty {
 		return JSON.parse(JSON.stringify(prop)) as GameStateProperty;
@@ -34,11 +41,13 @@
 
 	function newProperty(): GameStateProperty {
 		const id = `var_${nanoid(4).toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+		const type: GameStatePropertyType = 'boolean';
 		return {
 			id,
 			label: 'New property',
-			type: 'boolean',
+			type,
 			defaultValue: false,
+			useValidValues: true,
 		};
 	}
 
@@ -96,7 +105,7 @@
 	}
 
 	async function openEdit(index: number) {
-		draft = cloneProperty(properties[index]!);
+		draft = normalizeGameStateProperty(cloneProperty(properties[index]!));
 		editIndex = index;
 		await tick();
 		dialogEl?.showModal();
@@ -106,11 +115,43 @@
 		dialogEl?.close();
 		draft = null;
 		editIndex = null;
+		addingValue = false;
+		addValueDraft = '';
+	}
+
+	function resetAddValue() {
+		addingValue = false;
+		addValueDraft = '';
+	}
+
+	async function startAddValue() {
+		if (!draft || draft.useValidValues !== true) return;
+		addingValue = true;
+		addValueDraft = '';
+		await tick();
+		addValueInput?.focus();
+	}
+
+	function commitAddValue() {
+		if (!draft || !addingValue) return;
+		if (draft.type === 'string' && !addValueDraft.trim()) return;
+		addValidValue(addValueDraft);
+		resetAddValue();
+	}
+
+	function onAddValueKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			commitAddValue();
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			resetAddValue();
+		}
 	}
 
 	function applyDraft() {
 		if (!draft) return;
-		const next = cloneProperty(draft);
+		const next = normalizeGameStateProperty(cloneProperty(draft));
 		if (editIndex === null) {
 			properties = [...properties, next];
 		} else {
@@ -127,11 +168,52 @@
 
 	function onTypeChange(type: GameStatePropertyType) {
 		if (!draft) return;
+		resetAddValue();
+		const useValidValues = defaultUseValidValues(type);
 		draft = {
 			...draft,
 			type,
 			defaultValue: defaultValueForType(type),
+			useValidValues,
+			validValues:
+				type === 'boolean' || !useValidValues ? undefined : (draft.validValues ?? []),
 		};
+	}
+
+	function toggleUseValidValues(checked: boolean) {
+		if (!draft) return;
+		resetAddValue();
+		draft = {
+			...draft,
+			useValidValues: checked,
+			validValues: checked ? (draft.validValues ?? defaultValidValues(draft.type)) : undefined,
+		};
+	}
+
+	function addValidValue(raw: string) {
+		if (!draft || !draft.useValidValues || draft.type === 'boolean') return;
+		let value: GameStateValue;
+		if (draft.type === 'number') {
+			const n = Number(raw);
+			if (Number.isNaN(n)) return;
+			value = n;
+		} else {
+			value = raw;
+		}
+		const values = [...(draft.validValues ?? []), value];
+		draft = { ...draft, validValues: values };
+	}
+
+	function removeValidValue(index: number) {
+		if (!draft?.validValues) return;
+		draft = {
+			...draft,
+			validValues: draft.validValues.filter((_, i) => i !== index),
+		};
+	}
+
+	function formatValidValue(value: GameStateValue): string {
+		return typeof value === 'string' ? value : String(value);
 	}
 
 	onMount(load);
@@ -165,6 +247,11 @@
 					<p class="property-meta">
 						<span class="type">{prop.type}</span>
 						<span>default: {String(prop.defaultValue)}</span>
+						{#if prop.type !== 'boolean' && prop.useValidValues === true && prop.validValues?.length}
+							<span>
+								values: {prop.validValues.map(formatValidValue).join(', ')}
+							</span>
+						{/if}
 					</p>
 					{#if prop.description}
 						<p class="property-desc">{prop.description}</p>
@@ -271,6 +358,81 @@
 						/>
 					{/if}
 				</div>
+				{#if draft.type !== 'boolean'}
+					<div class="field checkbox-field">
+						<label class="checkbox-label">
+							<input
+								type="checkbox"
+								checked={draft.useValidValues === true}
+								onchange={(e) =>
+									toggleUseValidValues((e.currentTarget as HTMLInputElement).checked)}
+							/>
+							Set valid values
+						</label>
+						<p class="field-hint">
+							When enabled, flow branches can use each value as a path. Disable for free-form
+							comparisons (numbers, strings).
+						</p>
+					</div>
+					{#if draft.useValidValues === true}
+						<div class="field">
+							<span class="field-label">Valid values</span>
+							<div class="value-list">
+								{#each draft.validValues ?? [] as value, vi (vi)}
+									<div class="value-row">
+										<span class="value-text">{formatValidValue(value)}</span>
+										<button
+											type="button"
+											class="remove-btn"
+											aria-label="Remove {formatValidValue(value)}"
+											onclick={() => removeValidValue(vi)}
+										>
+											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+												<path
+													d="M6 6l12 12M18 6L6 18"
+													stroke="currentColor"
+													stroke-width="2"
+													stroke-linecap="round"
+												/>
+											</svg>
+										</button>
+									</div>
+								{/each}
+								{#if addingValue}
+									<div class="value-row add-input-row">
+										{#if draft.type === 'number'}
+											<input
+												bind:this={addValueInput}
+												class="value-input"
+												type="number"
+												placeholder="Value"
+												bind:value={addValueDraft}
+												onkeydown={onAddValueKeydown}
+											/>
+										{:else}
+											<input
+												bind:this={addValueInput}
+												class="value-input"
+												type="text"
+												placeholder="Value"
+												bind:value={addValueDraft}
+												onkeydown={onAddValueKeydown}
+											/>
+										{/if}
+									</div>
+								{/if}
+								<button
+									type="button"
+									class="value-row add-value-btn"
+									disabled={addingValue}
+									onclick={startAddValue}
+								>
+									Add value
+								</button>
+							</div>
+						</div>
+					{/if}
+				{/if}
 				<div class="field">
 					<label for="prop-desc">Description (optional)</label>
 					<textarea id="prop-desc" bind:value={draft.description} rows="2"></textarea>
@@ -409,5 +571,130 @@
 		display: flex;
 		justify-content: flex-end;
 		gap: 0.5rem;
+	}
+
+	.checkbox-field {
+		margin-top: 0.25rem;
+	}
+
+	.checkbox-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: fit-content;
+		margin-bottom: 0;
+		color: var(--text);
+		font-size: 0.9rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.checkbox-label input[type='checkbox'] {
+		width: auto;
+		flex-shrink: 0;
+		margin: 0;
+		padding: 0;
+	}
+
+	.field-hint {
+		margin: 0.35rem 0 0;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+
+	.field-label {
+		display: block;
+		font-size: 0.85rem;
+		margin-bottom: 0.35rem;
+		color: var(--text-muted);
+	}
+
+	.value-list {
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		overflow: hidden;
+		background: var(--bg);
+	}
+
+	.value-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		width: 100%;
+		min-height: 2.5rem;
+		padding: 0.5rem 0.75rem;
+		border: none;
+		border-bottom: 1px solid var(--border);
+		background: transparent;
+	}
+
+	.value-row:last-child {
+		border-bottom: none;
+	}
+
+	.value-text {
+		font-family: var(--mono);
+		font-size: 0.9rem;
+		color: var(--text);
+	}
+
+	.remove-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		width: 1.75rem;
+		height: 1.75rem;
+		padding: 0;
+		border: none;
+		border-radius: var(--radius);
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+
+	.remove-btn:hover {
+		background: var(--bg-hover);
+		color: var(--error);
+	}
+
+	.add-input-row {
+		padding-top: 0.35rem;
+		padding-bottom: 0.35rem;
+	}
+
+	.value-input {
+		width: 100%;
+		padding: 0.35rem 0;
+		border: none;
+		background: transparent;
+		color: var(--text);
+		font: inherit;
+		font-family: var(--mono);
+		font-size: 0.9rem;
+	}
+
+	.value-input:focus {
+		outline: none;
+	}
+
+	.add-value-btn {
+		justify-content: flex-start;
+		color: var(--text-muted);
+		font: inherit;
+		font-size: 0.9rem;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.add-value-btn:hover:not(:disabled) {
+		background: var(--bg-hover);
+		color: var(--text);
+	}
+
+	.add-value-btn:disabled {
+		opacity: 0.55;
+		cursor: default;
 	}
 </style>

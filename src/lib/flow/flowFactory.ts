@@ -1,12 +1,5 @@
 import { nanoid } from 'nanoid';
-import type { FlowBranchOption, FlowGraph, FlowNode } from '../schema/flow';
-
-export function defaultBranchOptions(): FlowBranchOption[] {
-	return [
-		{ id: nanoid(6), label: 'Path A', conditions: [], isDefault: true },
-		{ id: nanoid(6), label: 'Path B', conditions: [] },
-	];
-}
+import type { FlowGraph, FlowNode } from '../schema/flow';
 
 export function createDefaultFlowGraph(): FlowGraph {
 	return {
@@ -46,7 +39,7 @@ export function createBranchNode(position = { x: 300, y: 200 }): FlowNode {
 		position,
 		data: {
 			label: 'Branch',
-			options: defaultBranchOptions(),
+			options: [],
 		},
 	};
 }

@@ -4,7 +4,11 @@ import { projectMetaSchema, type ProjectMeta, createProjectInputSchema } from '.
 import { charactersFileSchema, type CharactersFile } from '../schema/characters';
 import { dialogGraphSchema, type DialogGraph } from '../schema/graph';
 import { flowGraphSchema, type FlowGraph } from '../schema/flow';
-import { gameStateFileSchema, type GameStateFile } from '../schema/gameState';
+import {
+	gameStateFileSchema,
+	normalizeGameStateFile,
+	type GameStateFile,
+} from '../schema/gameState';
 import { createDefaultFlowGraph } from '../flow/flowFactory';
 import { ensureProjectRepo, scheduleSnapshot } from './versioning';
 
@@ -312,11 +316,11 @@ export async function getFlow(slug: string): Promise<FlowGraph> {
 export async function getGameState(slug: string): Promise<GameStateFile> {
 	const file = projectFilePath(slug, 'gameState.json');
 	const raw = await readJsonFile(file, { properties: [] });
-	return gameStateFileSchema.parse(raw);
+	return normalizeGameStateFile(gameStateFileSchema.parse(raw));
 }
 
 export async function saveGameState(slug: string, data: GameStateFile): Promise<GameStateFile> {
-	const parsed = gameStateFileSchema.parse(data);
+	const parsed = normalizeGameStateFile(gameStateFileSchema.parse(data));
 	await writeJsonAtomic(projectFilePath(slug, 'gameState.json'), parsed);
 	await touchProject(slug);
 	await scheduleSnapshot(slug, 'game state saved', { immediate: true });

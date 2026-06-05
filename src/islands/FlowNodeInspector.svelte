@@ -1,13 +1,17 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import Fuse from 'fuse.js';
-	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
 	import type { DialogListItem } from '../lib/server/projects';
+	import {
+		createCompareBranch,
+		formatBranchPathSummary,
+		syncEnumBranchOptions,
+		usesEnumValues,
+	} from '../lib/flow/branchState';
+	import type { ConditionOp } from '../lib/schema/conditions';
 	import type { FlowBranchOption, FlowNode, FlowNodeData } from '../lib/schema/flow';
 	import type { GameStateProperty } from '../lib/schema/gameState';
-	import { formatConditions } from '../lib/conditions';
-	import ConditionEditor from './ConditionEditor.svelte';
 
 	interface Props {
 		slug: string;
@@ -34,11 +38,50 @@
 	}: Props = $props();
 
 	let searchQuery = $state('');
+	let stateSearchQuery = $state('');
+
+	const OP_OPTIONS: { value: ConditionOp; label: string }[] = [
+		{ value: 'eq', label: '=' },
+		{ value: 'neq', label: '≠' },
+		{ value: 'gt', label: '>' },
+		{ value: 'gte', label: '≥' },
+		{ value: 'lt', label: '<' },
+		{ value: 'lte', label: '≤' },
+	];
+	let selectSceneDialogEl = $state<HTMLDialogElement | null>(null);
 	let createDialogEl = $state<HTMLDialogElement | null>(null);
 	let draftId = $state('');
 	let draftName = $state('');
 	let modalError = $state('');
 	let creating = $state(false);
+
+	const assignedDialog = $derived(
+		node?.type === 'scene' && node.data.dialogId
+			? dialogs.find((d) => d.id === node.data.dialogId)
+			: null,
+	);
+
+	const listedStates = $derived.by(() => {
+		const q = stateSearchQuery.trim();
+		if (!q) return gameStateProperties;
+		const fuse = new Fuse(gameStateProperties, {
+			keys: [
+				{ name: 'label', weight: 0.55 },
+				{ name: 'id', weight: 0.45 },
+			],
+			threshold: 0.4,
+			ignoreLocation: true,
+		});
+		return fuse.search(q).map((r) => r.item);
+	});
+
+	const branchProperty = $derived(
+		node?.type === 'branch' && node.data.branchStateId
+			? gameStateProperties.find((p) => p.id === node.data.branchStateId)
+			: null,
+	);
+
+	const isEnumBranch = $derived(branchProperty ? usesEnumValues(branchProperty) : false);
 
 	const listedDialogs = $derived.by(() => {
 		const q = searchQuery.trim();
@@ -68,6 +111,32 @@
 				.replace(/^_|_$/g, '')
 				.slice(0, 32) || 'scene'
 		);
+	}
+
+	async function openSelectSceneModal() {
+		if (!node || node.type !== 'scene') return;
+		searchQuery = '';
+		modalError = '';
+		await tick();
+		selectSceneDialogEl?.showModal();
+	}
+
+	function closeSelectSceneModal() {
+		selectSceneDialogEl?.close();
+	}
+
+	function selectScene(dialog: DialogListItem) {
+		if (!node || node.type !== 'scene') return;
+		updateData({
+			dialogId: dialog.id,
+			label: node.data.label?.trim() ? node.data.label : dialog.displayName,
+		});
+		closeSelectSceneModal();
+	}
+
+	async function openCreateFromSelect() {
+		closeSelectSceneModal();
+		await openCreateModal();
 	}
 
 	async function openCreateModal() {
@@ -107,13 +176,37 @@
 		}
 	}
 
-	function addBranchOption() {
+	function enumOptionsKey(options: FlowBranchOption[]): string {
+		return options
+			.map((o) => `${o.id}:${JSON.stringify(o.matchValue)}:${o.label}`)
+			.join('|');
+	}
+
+	$effect(() => {
+		if (!node || node.type !== 'branch' || !branchProperty || !isEnumBranch) return;
+		const synced = syncEnumBranchOptions(branchProperty, node.data.options ?? []);
+		const current = node.data.options ?? [];
+		if (enumOptionsKey(synced) !== enumOptionsKey(current)) {
+			updateData({ options: synced });
+		}
+	});
+
+	function selectBranchState(prop: GameStateProperty) {
 		if (!node || node.type !== 'branch') return;
-		const options: FlowBranchOption[] = [
-			...(node.data.options ?? []),
-			{ id: nanoid(6), label: 'New path', conditions: [] },
-		];
-		updateData({ options });
+		const options = usesEnumValues(prop) ? syncEnumBranchOptions(prop) : [];
+		onchange({
+			...node,
+			data: {
+				...node.data,
+				branchStateId: prop.id,
+				label: node.data.label?.trim() ? node.data.label : prop.label,
+				options,
+			},
+		});
+	}
+
+	function clearBranchState() {
+		updateData({ branchStateId: undefined, options: [] });
 	}
 
 	function setPathDefault(optionId: string) {
@@ -125,19 +218,37 @@
 		updateData({ options });
 	}
 
-	function updatePathConditions(optionId: string, conditions: FlowBranchOption['conditions']) {
+	function addCompareBranch() {
+		if (!node || node.type !== 'branch' || !branchProperty) return;
+		const options = [...(node.data.options ?? []), createCompareBranch(branchProperty)];
+		updateData({ options });
+	}
+
+	function removeCompareBranch(optionId: string) {
+		if (!node || node.type !== 'branch') return;
+		updateData({
+			options: (node.data.options ?? []).filter((o) => o.id !== optionId),
+		});
+	}
+
+	function updateCompareOption(
+		optionId: string,
+		patch: Partial<FlowBranchOption>,
+	) {
 		if (!node || node.type !== 'branch') return;
 		const options = (node.data.options ?? []).map((o) =>
-			o.id === optionId ? { ...o, conditions } : o,
+			o.id === optionId ? { ...o, ...patch } : o,
 		);
 		updateData({ options });
 	}
 
-	function removeBranchOption(optionId: string) {
-		if (!node || node.type !== 'branch') return;
-		const options = node.data.options ?? [];
-		if (options.length <= 1) return;
-		updateData({ options: options.filter((o) => o.id !== optionId) });
+	function parseCompareValue(
+		raw: string,
+		prop: GameStateProperty,
+	): boolean | number | string {
+		if (prop.type === 'boolean') return raw === 'true';
+		if (prop.type === 'number') return Number(raw);
+		return raw;
 	}
 </script>
 
@@ -175,14 +286,28 @@
 	</div>
 
 	{#if node.type === 'scene'}
+		<button
+			type="button"
+			class="scene-box"
+			class:empty={!assignedDialog}
+			onclick={openSelectSceneModal}
+		>
+			{#if assignedDialog}
+				<span class="pick-name">{assignedDialog.displayName}</span>
+				<span class="pick-id">{assignedDialog.id}</span>
+			{:else}
+				<span class="select-placeholder">Select Scene</span>
+			{/if}
+		</button>
+	{:else if node.type === 'branch'}
 		<div class="field">
-			<label for="flow-dialog-search">Assign dialog</label>
+			<label for="flow-state-search">Branch on state</label>
 			<input
-				id="flow-dialog-search"
+				id="flow-state-search"
 				class="search"
 				type="search"
-				bind:value={searchQuery}
-				placeholder="Search scenes…"
+				bind:value={stateSearchQuery}
+				placeholder="Search state…"
 			/>
 		</div>
 
@@ -190,102 +315,166 @@
 			<button
 				type="button"
 				class="pick-item"
-				class:selected={!node.data.dialogId}
-				onclick={() => updateData({ dialogId: undefined })}
+				class:selected={!node.data.branchStateId}
+				onclick={clearBranchState}
 			>
 				<span class="pick-name">— None —</span>
 			</button>
-			{#each listedDialogs as d (d.id)}
+			{#each listedStates as prop (prop.id)}
 				<button
 					type="button"
 					class="pick-item"
-					class:selected={node.data.dialogId === d.id}
-					onclick={() =>
-						updateData({
-							dialogId: d.id,
-							label: node!.data.label?.trim() ? node!.data.label : d.displayName,
-						})}
+					class:selected={node.data.branchStateId === prop.id}
+					onclick={() => selectBranchState(prop)}
 				>
-					<span class="pick-name">{d.displayName}</span>
-					<span class="pick-id">{d.id}</span>
+					<span class="pick-name">{prop.label}</span>
+					<span class="pick-id">{prop.id}</span>
 				</button>
 			{/each}
 		</div>
 
-		{#if node.data.firstMeetings?.length}
-			<div class="meetings-block">
-				<span class="field-label">First meetings</span>
-				<ul>
-					{#each node.data.firstMeetings as meeting (meeting.characterId)}
-						<li>First meeting of {meeting.displayName}</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
-
-		<div class="actions">
-			<button type="button" class="btn" onclick={openCreateModal}>Create new scene…</button>
-			{#if node.data.dialogId}
-				<button
-					type="button"
-					class="btn btn-primary"
-					onclick={() => onEditDialog(node.data.dialogId!, node.data.label)}
-				>
-					Edit dialog
-				</button>
-			{/if}
-		</div>
-	{:else if node.type === 'branch'}
-		<p class="hint">
-			Each path is taken when its conditions match global state. Mark one path as the default
-			fallback when nothing else matches.
-		</p>
-		{#each node.data.options ?? [] as opt, i (opt.id)}
-			<section class="path-block">
-				<div class="option-row">
-					<div class="field">
-						<label>Path {i + 1}</label>
-						<input
-							value={opt.label}
-							oninput={(e) => {
-								const options = [...(node!.data.options ?? [])];
-								options[i] = { ...opt, label: (e.currentTarget as HTMLInputElement).value };
-								updateData({ options });
-							}}
-						/>
+		{#if !branchProperty}
+			<p class="hint">
+				Select a global state property. If it has valid values, paths are created automatically.
+				Otherwise add comparison branches against that state.
+			</p>
+		{:else if isEnumBranch}
+			<p class="hint">
+				Branching on <strong>{branchProperty.label}</strong> — one path per valid value.
+			</p>
+			{#each node.data.options ?? [] as opt, i (opt.id)}
+				<section class="path-block">
+					<div class="enum-path">
+						<span class="match-badge">= {String(opt.matchValue)}</span>
+						<div class="field">
+							<label for={`path-label-${opt.id}`}>Path {i + 1} label</label>
+							<input
+								id={`path-label-${opt.id}`}
+								value={opt.label}
+								oninput={(e) => {
+									const options = [...(node!.data.options ?? [])];
+									options[i] = {
+										...opt,
+										label: (e.currentTarget as HTMLInputElement).value,
+									};
+									updateData({ options });
+								}}
+							/>
+						</div>
 					</div>
-					<button
-						type="button"
-						class="btn btn-danger btn-sm"
-						disabled={(node.data.options?.length ?? 0) <= 1}
-						onclick={() => removeBranchOption(opt.id)}
-					>
-						Remove
-					</button>
-				</div>
-				<label class="default-check">
-					<input
-						type="radio"
-						name={`default-${node.id}`}
-						checked={opt.isDefault === true}
-						onchange={() => setPathDefault(opt.id)}
-					/>
-					Default fallback path
-				</label>
-				<div class="field">
-					<span class="field-label">When global state matches</span>
-					<ConditionEditor
-						conditions={opt.conditions ?? []}
-						properties={gameStateProperties}
-						onchange={(conditions) => updatePathConditions(opt.id, conditions)}
-					/>
-					{#if formatConditions(opt.conditions)}
-						<p class="hint summary">{formatConditions(opt.conditions)}</p>
-					{/if}
-				</div>
-			</section>
-		{/each}
-		<button type="button" class="btn" onclick={addBranchOption}>Add path</button>
+					<p class="hint summary">
+						{formatBranchPathSummary(opt, branchProperty)}
+					</p>
+				</section>
+			{/each}
+		{:else}
+			<p class="hint">
+				Branching on <strong>{branchProperty.label}</strong> — add comparison rules. Mark one path
+				as the default fallback when nothing else matches.
+			</p>
+			{#each node.data.options ?? [] as opt, i (opt.id)}
+				<section class="path-block">
+					<div class="compare-row">
+						<span class="state-prefix">{branchProperty.label}</span>
+						<div class="field compare-op">
+							<label for={`op-${opt.id}`} class="sr-only">Operator</label>
+							<select
+								id={`op-${opt.id}`}
+								value={opt.compareOp ?? 'eq'}
+								onchange={(e) =>
+									updateCompareOption(opt.id, {
+										compareOp: (e.currentTarget as HTMLSelectElement)
+											.value as ConditionOp,
+									})}
+							>
+								{#each OP_OPTIONS as op (op.value)}
+									<option value={op.value}>{op.label}</option>
+								{/each}
+							</select>
+						</div>
+						<div class="field compare-value">
+							<label for={`val-${opt.id}`}>Value</label>
+							{#if branchProperty.type === 'boolean'}
+								<select
+									id={`val-${opt.id}`}
+									value={String(opt.compareValue ?? false)}
+									onchange={(e) =>
+										updateCompareOption(opt.id, {
+											compareValue: parseCompareValue(
+												(e.currentTarget as HTMLSelectElement).value,
+												branchProperty,
+											),
+										})}
+								>
+									<option value="false">false</option>
+									<option value="true">true</option>
+								</select>
+							{:else if branchProperty.type === 'number'}
+								<input
+									id={`val-${opt.id}`}
+									type="number"
+									value={Number(opt.compareValue ?? 0)}
+									oninput={(e) =>
+										updateCompareOption(opt.id, {
+											compareValue: parseCompareValue(
+												(e.currentTarget as HTMLInputElement).value,
+												branchProperty,
+											),
+										})}
+								/>
+							{:else}
+								<input
+									id={`val-${opt.id}`}
+									type="text"
+									value={String(opt.compareValue ?? '')}
+									oninput={(e) =>
+										updateCompareOption(opt.id, {
+											compareValue: (e.currentTarget as HTMLInputElement).value,
+										})}
+								/>
+							{/if}
+						</div>
+					</div>
+					<div class="option-row">
+						<div class="field">
+							<label for={`cmp-label-${opt.id}`}>Path label</label>
+							<input
+								id={`cmp-label-${opt.id}`}
+								value={opt.label}
+								oninput={(e) => {
+									const options = [...(node!.data.options ?? [])];
+									options[i] = {
+										...opt,
+										label: (e.currentTarget as HTMLInputElement).value,
+									};
+									updateData({ options });
+								}}
+							/>
+						</div>
+						<button
+							type="button"
+							class="btn btn-danger btn-sm"
+							onclick={() => removeCompareBranch(opt.id)}
+						>
+							Remove
+						</button>
+					</div>
+					<label class="default-check">
+						<input
+							type="radio"
+							name={`default-${node.id}`}
+							checked={opt.isDefault === true}
+							onchange={() => setPathDefault(opt.id)}
+						/>
+						Default fallback path
+					</label>
+					<p class="hint summary">
+						{formatBranchPathSummary(opt, branchProperty)}
+					</p>
+				</section>
+			{/each}
+			<button type="button" class="btn" onclick={addCompareBranch}>Add branch</button>
+		{/if}
 	{:else if node.type === 'start'}
 		<p class="hint">Connect from here to your first scene. Only one game start node.</p>
 	{:else if node.type === 'end'}
@@ -303,10 +492,57 @@
 
 	{#if node.type !== 'start'}
 		<div class="inspector-actions">
-			<button type="button" class="btn btn-danger" onclick={ondelete}>Delete node</button>
+			<div class="action-grid">
+				{#if node.type === 'scene' && node.data.dialogId}
+					<button
+						type="button"
+						class="btn btn-primary"
+						onclick={() => onEditDialog(node.data.dialogId!, node.data.label)}
+					>
+						Edit dialog
+					</button>
+				{/if}
+				<button type="button" class="btn btn-danger" onclick={ondelete}>Delete node</button>
+			</div>
 		</div>
 	{/if}
 {/if}
+
+<dialog bind:this={selectSceneDialogEl} class="modal" onclose={closeSelectSceneModal}>
+	<div class="modal-panel">
+		<header class="modal-header">
+			<h2>Select scene</h2>
+		</header>
+		<div class="modal-body">
+			<div class="field">
+				<label for="select-scene-search">Search</label>
+				<input
+					id="select-scene-search"
+					class="search"
+					type="search"
+					bind:value={searchQuery}
+					placeholder="Search scenes…"
+				/>
+			</div>
+			<div class="dialog-pick-list modal-pick-list">
+				{#each listedDialogs as d (d.id)}
+					<button type="button" class="pick-item" onclick={() => selectScene(d)}>
+						<span class="pick-name">{d.displayName}</span>
+						<span class="pick-id">{d.id}</span>
+					</button>
+				{/each}
+			</div>
+		</div>
+		<footer class="modal-footer">
+			<div class="modal-footer-right">
+				<button type="button" class="btn" onclick={closeSelectSceneModal}>Cancel</button>
+				<button type="button" class="btn btn-primary" onclick={openCreateFromSelect}>
+					Create…
+				</button>
+			</div>
+		</footer>
+	</div>
+</dialog>
 
 <dialog bind:this={createDialogEl} class="modal" onclose={closeCreateModal}>
 	<form class="modal-panel" onsubmit={submitCreate}>
@@ -455,27 +691,56 @@
 		outline-offset: -2px;
 	}
 
-	.meetings-block {
-		margin: 0.75rem 0;
-	}
-
-	.meetings-block ul {
-		margin: 0.35rem 0 0;
-		padding-left: 1.1rem;
-		font-size: 0.85rem;
-		color: var(--text-muted);
-	}
-
-	.actions {
+	.scene-box {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
+		flex-direction: column;
+		align-items: flex-start;
+		width: 100%;
+		text-align: left;
+		padding: 0.65rem 0.75rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--bg);
+		color: var(--text);
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.scene-box:hover {
+		background: var(--bg-hover);
+	}
+
+	.scene-box.empty {
+		border-style: dashed;
+		align-items: center;
+		justify-content: center;
+		min-height: 3.5rem;
+	}
+
+	.select-placeholder {
+		font-size: 0.9rem;
+		color: var(--text-muted);
 	}
 
 	.inspector-actions {
 		margin-top: 1.5rem;
 		padding-top: 1rem;
 		border-top: 1px solid var(--border);
+	}
+
+	.action-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+
+	.action-grid .btn-danger:only-child {
+		grid-column: 1 / -1;
+	}
+
+	.modal-pick-list {
+		max-height: 280px;
+		margin-bottom: 0;
 	}
 
 	.path-block {
@@ -509,6 +774,62 @@
 		margin-top: 0.35rem;
 		font-family: var(--mono);
 		font-size: 0.75rem;
+	}
+
+	.enum-path {
+		display: flex;
+		gap: 0.65rem;
+		align-items: flex-end;
+	}
+
+	.match-badge {
+		flex-shrink: 0;
+		padding: 0.35rem 0.55rem;
+		margin-bottom: 0.35rem;
+		font-family: var(--mono);
+		font-size: 0.8rem;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		color: var(--text-muted);
+	}
+
+	.enum-path .field {
+		flex: 1;
+	}
+
+	.compare-row {
+		display: flex;
+		gap: 0.5rem;
+		align-items: flex-end;
+		margin-bottom: 0.5rem;
+	}
+
+	.state-prefix {
+		flex-shrink: 0;
+		padding-bottom: 0.35rem;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--text);
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
+	}
+
+	.compare-op {
+		flex: 0 0 4.5rem;
+	}
+
+	.compare-value {
+		flex: 1;
 	}
 
 	.option-row {

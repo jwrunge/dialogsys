@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { conditionsSchema } from './conditions';
+import { conditionOpSchema } from './conditions';
+import { gameStateValueSchema } from './gameState';
 
 export const flowNodeTypeSchema = z.enum(['start', 'scene', 'branch', 'end']);
 
@@ -11,13 +12,16 @@ export const flowFirstMeetingSchema = z.object({
 export const flowBranchOptionSchema = z.object({
 	id: z.string(),
 	label: z.string(),
-	conditions: conditionsSchema,
+	matchValue: gameStateValueSchema.optional(),
+	compareOp: conditionOpSchema.optional(),
+	compareValue: gameStateValueSchema.optional(),
 	isDefault: z.boolean().optional(),
 });
 
 export const flowNodeDataSchema = z.object({
 	label: z.string().optional(),
 	dialogId: z.string().optional(),
+	branchStateId: z.string().optional(),
 	notes: z.string().optional(),
 	firstMeetings: z.array(flowFirstMeetingSchema).optional(),
 	options: z.array(flowBranchOptionSchema).optional(),
