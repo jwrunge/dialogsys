@@ -1,13 +1,13 @@
 <script lang="ts">
 	import {
 		SvelteFlow,
-		Controls,
 		Background,
 		BackgroundVariant,
-		MiniMap,
+		useSvelteFlow,
 		type Node,
 		type Edge,
 		type Connection,
+		type OnConnectEnd,
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import FlowSceneNode from './FlowSceneNode.svelte';
@@ -21,6 +21,12 @@
 		onNodeSelect: (nodeId: string) => void;
 		onConnect: (connection: Connection) => void;
 		onDragStop: () => void;
+		onEdgeClick: (edgeId: string) => void;
+		onConnectEndToPane: (params: {
+			sourceNodeId: string;
+			sourceHandle: string | null;
+			position: { x: number; y: number };
+		}) => void;
 	}
 
 	let {
@@ -32,7 +38,11 @@
 		onNodeSelect,
 		onConnect,
 		onDragStop,
+		onEdgeClick,
+		onConnectEndToPane,
 	}: Props = $props();
+
+	const { screenToFlowPosition } = useSvelteFlow();
 
 	let flowNodes = $state.raw<Node[]>([]);
 	let flowEdges = $state.raw<Edge[]>([]);
@@ -61,6 +71,20 @@
 		branch: FlowSceneNode,
 		end: FlowSceneNode,
 	};
+
+	const handleConnectEnd: OnConnectEnd = (event, connectionState) => {
+		if (connectionState.isValid !== false || !connectionState.fromNode) return;
+
+		const clientX = 'clientX' in event ? event.clientX : event.changedTouches[0]?.clientX;
+		const clientY = 'clientY' in event ? event.clientY : event.changedTouches[0]?.clientY;
+		if (clientX == null || clientY == null) return;
+
+		onConnectEndToPane({
+			sourceNodeId: connectionState.fromNode.id,
+			sourceHandle: connectionState.fromHandle?.id ?? null,
+			position: screenToFlowPosition({ x: clientX, y: clientY }),
+		});
+	};
 </script>
 
 <div class="editor-canvas">
@@ -71,14 +95,14 @@
 		fitView
 		onnodeclick={({ node }) => onNodeSelect(node.id)}
 		onconnect={(params) => onConnect(params)}
+		onconnectend={handleConnectEnd}
+		onedgeclick={({ edge }) => onEdgeClick(edge.id)}
 		onnodedragstop={() => {
 			pushToParent();
 			onDragStop();
 		}}
 	>
-		<Controls />
 		<Background variant={BackgroundVariant.Dots} />
-		<MiniMap />
 	</SvelteFlow>
 </div>
 

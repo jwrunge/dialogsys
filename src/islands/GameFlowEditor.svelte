@@ -42,9 +42,17 @@
 	let canvasNodes = $state.raw<CanvasNode[]>([]);
 	let canvasEdges = $state.raw<CanvasEdge[]>([]);
 
-	const selectedNode = $derived(
-		selectedNodeId ? (flowNodes.find((n) => n.id === selectedNodeId) ?? null) : null,
-	);
+	const selectedNode = $derived.by((): FlowNode | null => {
+		if (!selectedNodeId) return null;
+		const n = canvasNodes.find((cn) => cn.id === selectedNodeId);
+		if (!n) return null;
+		return {
+			id: n.id,
+			type: n.type as FlowNode['type'],
+			position: n.position,
+			data: (n.data ?? {}) as FlowNode['data'],
+		};
+	});
 
 	function toCanvas(graph: FlowGraph) {
 		canvasNodes = graph.nodes.map((n) => ({
@@ -201,18 +209,78 @@
 
 	function deleteSelected() {
 		if (!selectedNodeId) return;
-		const node = flowNodes.find((n) => n.id === selectedNodeId);
+		const node = canvasNodes.find((n) => n.id === selectedNodeId);
 		if (!node || node.type === 'start') return;
-		if (!confirm(`Delete "${node.data.label ?? node.id}" from the flow chart?`)) return;
+		const label = (node.data?.label as string | undefined) ?? node.id;
+		if (!confirm(`Delete "${label}" from the flow chart?`)) return;
 		canvasNodes = canvasNodes.filter((n) => n.id !== selectedNodeId);
 		canvasEdges = canvasEdges.filter(
 			(e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
 		);
 		selectedNodeId = null;
+		syncKey = `local-${Date.now()}`;
 		scheduleSave();
 	}
 
-	onMount(load);
+	function deleteEdge(edgeId: string) {
+		if (!confirm('Remove this connection from the flow chart?')) return;
+		canvasEdges = canvasEdges.filter((e) => e.id !== edgeId);
+		syncKey = `local-${Date.now()}`;
+		scheduleSave();
+	}
+
+	function onConnectEndToPane(params: {
+		sourceNodeId: string;
+		sourceHandle: string | null;
+		position: { x: number; y: number };
+	}) {
+		const node = createSceneNode(params.position);
+		const id = `e-${params.sourceNodeId}-${node.id}-${nanoid(4)}`;
+		canvasNodes = [
+			...canvasNodes,
+			{
+				id: node.id,
+				type: node.type,
+				position: node.position,
+				data: node.data,
+			},
+		];
+		canvasEdges = [
+			...canvasEdges,
+			{
+				id,
+				source: params.sourceNodeId,
+				target: node.id,
+				sourceHandle: params.sourceHandle,
+			},
+		];
+		selectedNodeId = node.id;
+		syncKey = `local-${Date.now()}`;
+		scheduleSave();
+	}
+
+	function isEditableTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tag = target.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+		return target.isContentEditable;
+	}
+
+	function onKeyDown(event: KeyboardEvent) {
+		if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+		if (isEditableTarget(event.target)) return;
+		if (!selectedNodeId) return;
+		const node = canvasNodes.find((n) => n.id === selectedNodeId);
+		if (!node || node.type === 'start') return;
+		event.preventDefault();
+		deleteSelected();
+	}
+
+	onMount(() => {
+		load();
+		window.addEventListener('keydown', onKeyDown);
+		return () => window.removeEventListener('keydown', onKeyDown);
+	});
 </script>
 
 <div class="flow-editor">
@@ -246,6 +314,8 @@
 					onNodeSelect={selectNode}
 					{onConnect}
 					onDragStop={scheduleSave}
+					onEdgeClick={deleteEdge}
+					{onConnectEndToPane}
 				/>
 			</div>
 			<aside class="editor-inspector">

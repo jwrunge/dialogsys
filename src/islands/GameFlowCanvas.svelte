@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteFlowProvider } from '@xyflow/svelte';
 
 	type InnerComponent = typeof import('./GameFlowCanvasInner.svelte').default;
 
@@ -33,6 +34,12 @@
 		onNodeSelect: (nodeId: string) => void;
 		onConnect: (connection: FlowConnection) => void;
 		onDragStop: () => void;
+		onEdgeClick: (edgeId: string) => void;
+		onConnectEndToPane: (params: {
+			sourceNodeId: string;
+			sourceHandle: string | null;
+			position: { x: number; y: number };
+		}) => void;
 	}
 
 	let {
@@ -44,6 +51,8 @@
 		onNodeSelect,
 		onConnect,
 		onDragStop,
+		onEdgeClick,
+		onConnectEndToPane,
 	}: Props = $props();
 
 	let Inner = $state<InnerComponent | null>(null);
@@ -63,16 +72,20 @@
 	{#if loadError}
 		<p class="canvas-error">{loadError}</p>
 	{:else if Inner}
-		<Inner
-			{nodes}
-			{edges}
-			{syncKey}
-			{setNodes}
-			{setEdges}
-			{onNodeSelect}
-			{onConnect}
-			{onDragStop}
-		/>
+		<SvelteFlowProvider>
+			<Inner
+				{nodes}
+				{edges}
+				{syncKey}
+				{setNodes}
+				{setEdges}
+				{onNodeSelect}
+				{onConnect}
+				{onDragStop}
+				{onEdgeClick}
+				{onConnectEndToPane}
+			/>
+		</SvelteFlowProvider>
 	{:else}
 		<p class="canvas-loading">Loading flow chart…</p>
 	{/if}
