@@ -8,10 +8,9 @@ const { slug, current } = Astro.props;
 const base = `/projects/${slug}`;
 
 const links = [
-	{ href: base, label: 'Dashboard', id: 'dashboard' },
+	{ href: `${base}/dialogs`, label: 'Dialogs', id: 'dialogs' },
 	{ href: `${base}/characters`, label: 'Characters', id: 'characters' },
 	{ href: `${base}/notes`, label: 'Notes', id: 'notes' },
-	{ href: `${base}/dialogs`, label: 'Dialogs', id: 'dialogs' },
 	{ href: `${base}/issues`, label: 'Issues', id: 'issues' },
 	{ href: `${base}/history`, label: 'History', id: 'history' },
 	{ href: `${base}/export`, label: 'Export', id: 'export' },

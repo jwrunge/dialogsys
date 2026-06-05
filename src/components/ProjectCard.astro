@@ -8,7 +8,7 @@ interface Props {
 const { project } = Astro.props;
 ---
 
-<a href={`/projects/${project.slug}`} class="card card-link">
+<a href={`/projects/${project.slug}/dialogs`} class="card card-link">
 	<h3>{project.displayName}</h3>
 	<p>{project.description || 'No description'}</p>
 	<span class="meta">Updated {new Date(project.updatedAt).toLocaleDateString()}</span>

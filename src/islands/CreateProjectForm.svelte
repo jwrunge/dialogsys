@@ -16,7 +16,7 @@
 				body: JSON.stringify({ slug, displayName, description }),
 			});
 			localStorage.setItem('dialogsys:lastProject', project.slug);
-			window.location.href = `/projects/${project.slug}`;
+			window.location.href = `/projects/${project.slug}/dialogs`;
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
