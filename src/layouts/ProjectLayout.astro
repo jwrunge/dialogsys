@@ -1,6 +1,7 @@
 ---
 import BaseLayout from './BaseLayout.astro';
 import ProjectNav from '../components/ProjectNav.astro';
+import ProjectTitle from '../islands/ProjectTitle.svelte';
 import VersioningHeartbeat from '../islands/VersioningHeartbeat.svelte';
 import { getProject } from '../lib/server/projects';
 
@@ -8,40 +9,49 @@ interface Props {
 	slug: string;
 	current?: string;
 	title?: string;
+	variant?: 'default' | 'flow';
 }
 
-const { slug, current, title } = Astro.props;
+const { slug, current, title, variant = 'default' } = Astro.props;
 const project = await getProject(slug);
 const pageTitle = title ? `${title} · ${project.displayName}` : project.displayName;
 ---
 
 <BaseLayout title={`${pageTitle} · Dialogsys`}>
-	<div class="container">
-		<div class="project-header">
-			<div>
+	<div class:list={['project-shell', { 'project-shell--flow': variant === 'flow' }]}>
+		<div class="container">
+			<div class="project-header">
 				<a href="/" class="back-link">← All projects</a>
-				<h1>{project.displayName}</h1>
-				<p class="slug">{project.slug}</p>
+				<ProjectTitle
+					client:load
+					slug={slug}
+					displayName={project.displayName}
+					description={project.description}
+				/>
 			</div>
+			<ProjectNav slug={slug} current={current} />
+			<VersioningHeartbeat client:load slug={slug} />
+			{variant !== 'flow' && <slot />}
 		</div>
-		<ProjectNav slug={slug} current={current} />
-		<VersioningHeartbeat client:load slug={slug} />
-		<slot />
+		{variant === 'flow' && (
+			<div class="flow-viewport">
+				<slot />
+			</div>
+		)}
 	</div>
 </BaseLayout>
 
 <style>
 	.project-header {
 		display: flex;
-		align-items: flex-start;
+		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
-		margin-bottom: 0.5rem;
+		margin-bottom: 0.75rem;
 	}
 
 	.back-link {
-		display: inline-block;
-		margin-bottom: 0.35rem;
+		flex-shrink: 0;
 		font-size: 0.9rem;
 		color: var(--text-muted);
 		text-decoration: none;
@@ -52,10 +62,33 @@ const pageTitle = title ? `${title} · ${project.displayName}` : project.display
 		text-decoration: none;
 	}
 
-	.slug {
-		margin: 0;
-		color: var(--text-muted);
-		font-size: 0.85rem;
-		font-family: var(--mono);
+	.project-shell .container {
+		width: 100%;
+		max-width: 1100px;
+	}
+
+	.project-shell--flow {
+		display: flex;
+		flex-direction: column;
+		min-height: 100dvh;
+	}
+
+	.project-shell--flow .container {
+		flex-shrink: 0;
+		align-self: center;
+	}
+
+	.project-shell--flow .container :global(.project-nav) {
+		margin-bottom: 0;
+		padding-bottom: 0;
+	}
+
+	.flow-viewport {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		width: min(100rem, 100vw);
+		margin-inline: max(0px, (100vw - min(100rem, 100vw)) / 2);
 	}
 </style>

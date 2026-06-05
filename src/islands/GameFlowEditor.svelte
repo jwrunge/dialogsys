@@ -497,12 +497,17 @@
 <style>
 	.flow-editor {
 		position: relative;
-		margin: 0 -1.5rem;
-		width: calc(100% + 3rem);
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		width: 100%;
 	}
 
 	.flow-layout {
-		height: max(32rem, calc(100dvh - 12rem));
+		flex: 1;
+		min-height: 0;
+		height: 100%;
 	}
 
 	.status-toast {

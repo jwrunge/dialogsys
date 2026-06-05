@@ -65,6 +65,8 @@
 		direction: DialogNode,
 		end: DialogNode,
 	};
+
+	const proOptions = { hideAttribution: true };
 </script>
 
 <div class="editor-canvas">
@@ -72,6 +74,7 @@
 		bind:nodes={flowNodes}
 		bind:edges={flowEdges}
 		{nodeTypes}
+		{proOptions}
 		fitView
 		onnodeclick={({ node }) => onNodeSelect(node.id)}
 		onconnect={(params) => onConnect(params)}

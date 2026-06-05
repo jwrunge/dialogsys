@@ -71,6 +71,8 @@
 		end: FlowSceneNode,
 	};
 
+	const proOptions = { hideAttribution: true };
+
 	const handleConnectEnd: OnConnectEnd = (event, connectionState) => {
 		if (connectionState.isValid || !connectionState.fromNode) return;
 
@@ -91,6 +93,7 @@
 		bind:nodes={flowNodes}
 		bind:edges={flowEdges}
 		{nodeTypes}
+		{proOptions}
 		connectionRadius={80}
 		fitView
 		onnodeclick={({ node }) => onNodeSelect(node.id)}

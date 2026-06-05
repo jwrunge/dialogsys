@@ -158,7 +158,7 @@ export async function updateProject(
 		updatedAt: new Date().toISOString(),
 	};
 	await writeJsonAtomic(projectFilePath(slug, 'project.json'), updated);
-	await scheduleSnapshot(slug, 'project metadata updated');
+	void scheduleSnapshot(slug, 'project metadata updated');
 	return updated;
 }
 

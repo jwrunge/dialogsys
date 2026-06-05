@@ -5,6 +5,6 @@ import GameFlowEditor from '../../../islands/GameFlowEditor.svelte';
 const { slug } = Astro.params;
 ---
 
-<ProjectLayout slug={slug!} current="flow" title="Flow">
+<ProjectLayout slug={slug!} current="flow" title="Flow" variant="flow">
 	<GameFlowEditor client:only="svelte" slug={slug!} />
 </ProjectLayout>
