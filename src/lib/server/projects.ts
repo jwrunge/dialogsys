@@ -295,11 +295,44 @@ export async function createDialog(
 	return saved;
 }
 
-export async function deleteDialog(slug: string, id: string): Promise<void> {
+export async function updateDialogMeta(
+	slug: string,
+	id: string,
+	patch: Partial<Pick<DialogGraph, 'displayName' | 'description'>>,
+): Promise<DialogGraph> {
+	const graph = await getDialog(slug, id);
+	return saveDialog(slug, {
+		...graph,
+		...patch,
+	});
+}
+
+export async function clearDialogFromFlow(slug: string, dialogId: string): Promise<number> {
+	const flow = await getFlow(slug);
+	let count = 0;
+	let changed = false;
+	const nodes = flow.nodes.map((node) => {
+		if (node.type !== 'scene' || node.data.dialogId !== dialogId) return node;
+		count++;
+		changed = true;
+		const nextData = { ...node.data };
+		delete nextData.dialogId;
+		delete nextData.firstMeetings;
+		return { ...node, data: nextData };
+	});
+	if (changed) {
+		await saveFlow(slug, { ...flow, nodes });
+	}
+	return count;
+}
+
+export async function deleteDialog(slug: string, id: string): Promise<{ flowNodesCleared: number }> {
+	const flowNodesCleared = await clearDialogFromFlow(slug, id);
 	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
 	await fs.unlink(file);
 	await touchProject(slug);
 	void scheduleSnapshot(slug, `dialog deleted: ${id}`, { immediate: true });
+	return { flowNodesCleared };
 }
 
 export async function getFlow(slug: string): Promise<FlowGraph> {

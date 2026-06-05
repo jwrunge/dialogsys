@@ -49,7 +49,12 @@
 	<div class="modal-panel" role="document" onclick={(e) => e.stopPropagation()}>
 		<header class="modal-header">
 			<h2>{title}</h2>
-			<button type="button" class="btn btn-primary" onclick={handleClose}>Done</button>
+			<div class="header-actions">
+				{#if dialogId}
+					<a class="btn" href={`/projects/${slug}/scenes/${dialogId}?from=flow`}>Open full editor</a>
+				{/if}
+				<button type="button" class="btn btn-primary" onclick={handleClose}>Done</button>
+			</div>
 		</header>
 		<div class="modal-body">
 			{#if loadError}
@@ -109,12 +114,20 @@
 		font-size: 1rem;
 	}
 
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-shrink: 0;
+	}
+
 	.modal-body {
 		flex: 1;
 		min-height: 0;
 		overflow: hidden;
 	}
 
+	.modal-body :global(.scene-editor.embedded),
 	.modal-body :global(.editor-shell.embedded) {
 		margin: 0;
 		width: 100%;
@@ -123,6 +136,7 @@
 		flex-direction: column;
 	}
 
+	.modal-body :global(.scene-editor.embedded .editor-layout),
 	.modal-body :global(.editor-shell.embedded .editor-layout) {
 		flex: 1;
 		min-height: 0;

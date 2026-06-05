@@ -6,6 +6,7 @@
 	import {
 		createCompareBranch,
 		formatBranchPathSummary,
+		resolvedValidValues,
 		syncEnumBranchOptions,
 		usesEnumValues,
 	} from '../lib/flow/branchState';
@@ -348,31 +349,11 @@
 			<p class="hint">
 				Branching on <strong>{branchProperty.label}</strong> — one path per valid value.
 			</p>
-			{#each node.data.options ?? [] as opt, i (opt.id)}
-				<section class="path-block">
-					<div class="enum-path">
-						<span class="match-badge">= {String(opt.matchValue)}</span>
-						<div class="field">
-							<label for={`path-label-${opt.id}`}>Path {i + 1} label</label>
-							<input
-								id={`path-label-${opt.id}`}
-								value={opt.label}
-								oninput={(e) => {
-									const options = [...(node!.data.options ?? [])];
-									options[i] = {
-										...opt,
-										label: (e.currentTarget as HTMLInputElement).value,
-									};
-									updateData({ options });
-								}}
-							/>
-						</div>
-					</div>
-					<p class="hint summary">
-						{formatBranchPathSummary(opt, branchProperty)}
-					</p>
-				</section>
-			{/each}
+			<div class="enum-values">
+				{#each resolvedValidValues(branchProperty) as value (String(value))}
+					<span class="match-badge">= {String(value)}</span>
+				{/each}
+			</div>
 		{:else}
 			<p class="hint">
 				Branching on <strong>{branchProperty.label}</strong> — add comparison rules. Mark one path
@@ -821,26 +802,21 @@
 		font-size: 0.75rem;
 	}
 
-	.enum-path {
+	.enum-values {
 		display: flex;
-		gap: 0.65rem;
-		align-items: flex-end;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 	}
 
 	.match-badge {
 		flex-shrink: 0;
 		padding: 0.35rem 0.55rem;
-		margin-bottom: 0.35rem;
 		font-family: var(--mono);
 		font-size: 0.8rem;
 		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
 		color: var(--text-muted);
-	}
-
-	.enum-path .field {
-		flex: 1;
 	}
 
 	.compare-row {

@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import {
 	getDialog,
 	saveDialog,
+	updateDialogMeta,
 	deleteDialog,
 	jsonResponse,
 	errorResponse,
@@ -26,10 +27,20 @@ export const PUT: APIRoute = async ({ params, request }) => {
 	}
 };
 
+export const PATCH: APIRoute = async ({ params, request }) => {
+	try {
+		const body = await request.json();
+		const graph = await updateDialogMeta(params.slug!, params.id!, body);
+		return jsonResponse({ graph });
+	} catch (e) {
+		return errorResponse((e as Error).message, 400);
+	}
+};
+
 export const DELETE: APIRoute = async ({ params }) => {
 	try {
-		await deleteDialog(params.slug!, params.id!);
-		return jsonResponse({ ok: true });
+		const result = await deleteDialog(params.slug!, params.id!);
+		return jsonResponse({ ok: true, ...result });
 	} catch (e) {
 		return errorResponse((e as Error).message, 404);
 	}

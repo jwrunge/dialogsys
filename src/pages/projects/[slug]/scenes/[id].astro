@@ -6,23 +6,22 @@ import { getDialog } from '../../../../lib/server/projects';
 const { slug, id } = Astro.params;
 
 let sceneTitle = id!;
+let sceneDescription = '';
 try {
 	const graph = await getDialog(slug!, id!);
 	sceneTitle = graph.displayName || id!;
+	sceneDescription = graph.description ?? '';
 } catch {
 	/* use id as fallback */
 }
 ---
 
-<ProjectLayout slug={slug!} current="scenes" title={sceneTitle}>
-	<h2 class="scene-title">{sceneTitle}</h2>
-	<DialogGraphEditor client:only="svelte" slug={slug!} dialogId={id!} />
+<ProjectLayout slug={slug!} current="scenes" title={sceneTitle} variant="flow">
+	<DialogGraphEditor
+		client:only="svelte"
+		slug={slug!}
+		dialogId={id!}
+		displayName={sceneTitle}
+		description={sceneDescription}
+	/>
 </ProjectLayout>
-
-<style>
-	.scene-title {
-		margin: 0 0 0.75rem;
-		font-size: 1.15rem;
-		font-weight: 600;
-	}
-</style>

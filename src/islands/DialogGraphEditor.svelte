@@ -1,67 +1,139 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
 	import type { Character, CharactersFile } from '../lib/schema/characters';
 	import type { DialogGraph, GraphNode, GraphEdge } from '../lib/schema/graph';
 	import {
-		insertNodeAfter,
 		insertNodeBefore,
-		moveNodeBefore,
 		removeChoiceOption,
 		setBranchTarget,
 		unlinkNode,
 	} from '../lib/graph/graphEdit';
 	import { createBlankNode } from '../lib/graph/nodeFactory';
 	import { findEntryNode, singleNextTarget } from '../lib/graph/graphUtils';
-	import { getBlockMemberIds, getSiblingIds } from '../lib/graph/pathTree';
-	import DialogTreeView from './DialogTreeView.svelte';
+	import DialogFlowCanvas from './DialogFlowCanvas.svelte';
 	import NodeInspector from './NodeInspector.svelte';
+	import SceneTitle from './SceneTitle.svelte';
 
 	interface Props {
 		slug: string;
 		dialogId: string;
+		displayName?: string;
+		description?: string;
 		embedded?: boolean;
 	}
 
-	let { slug, dialogId, embedded = false }: Props = $props();
+	let {
+		slug,
+		dialogId,
+		displayName: initialDisplayName = '',
+		description: initialDescription = '',
+		embedded = false,
+	}: Props = $props();
+
+	type CanvasNode = {
+		id: string;
+		type?: string;
+		position: { x: number; y: number };
+		data?: Record<string, unknown>;
+	};
+	type CanvasEdge = {
+		id: string;
+		source: string;
+		target: string;
+		sourceHandle?: string | null;
+		targetHandle?: string | null;
+		data?: Record<string, unknown>;
+	};
 
 	let loading = $state(true);
 	let ready = $state(false);
-
-	let graphMeta = $state({ displayName: '', description: '' });
-	let selectedNodeId = $state<string | null>(null);
-	let saveStatus = $state('');
 	let loadError = $state('');
+	let saveStatus = $state('');
+	let selectedNodeId = $state<string | null>(null);
 	let characters = $state<Character[]>([]);
 	let dialogIds = $state<string[]>([]);
+	let graphMeta = $state({ displayName: initialDisplayName, description: initialDescription });
+	let syncKey = $state('');
+	let confirmDialogEl = $state<HTMLDialogElement | null>(null);
+	let confirmMode = $state<'node' | 'edge'>('node');
+	let confirmMessage = $state('');
+	let pendingEdge = $state<CanvasEdge | null>(null);
 
-	let nodes = $state<GraphNode[]>([]);
-	let edges = $state<GraphEdge[]>([]);
-	let activeBranches = $state<Record<string, string>>({});
-	let expandedIds = $state(new Set<string>());
-	let openMenuId = $state<string | null>(null);
-	let dragNodeId = $state<string | null>(null);
+	let canvasNodes = $state.raw<CanvasNode[]>([]);
+	let canvasEdges = $state.raw<CanvasEdge[]>([]);
 
-	const selectedNode = $derived(
-		selectedNodeId ? (nodes.find((n) => n.id === selectedNodeId) ?? null) : null,
+	const selectedNode = $derived.by((): GraphNode | null => {
+		if (!selectedNodeId) return null;
+		const n = canvasNodes.find((cn) => cn.id === selectedNodeId);
+		if (!n) return null;
+		return {
+			id: n.id,
+			type: n.type as GraphNode['type'],
+			position: n.position,
+			data: (n.data ?? {}) as GraphNode['data'],
+		};
+	});
+
+	const graphNodes = $derived(
+		canvasNodes.map((n) => ({
+			id: n.id,
+			type: n.type as GraphNode['type'],
+			position: n.position,
+			data: (n.data ?? {}) as GraphNode['data'],
+		})),
 	);
 
-	function toGraph(): DialogGraph {
+	const graphEdges = $derived(
+		canvasEdges.map((e) => ({
+			id: e.id,
+			source: e.source,
+			target: e.target,
+			sourceHandle: e.sourceHandle ?? undefined,
+			targetHandle: e.targetHandle ?? undefined,
+			data: e.data as GraphEdge['data'],
+		})),
+	);
+
+	function toCanvas(graph: DialogGraph) {
+		canvasNodes = graph.nodes.map((n) => ({
+			id: n.id,
+			type: n.type,
+			position: n.position,
+			data: n.data,
+		}));
+		canvasEdges = graph.edges.map((e) => ({
+			id: e.id,
+			source: e.source,
+			target: e.target,
+			sourceHandle: e.sourceHandle,
+			targetHandle: e.targetHandle,
+			data: e.data,
+		}));
+		syncKey = `${graph.updatedAt ?? Date.now()}`;
+	}
+
+	function fromCanvas(): DialogGraph {
 		return {
 			id: dialogId,
 			displayName: graphMeta.displayName,
 			description: graphMeta.description,
-			nodes,
-			edges,
+			nodes: canvasNodes.map((n) => ({
+				id: n.id,
+				type: n.type as GraphNode['type'],
+				position: n.position,
+				data: (n.data ?? {}) as GraphNode['data'],
+			})),
+			edges: canvasEdges.map((e) => ({
+				id: e.id,
+				source: e.source,
+				target: e.target,
+				sourceHandle: e.sourceHandle ?? undefined,
+				targetHandle: e.targetHandle ?? undefined,
+				data: e.data as GraphEdge['data'],
+			})),
 		};
-	}
-
-	function loadGraph(graph: DialogGraph) {
-		if (!Array.isArray(graph.nodes)) throw new Error('Scene has no nodes array');
-		if (!Array.isArray(graph.edges)) throw new Error('Scene has no edges array');
-		nodes = graph.nodes;
-		edges = graph.edges;
-		expandedIds = new Set(graph.nodes.map((n) => n.id));
 	}
 
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -77,7 +149,7 @@
 		try {
 			await api(`/api/projects/${slug}/dialogs/${dialogId}`, {
 				method: 'PUT',
-				body: JSON.stringify({ graph: toGraph() }),
+				body: JSON.stringify({ graph: fromCanvas() }),
 			});
 			saveStatus = 'Saved';
 			setTimeout(() => {
@@ -99,13 +171,13 @@
 				api<{ dialogs: { id: string }[] }>(`/api/projects/${slug}/dialogs`),
 			]);
 			graphMeta = { displayName: graph.displayName, description: graph.description };
-			loadGraph(graph);
+			if (!Array.isArray(graph.nodes)) throw new Error('Scene has no nodes array');
+			if (!Array.isArray(graph.edges)) throw new Error('Scene has no edges array');
+			toCanvas(graph);
 			characters = Array.isArray(chars.characters) ? chars.characters : [];
 			dialogIds = dialogs.dialogs.map((d) => d.id);
 			ready = true;
-
-			const hash = window.location.hash.replace(/^#/, '');
-			if (hash) selectedNodeId = hash;
+			selectFromHash();
 		} catch (e) {
 			loadError = (e as Error).message;
 		} finally {
@@ -113,222 +185,447 @@
 		}
 	}
 
-	function insertBlank(relativeId: string, position: 'before' | 'after') {
-		const relative = nodes.find((n) => n.id === relativeId);
-		if (!relative || relative.type === 'entry') return;
-
-		const blank = createBlankNode();
-		let sourceHandle: string | undefined;
-
-		if (position === 'after') {
-			if (relative.type === 'choice') {
-				sourceHandle = activeBranches[relativeId] ?? relative.data.options?.[0]?.id;
-			} else if (relative.type === 'condition') {
-				sourceHandle = activeBranches[relativeId] ?? 'true';
-			}
-			const result = insertNodeAfter(nodes, edges, relativeId, blank, sourceHandle);
-			nodes = result.nodes;
-			edges = result.edges;
-		} else {
-			const result = insertNodeBefore(nodes, edges, relativeId, blank);
-			nodes = result.nodes;
-			edges = result.edges;
-		}
-
-		expandedIds = new Set([...expandedIds, blank.id]);
-		selectedNodeId = blank.id;
+	function setCanvasNodes(nodes: CanvasNode[]) {
+		canvasNodes = nodes;
 		scheduleSave();
 	}
 
+	function setCanvasEdges(edges: CanvasEdge[]) {
+		canvasEdges = edges;
+		scheduleSave();
+	}
+
+	function selectNode(id: string) {
+		selectedNodeId = id;
+		if (typeof window !== 'undefined') {
+			const hash = id ? `#${id}` : '';
+			if (window.location.hash !== hash) {
+				history.replaceState(null, '', `${window.location.pathname}${hash}`);
+			}
+		}
+	}
+
+	function selectFromHash() {
+		if (typeof window === 'undefined') return;
+		const id = window.location.hash.replace(/^#/, '');
+		if (id && canvasNodes.some((n) => n.id === id)) {
+			selectedNodeId = id;
+		}
+	}
+
 	function updateNode(updated: GraphNode) {
-		nodes = nodes.map((n) => (n.id === updated.id ? updated : n));
+		canvasNodes = canvasNodes.map((n) =>
+			n.id === updated.id ? { ...n, data: updated.data, type: updated.type } : n,
+		);
+		syncKey = `local-${Date.now()}`;
 		scheduleSave();
 	}
 
 	function updateEdge(updated: GraphEdge) {
-		edges = edges.map((e) => (e.id === updated.id ? updated : e));
+		canvasEdges = canvasEdges.map((e) =>
+			e.id === updated.id ? { ...e, data: updated.data } : e,
+		);
 		scheduleSave();
 	}
 
 	function handleSetBranchTarget(sourceId: string, handle: string, targetId: string) {
 		if (!targetId) return;
-		edges = setBranchTarget(edges, sourceId, handle, targetId);
+		const next = setBranchTarget(graphEdges, sourceId, handle, targetId);
+		canvasEdges = next.map((e) => ({
+			id: e.id,
+			source: e.source,
+			target: e.target,
+			sourceHandle: e.sourceHandle,
+			targetHandle: e.targetHandle,
+			data: e.data,
+		}));
 		scheduleSave();
 	}
 
 	function handleRemoveChoiceOption(optionId: string) {
 		if (!selectedNode || selectedNode.type !== 'choice') return;
 		const nodeId = selectedNode.id;
-		const result = removeChoiceOption(nodes, edges, nodeId, optionId);
+		const result = removeChoiceOption(graphNodes, graphEdges, nodeId, optionId);
 		if (!result) return;
-		nodes = result.nodes;
-		edges = result.edges;
-		if (activeBranches[nodeId] === optionId) {
-			const nextId = result.nodes.find((n) => n.id === nodeId)?.data.options?.[0]?.id;
-			if (nextId) {
-				activeBranches = { ...activeBranches, [nodeId]: nextId };
-			} else {
-				const { [nodeId]: _, ...rest } = activeBranches;
-				activeBranches = rest;
-			}
-		}
+		canvasNodes = result.nodes.map((n) => ({
+			id: n.id,
+			type: n.type,
+			position: n.position,
+			data: n.data,
+		}));
+		canvasEdges = result.edges.map((e) => ({
+			id: e.id,
+			source: e.source,
+			target: e.target,
+			sourceHandle: e.sourceHandle,
+			targetHandle: e.targetHandle,
+			data: e.data,
+		}));
+		syncKey = `local-${Date.now()}`;
 		scheduleSave();
 	}
 
-	function handleBranchChange(nodeId: string, branchId: string) {
-		activeBranches = { ...activeBranches, [nodeId]: branchId };
-		expandedIds = new Set([...expandedIds, nodeId]);
-	}
-
-	function toggleExpanded(id: string) {
-		const next = new Set(expandedIds);
-		if (next.has(id)) next.delete(id);
-		else next.add(id);
-		expandedIds = next;
-	}
-
-	function selectNode(id: string) {
-		selectedNodeId = id;
-		openMenuId = null;
-		window.location.hash = id;
-	}
-
-	function deleteNode(id: string) {
-		const node = nodes.find((n) => n.id === id);
+	async function openDeleteNodeConfirm() {
+		if (!selectedNodeId) return;
+		const node = canvasNodes.find((n) => n.id === selectedNodeId);
 		if (!node || node.type === 'entry') return;
-		if (!confirm(`Delete this step?`)) return;
-		const result = unlinkNode(nodes, edges, id);
-		nodes = result.nodes;
-		edges = result.edges;
-		if (selectedNodeId === id) selectedNodeId = null;
+		const label =
+			(node.data?.label as string | undefined) ||
+			(node.data?.speaker as string | undefined) ||
+			node.type ||
+			node.id;
+		confirmMode = 'node';
+		pendingEdge = null;
+		confirmMessage = `Delete "${label}" from this scene?`;
+		await tick();
+		confirmDialogEl?.showModal();
+	}
+
+	function edgeMatches(a: CanvasEdge, b: CanvasEdge): boolean {
+		return (
+			a.source === b.source &&
+			a.target === b.target &&
+			(a.sourceHandle ?? null) === (b.sourceHandle ?? null) &&
+			(a.targetHandle ?? null) === (b.targetHandle ?? null)
+		);
+	}
+
+	async function requestDeleteEdge(edge: CanvasEdge) {
+		confirmMode = 'edge';
+		pendingEdge = edge;
+		confirmMessage = 'Remove this connection from the scene graph?';
+		await tick();
+		confirmDialogEl?.showModal();
+	}
+
+	function closeConfirmDialog() {
+		confirmDialogEl?.close();
+		pendingEdge = null;
+	}
+
+	function applyConfirmDelete() {
+		if (confirmMode === 'node') {
+			if (!selectedNodeId) return;
+			const result = unlinkNode(graphNodes, graphEdges, selectedNodeId);
+			canvasNodes = result.nodes.map((n) => ({
+				id: n.id,
+				type: n.type,
+				position: n.position,
+				data: n.data,
+			}));
+			canvasEdges = result.edges.map((e) => ({
+				id: e.id,
+				source: e.source,
+				target: e.target,
+				sourceHandle: e.sourceHandle,
+				targetHandle: e.targetHandle,
+				data: e.data,
+			}));
+			selectedNodeId = null;
+		} else if (pendingEdge) {
+			const target = pendingEdge;
+			canvasEdges = canvasEdges.filter(
+				(e) => e.id !== target.id && !edgeMatches(e, target),
+			);
+			pendingEdge = null;
+		}
+		syncKey = `local-${Date.now()}`;
+		closeConfirmDialog();
 		scheduleSave();
 	}
 
-	function handleDropBefore(dragId: string, beforeId: string) {
-		if (dragId === beforeId) return;
-		const siblings = getSiblingIds(nodes, edges, activeBranches, dragId);
-		if (!siblings.includes(beforeId)) return;
-		const block = getBlockMemberIds(nodes, edges, activeBranches, dragId);
-		if (block.includes(beforeId)) return;
-
-		const result = moveNodeBefore(nodes, edges, dragId, beforeId, activeBranches);
-		nodes = result.nodes;
-		edges = result.edges;
+	function onConnectEndToPane(params: {
+		sourceNodeId: string;
+		sourceHandle: string | null;
+		position: { x: number; y: number };
+	}) {
+		const blank = createBlankNode();
+		blank.position = params.position;
+		const id = `e-${params.sourceNodeId}-${blank.id}-${nanoid(4)}`;
+		canvasNodes = [
+			...canvasNodes,
+			{
+				id: blank.id,
+				type: blank.type,
+				position: blank.position,
+				data: blank.data,
+			},
+		];
+		canvasEdges = [
+			...canvasEdges,
+			{
+				id,
+				source: params.sourceNodeId,
+				target: blank.id,
+				sourceHandle: params.sourceHandle,
+			},
+		];
+		selectedNodeId = blank.id;
+		syncKey = `local-${Date.now()}`;
 		scheduleSave();
 	}
 
-	/** If tree has only entry→end, add a blank step after entry on first edit. */
+	function onConnect() {
+		scheduleSave();
+	}
+
+	function isEditableTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tag = target.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+		return target.isContentEditable;
+	}
+
+	function onKeyDown(event: KeyboardEvent) {
+		if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+		if (isEditableTarget(event.target)) return;
+		if (!selectedNodeId) return;
+		const node = canvasNodes.find((n) => n.id === selectedNodeId);
+		if (!node || node.type === 'entry') return;
+		event.preventDefault();
+		openDeleteNodeConfirm();
+	}
+
+	/** If graph has only entry→end, add a blank step after entry on first edit. */
 	function ensureFirstStep() {
-		const entry = findEntryNode(nodes);
+		const entry = findEntryNode(graphNodes);
 		if (!entry) return;
-		const next = singleNextTarget(edges, entry.id);
-		const nextNode = nodes.find((n) => n.id === next);
+		const next = singleNextTarget(graphEdges, entry.id);
+		const nextNode = graphNodes.find((n) => n.id === next);
 		if (nextNode?.type === 'end') {
 			const blank = createBlankNode();
-			const result = insertNodeBefore(nodes, edges, next, blank);
-			nodes = result.nodes;
-			edges = result.edges;
+			blank.position = { x: entry.position.x + 200, y: entry.position.y };
+			const result = insertNodeBefore(graphNodes, graphEdges, next, blank);
+			canvasNodes = result.nodes.map((n) => ({
+				id: n.id,
+				type: n.type,
+				position: n.position,
+				data: n.data,
+			}));
+			canvasEdges = result.edges.map((e) => ({
+				id: e.id,
+				source: e.source,
+				target: e.target,
+				sourceHandle: e.sourceHandle,
+				targetHandle: e.targetHandle,
+				data: e.data,
+			}));
 			selectedNodeId = blank.id;
+			syncKey = `local-${Date.now()}`;
 			scheduleSave();
 		}
 	}
 
 	onMount(async () => {
+		function onMetaUpdated(e: Event) {
+			const detail = (e as CustomEvent<{ displayName: string; description: string }>).detail;
+			if (!detail) return;
+			graphMeta = { displayName: detail.displayName, description: detail.description };
+		}
+		window.addEventListener('scene-meta-updated', onMetaUpdated);
+		window.addEventListener('keydown', onKeyDown);
 		await load();
 		ensureFirstStep();
+		return () => {
+			window.removeEventListener('scene-meta-updated', onMetaUpdated);
+			window.removeEventListener('keydown', onKeyDown);
+		};
 	});
 </script>
 
-<div class="editor-shell" class:embedded>
-	<div class="editor-meta">
-		<span class="status" class:saved={saveStatus === 'Saved'}>{saveStatus || (loading ? 'Loading…' : '')}</span>
-	</div>
-
+<div class="scene-editor" class:embedded class:editor-shell={embedded}>
 	{#if loadError}
 		<p class="error-banner">{loadError}</p>
 	{:else if ready}
-		<div class="editor-layout">
+		<div class="editor-layout flow-layout">
 			<div class="editor-canvas">
-				<DialogTreeView
-					{nodes}
-					{edges}
-					{characters}
-					{dialogIds}
-					{selectedNodeId}
-					{activeBranches}
-					{expandedIds}
-					{openMenuId}
-					{dragNodeId}
-					onSelect={selectNode}
-					onBranchChange={handleBranchChange}
-					onToggle={toggleExpanded}
-					onInsertBefore={(id) => insertBlank(id, 'before')}
-					onInsertAfter={(id) => insertBlank(id, 'after')}
-					onDelete={deleteNode}
-					onMenuToggle={(id) => (openMenuId = id)}
-					onDragStart={(id) => (dragNodeId = id)}
-					onDragEnd={() => (dragNodeId = null)}
-					onDropBefore={handleDropBefore}
-					onNodeChange={updateNode}
-					onEdgeChange={updateEdge}
-					onSetBranchTarget={handleSetBranchTarget}
+				<DialogFlowCanvas
+					nodes={canvasNodes}
+					edges={canvasEdges}
+					{syncKey}
+					setNodes={setCanvasNodes}
+					setEdges={setCanvasEdges}
+					onNodeSelect={selectNode}
+					{onConnect}
+					onDragStop={scheduleSave}
+					onEdgeClick={requestDeleteEdge}
+					{onConnectEndToPane}
 				/>
 			</div>
 			<aside class="editor-inspector">
+				{#if !embedded}
+					<div class="inspector-scene-header">
+						<SceneTitle
+							{slug}
+							{dialogId}
+							displayName={graphMeta.displayName}
+							description={graphMeta.description}
+						/>
+					</div>
+				{/if}
 				<NodeInspector
 					node={selectedNode}
-					{nodes}
-					{edges}
+					nodes={graphNodes}
+					edges={graphEdges}
 					{characters}
 					{dialogIds}
 					onchange={updateNode}
 					onedgechange={updateEdge}
 					onSetBranchTarget={handleSetBranchTarget}
 					onRemoveChoiceOption={handleRemoveChoiceOption}
+					ondelete={openDeleteNodeConfirm}
 				/>
 			</aside>
 		</div>
 	{/if}
+
+	{#if saveStatus || loading}
+		<span class="status-toast" class:saved={saveStatus === 'Saved'}>
+			{saveStatus || (loading ? 'Loading…' : '')}
+		</span>
+	{/if}
 </div>
 
+<dialog bind:this={confirmDialogEl} class="modal" onclose={closeConfirmDialog}>
+	<form
+		method="dialog"
+		class="modal-panel modal-panel-sm"
+		onsubmit={(e) => {
+			e.preventDefault();
+			applyConfirmDelete();
+		}}
+	>
+		<header class="modal-header">
+			<h2>{confirmMode === 'node' ? 'Delete node' : 'Remove connection'}</h2>
+		</header>
+		<div class="modal-body">
+			<p>{confirmMessage}</p>
+		</div>
+		<footer class="modal-footer">
+			<div class="modal-footer-right">
+				<button type="button" class="btn" onclick={closeConfirmDialog}>Cancel</button>
+				<button type="submit" class="btn btn-danger">
+					{confirmMode === 'node' ? 'Delete' : 'Remove'}
+				</button>
+			</div>
+		</footer>
+	</form>
+</dialog>
+
 <style>
-	.editor-shell {
-		margin: 0 -1.5rem;
-		width: calc(100% + 3rem);
+	.scene-editor {
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		width: 100%;
 	}
 
-	.editor-shell.embedded {
-		margin: 0;
-		width: 100%;
+	.scene-editor.embedded {
 		height: 100%;
 	}
 
-	.editor-shell.embedded .editor-meta {
-		padding: 0.35rem 1rem;
+	.flow-layout {
+		flex: 1;
+		min-height: 0;
+		height: 100%;
 	}
 
-	.editor-meta {
-		display: flex;
-		justify-content: flex-end;
-		padding: 0 1.5rem 0.5rem;
-		min-height: 1.25rem;
+	.inspector-scene-header {
+		margin: -1rem -1rem 1rem;
+		padding: 0.75rem 1rem;
+		border-bottom: 1px solid var(--border);
 	}
 
-	.status {
+	.inspector-scene-header :global(.scene-header) {
+		margin-bottom: 0;
+	}
+
+	.inspector-scene-header :global(h2) {
+		font-size: 1rem;
+	}
+
+	.status-toast {
+		position: absolute;
+		right: 1.5rem;
+		bottom: 0.75rem;
+		z-index: 10;
 		font-size: 0.85rem;
 		color: var(--text-muted);
+		pointer-events: none;
 	}
 
-	.status.saved {
+	.status-toast.saved {
 		color: var(--success);
 	}
 
 	.error-banner {
 		padding: 1rem;
-		margin: 1rem;
+		margin: 0 1.5rem;
 		color: var(--error);
 		background: rgba(240, 113, 120, 0.1);
 		border: 1px solid var(--error);
 		border-radius: var(--radius);
+	}
+
+	.modal {
+		border: none;
+		padding: 0;
+		background: transparent;
+		max-width: min(28rem, calc(100vw - 2rem));
+	}
+
+	.modal::backdrop {
+		background: rgba(0, 0, 0, 0.55);
+	}
+
+	.modal-panel {
+		display: flex;
+		flex-direction: column;
+		max-height: min(90dvh, 40rem);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		color: var(--text);
+	}
+
+	.modal-panel label {
+		color: var(--text);
+	}
+
+	.modal-panel-sm {
+		max-width: 24rem;
+	}
+
+	.modal-header {
+		padding: 1rem 1.25rem 0.75rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.modal-header h2 {
+		margin: 0;
+		font-size: 1.1rem;
+	}
+
+	.modal-body {
+		padding: 1rem 1.25rem;
+		overflow-y: auto;
+	}
+
+	.modal-body p {
+		margin: 0;
+		color: var(--text-muted);
+	}
+
+	.modal-footer {
+		padding: 0.75rem 1.25rem 1rem;
+		border-top: 1px solid var(--border);
+	}
+
+	.modal-footer-right {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
 	}
 </style>

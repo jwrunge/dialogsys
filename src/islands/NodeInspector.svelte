@@ -15,6 +15,7 @@
 		onedgechange: (edge: GraphEdge) => void;
 		onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
 		onRemoveChoiceOption: (optionId: string) => void;
+		ondelete: () => void;
 	}
 
 	let {
@@ -27,6 +28,7 @@
 		onedgechange,
 		onSetBranchTarget,
 		onRemoveChoiceOption,
+		ondelete,
 	}: Props = $props();
 
 	const optionCount = $derived(node?.type === 'choice' ? (node.data.options?.length ?? 0) : 0);
@@ -109,7 +111,7 @@
 </script>
 
 {#if !node}
-	<p class="muted">Select a step in the tree to edit.</p>
+	<p class="muted">Click a node on the canvas to edit its properties.</p>
 {:else}
 	<h3>{node.type} <code>{node.id}</code></h3>
 
@@ -376,9 +378,15 @@
 			></textarea>
 		</div>
 	{:else if node.type === 'entry'}
-		<p class="muted">Scene starts here. The first connected step follows Start in the tree.</p>
+		<p class="muted">Scene starts here. Connect from this node to the first step.</p>
 	{:else if node.type === 'end'}
 		<p class="muted">End of this branch.</p>
+	{/if}
+
+	{#if node.type !== 'entry'}
+		<div class="inspector-actions">
+			<button type="button" class="btn btn-danger" onclick={ondelete}>Delete node</button>
+		</div>
 	{/if}
 {/if}
 
@@ -482,5 +490,11 @@
 		font-size: 0.8rem;
 		color: var(--text-muted);
 		margin-top: 0.35rem;
+	}
+
+	.inspector-actions {
+		margin-top: 1.25rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--border);
 	}
 </style>

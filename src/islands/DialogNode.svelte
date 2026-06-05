@@ -5,6 +5,7 @@
 
 	const labels: Record<string, string> = {
 		entry: 'Entry',
+		blank: 'New step',
 		line: 'Line',
 		choice: 'Choice',
 		condition: 'Condition',
@@ -16,6 +17,7 @@
 
 	const colors: Record<string, string> = {
 		entry: '#5fd49a',
+		blank: '#9aa3b8',
 		line: '#6c9eff',
 		choice: '#e8b84a',
 		condition: '#c792ea',

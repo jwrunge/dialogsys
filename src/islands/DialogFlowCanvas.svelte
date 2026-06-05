@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-
-	/** Loaded only in the browser — never statically imports @xyflow/svelte. */
-	type InnerComponent = typeof import('./DialogFlowCanvasInner.svelte').default;
+	import { SvelteFlowProvider } from '@xyflow/svelte';
+	import DialogFlowCanvasInner from './DialogFlowCanvasInner.svelte';
 
 	type FlowNode = {
 		id: string;
@@ -34,6 +32,12 @@
 		onNodeSelect: (nodeId: string) => void;
 		onConnect: (connection: FlowConnection) => void;
 		onDragStop: () => void;
+		onEdgeClick: (edge: FlowEdge) => void;
+		onConnectEndToPane: (params: {
+			sourceNodeId: string;
+			sourceHandle: string | null;
+			position: { x: number; y: number };
+		}) => void;
 	}
 
 	let {
@@ -45,26 +49,14 @@
 		onNodeSelect,
 		onConnect,
 		onDragStop,
+		onEdgeClick,
+		onConnectEndToPane,
 	}: Props = $props();
-
-	let Inner = $state<InnerComponent | null>(null);
-	let loadError = $state('');
-
-	onMount(async () => {
-		try {
-			const mod = await import('./DialogFlowCanvasInner.svelte');
-			Inner = mod.default;
-		} catch (e) {
-			loadError = (e as Error).message;
-		}
-	});
 </script>
 
 <div class="editor-canvas-wrap">
-	{#if loadError}
-		<p class="canvas-error">{loadError}</p>
-	{:else if Inner}
-		<Inner
+	<SvelteFlowProvider>
+		<DialogFlowCanvasInner
 			{nodes}
 			{edges}
 			{syncKey}
@@ -73,25 +65,15 @@
 			{onNodeSelect}
 			{onConnect}
 			{onDragStop}
+			{onEdgeClick}
+			{onConnectEndToPane}
 		/>
-	{:else}
-		<p class="canvas-loading">Loading graph…</p>
-	{/if}
+	</SvelteFlowProvider>
 </div>
 
 <style>
 	.editor-canvas-wrap {
 		height: 100%;
 		min-height: 500px;
-	}
-
-	.canvas-loading,
-	.canvas-error {
-		padding: 2rem;
-		color: var(--text-muted);
-	}
-
-	.canvas-error {
-		color: var(--error);
 	}
 </style>
