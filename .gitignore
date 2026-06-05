@@ -1,9 +1,33 @@
 node_modules/
 dist/
 .astro/
+
 .env
 .env.*
 !.env.example
+
+# Editor / IDE
+.vscode/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# User-created projects (bundled demo folder is excepted below)
 projects/*
 !projects/demo/
-projects/**/.git
+!seed/
+
+# Bundled demo: ignore local edits; canonical seed is in seed/projects/demo/
+projects/demo/*
+!projects/demo/.gitignore
+
+# Per-project nested repos and scratch paths
+projects/**/.git/
+projects/**/.dialogsys/
+projects/**/*.tmp
+
+# Generated / autosaved artifacts (all projects)
+projects/**/export/
+projects/**/flow.graph.json
