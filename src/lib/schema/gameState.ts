@@ -8,32 +8,46 @@ export const gameStatePropertySchema = z.object({
 	id: z.string(),
 	label: z.string(),
 	type: gameStatePropertyTypeSchema,
-	defaultValue: gameStateValueSchema,
 	useValidValues: z.boolean().optional(),
 	validValues: z.array(gameStateValueSchema).optional(),
 	description: z.string().optional(),
 });
 
+export function emptyValueForType(type: GameStatePropertyType): GameStateValue {
+	if (type === 'boolean') return false;
+	if (type === 'number') return 0;
+	return '';
+}
+
+export function initialValueForProperty(prop: GameStateProperty): GameStateValue {
+	if (prop.validValues?.length) return prop.validValues[0]!;
+	return emptyValueForType(prop.type);
+}
+
 export function defaultUseValidValues(type: GameStatePropertyType): boolean {
 	return type === 'string';
 }
 
-export function normalizeGameStateProperty(prop: GameStateProperty): GameStateProperty {
-	if (prop.type === 'boolean') {
-		const { validValues: _, ...rest } = prop;
+export function normalizeGameStateProperty(
+	prop: GameStateProperty & { defaultValue?: GameStateValue },
+): GameStateProperty {
+	const { defaultValue: _legacyDefault, ...base } = prop;
+
+	if (base.type === 'boolean') {
+		const { validValues: _, ...rest } = base;
 		return { ...rest, useValidValues: true };
 	}
 
-	const useValidValues = prop.useValidValues ?? defaultUseValidValues(prop.type);
+	const useValidValues = base.useValidValues ?? defaultUseValidValues(base.type);
 	if (!useValidValues) {
-		const { validValues: _, ...rest } = prop;
+		const { validValues: _, ...rest } = base;
 		return { ...rest, useValidValues: false };
 	}
 
 	return {
-		...prop,
+		...base,
 		useValidValues: true,
-		validValues: prop.validValues ?? [],
+		validValues: base.validValues ?? [],
 	};
 }
 

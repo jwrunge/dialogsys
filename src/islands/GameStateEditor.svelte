@@ -57,12 +57,6 @@
 		return JSON.parse(JSON.stringify(prop)) as GameStateProperty;
 	}
 
-	function defaultValueForType(type: GameStatePropertyType): boolean | number | string {
-		if (type === 'boolean') return false;
-		if (type === 'number') return 0;
-		return '';
-	}
-
 	function newProperty(): GameStateProperty {
 		const id = `var_${nanoid(4).toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 		const type: GameStatePropertyType = 'boolean';
@@ -70,7 +64,6 @@
 			id,
 			label: 'New state',
 			type,
-			defaultValue: false,
 			useValidValues: true,
 		};
 	}
@@ -122,6 +115,7 @@
 	}
 
 	async function openAdd() {
+		resetAddValue();
 		draft = newProperty();
 		editIndex = null;
 		await tick();
@@ -129,6 +123,7 @@
 	}
 
 	async function openEdit(index: number) {
+		resetAddValue();
 		draft = normalizeGameStateProperty(cloneProperty(properties[index]!));
 		editIndex = index;
 		await tick();
@@ -152,6 +147,9 @@
 		e.preventDefault();
 		e.stopPropagation();
 		if (!draft) return;
+		if (addingValue) {
+			commitAddValue();
+		}
 		addingValue = true;
 		addValueDraft = '';
 	}
@@ -164,9 +162,10 @@
 
 	function commitAddValue() {
 		if (!draft || !addingValue) return;
-		if (draft.type === 'string' && !addValueDraft.trim()) return;
-		addValidValue(addValueDraft);
-		resetAddValue();
+		const raw = addValueInput?.value ?? addValueDraft;
+		if (addValidValue(raw)) {
+			resetAddValue();
+		}
 	}
 
 	function onAddValueKeydown(e: KeyboardEvent) {
@@ -203,7 +202,6 @@
 		draft = {
 			...draft,
 			type,
-			defaultValue: defaultValueForType(type),
 			useValidValues,
 			validValues:
 				type === 'boolean' || !useValidValues ? undefined : (draft.validValues ?? []),
@@ -220,18 +218,20 @@
 		};
 	}
 
-	function addValidValue(raw: string) {
-		if (!draft || !draft.useValidValues || draft.type === 'boolean') return;
+	function addValidValue(raw: string | number): boolean {
+		if (!draft || !draft.useValidValues || draft.type === 'boolean') return false;
 		let value: GameStateValue;
 		if (draft.type === 'number') {
-			const n = Number(raw);
-			if (Number.isNaN(n)) return;
+			const n = typeof raw === 'number' ? raw : Number(raw);
+			if (raw === '' || Number.isNaN(n)) return false;
 			value = n;
 		} else {
-			value = raw;
+			value = String(raw).trim();
+			if (!value) return false;
 		}
 		const values = [...(draft.validValues ?? []), value];
 		draft = { ...draft, validValues: values };
+		return true;
 	}
 
 	function removeValidValue(index: number) {
@@ -254,13 +254,12 @@
 
 	function metaLabel(prop: GameStateProperty): string {
 		const typeLabel = prop.type.charAt(0).toUpperCase() + prop.type.slice(1);
-		const defaultVal = `default: ${formatValidValue(prop.defaultValue)}`;
-		if (prop.type === 'boolean') return `${typeLabel} · ${defaultVal}`;
+		if (prop.type === 'boolean') return typeLabel;
 		if (prop.useValidValues === true && prop.validValues?.length) {
 			const count = prop.validValues.length;
-			return `${typeLabel} · ${defaultVal} · ${count} value${count === 1 ? '' : 's'}`;
+			return `${typeLabel} · ${count} value${count === 1 ? '' : 's'}`;
 		}
-		return `${typeLabel} · ${defaultVal} · comparisons`;
+		return `${typeLabel} · comparisons`;
 	}
 
 	onMount(load);
@@ -362,48 +361,6 @@
 						<option value="string">String</option>
 					</select>
 				</div>
-				<div class="field">
-					<label for="prop-default">Default value</label>
-					{#if draft.type === 'boolean'}
-						<select
-							id="prop-default"
-							value={String(draft.defaultValue)}
-							onchange={(e) => {
-								draft = {
-									...draft!,
-									defaultValue: (e.currentTarget as HTMLSelectElement).value === 'true',
-								};
-							}}
-						>
-							<option value="true">true</option>
-							<option value="false">false</option>
-						</select>
-					{:else if draft.type === 'number'}
-						<input
-							id="prop-default"
-							type="number"
-							value={Number(draft.defaultValue)}
-							oninput={(e) => {
-								draft = {
-									...draft!,
-									defaultValue: Number((e.currentTarget as HTMLInputElement).value),
-								};
-							}}
-						/>
-					{:else}
-						<input
-							id="prop-default"
-							type="text"
-							value={String(draft.defaultValue)}
-							oninput={(e) => {
-								draft = {
-									...draft!,
-									defaultValue: (e.currentTarget as HTMLInputElement).value,
-								};
-							}}
-						/>
-					{/if}
-				</div>
 				{#if draft.type !== 'boolean'}
 					<div class="field checkbox-field">
 						<label class="checkbox-label">
@@ -452,7 +409,10 @@
 												class="value-input"
 												type="number"
 												placeholder="Value"
-												bind:value={addValueDraft}
+												value={addValueDraft}
+												oninput={(e) => {
+													addValueDraft = (e.currentTarget as HTMLInputElement).value;
+												}}
 												onkeydown={onAddValueKeydown}
 											/>
 										{:else}
@@ -461,35 +421,47 @@
 												class="value-input"
 												type="text"
 												placeholder="Value"
-												bind:value={addValueDraft}
+												value={addValueDraft}
+												oninput={(e) => {
+													addValueDraft = (e.currentTarget as HTMLInputElement).value;
+												}}
 												onkeydown={onAddValueKeydown}
 											/>
 										{/if}
-										<button
-											type="button"
-											class="remove-btn"
-											aria-label="Cancel"
-											onclick={resetAddValue}
-										>
-											<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-												<path
-													d="M6 6l12 12M18 6L6 18"
-													stroke="currentColor"
-													stroke-width="2"
-													stroke-linecap="round"
-												/>
-											</svg>
-										</button>
+										<div class="add-input-actions">
+											<button
+												type="button"
+												class="confirm-add-btn"
+												aria-label="Add value"
+												onclick={commitAddValue}
+											>
+												Add
+											</button>
+											<button
+												type="button"
+												class="remove-btn"
+												aria-label="Cancel"
+												onclick={resetAddValue}
+											>
+												<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+													<path
+														d="M6 6l12 12M18 6L6 18"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+													/>
+												</svg>
+											</button>
+										</div>
 									</div>
-								{:else}
-									<button
-										type="button"
-										class="value-row add-value-btn"
-										onclick={startAddValue}
-									>
-										Add value
-									</button>
 								{/if}
+								<button
+									type="button"
+									class="value-row add-value-btn"
+									onclick={startAddValue}
+								>
+									Add value
+								</button>
 							</div>
 						</div>
 					{/if}
@@ -779,6 +751,29 @@
 	.add-input-row {
 		padding-top: 0.35rem;
 		padding-bottom: 0.35rem;
+	}
+
+	.add-input-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		flex-shrink: 0;
+	}
+
+	.confirm-add-btn {
+		padding: 0.25rem 0.55rem;
+		border: 1px solid var(--accent-dim);
+		border-radius: var(--radius);
+		background: var(--accent-dim);
+		color: #fff;
+		font: inherit;
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+
+	.confirm-add-btn:hover {
+		background: var(--accent);
+		border-color: var(--accent);
 	}
 
 	.value-input {

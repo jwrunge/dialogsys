@@ -1,15 +1,19 @@
 <script lang="ts">
 	import type { Character } from '../lib/schema/characters';
+	import type { ConditionGroup } from '../lib/schema/conditions';
 	import type { GraphNode, GraphNodeData, GraphEdge, ChoiceOption } from '../lib/schema/graph';
+	import type { GameStateProperty } from '../lib/schema/gameState';
 	import { resolvePortraitPath } from '../lib/characters';
-	import { NODE_TYPE_OPTIONS } from '../lib/graph/nodeFactory';
+	import { LEGACY_NODE_TYPE_LABELS, NODE_TYPE_OPTIONS } from '../lib/graph/nodeFactory';
 	import { nanoid } from 'nanoid';
+	import ConditionEditor from './ConditionEditor.svelte';
 
 	interface Props {
 		node: GraphNode | null;
 		edges: GraphEdge[];
 		nodes: GraphNode[];
 		characters: Character[];
+		gameStateProperties: GameStateProperty[];
 		dialogIds: string[];
 		onchange: (node: GraphNode) => void;
 		onedgechange: (edge: GraphEdge) => void;
@@ -23,6 +27,7 @@
 		edges,
 		nodes,
 		characters,
+		gameStateProperties,
 		dialogIds,
 		onchange,
 		onedgechange,
@@ -92,7 +97,7 @@
 		if (!node) return;
 		const options: ChoiceOption[] = [
 			...(node.data.options ?? []),
-			{ id: nanoid(8), text: 'New option', conditions: [] },
+			{ id: nanoid(8), text: '', conditions: [] },
 		];
 		updateData({ options });
 	}
@@ -102,11 +107,20 @@
 		onRemoveChoiceOption(optionId);
 	}
 
+	function updateOptionConditions(index: number, conditions: ConditionGroup[]) {
+		if (!node || node.type !== 'choice') return;
+		const options = [...(node.data.options ?? [])];
+		const opt = options[index];
+		if (!opt) return;
+		options[index] = { ...opt, conditions };
+		updateData({ options });
+	}
+
 	function branchLabel(edge: GraphEdge): string {
 		if (edge.sourceHandle === 'true' || edge.data?.branch === 'true') return 'True branch';
 		if (edge.sourceHandle === 'false' || edge.data?.branch === 'false') return 'False branch';
 		const opt = node?.data.options?.find((o) => o.id === edge.sourceHandle);
-		return opt ? `Option: ${opt.text}` : `Branch (${edge.sourceHandle ?? 'default'})`;
+		return opt ? `Path: ${opt.text || opt.id}` : `Branch (${edge.sourceHandle ?? 'default'})`;
 	}
 </script>
 
@@ -126,8 +140,10 @@
 				{#each NODE_TYPE_OPTIONS as opt}
 					<option value={opt.value}>{opt.label}</option>
 				{/each}
-				{#if node.type === 'end'}
-					<option value="end">End</option>
+				{#if node.type && !NODE_TYPE_OPTIONS.some((o) => o.value === node.type)}
+					<option value={node.type}>
+						{LEGACY_NODE_TYPE_LABELS[node.type] ?? node.type}
+					</option>
 				{/if}
 			</select>
 		</div>
@@ -173,33 +189,10 @@
 					{/each}
 				</select>
 			</div>
-			<div class="field">
-				<label>State id (type any id, e.g. panicked for Jane)</label>
-				<input
-					value={node.data.characterState ?? speakerChar.defaultStateId}
-					oninput={(e) =>
-						updateData({ characterState: (e.currentTarget as HTMLInputElement).value })}
-				/>
-				{#if node.data.characterState && !stateOptions.some((s) => s.id === node.data.characterState)}
-					<p class="warn">
-						"{node.data.characterState}" is not defined for {speakerChar.displayName} — see
-						Issues.
-					</p>
-				{/if}
-			</div>
 			{#if portraitPreview}
 				<p class="hint">Resolved portrait: <code>{portraitPreview}</code></p>
 			{/if}
 		{/if}
-		<div class="field">
-			<label>Portrait override (optional)</label>
-			<input
-				value={node.data.portraitPath ?? ''}
-				oninput={(e) =>
-					updateData({ portraitPath: (e.currentTarget as HTMLInputElement).value })}
-				placeholder="Leave blank to use state portrait"
-			/>
-		</div>
 		<div class="field">
 			<label>Text</label>
 			<textarea
@@ -209,23 +202,30 @@
 			></textarea>
 		</div>
 	{:else if node.type === 'choice'}
+		<p class="hint">
+			Each path checks global state conditions, then continues to the connected step. Leave
+			conditions empty for a fallback path.
+		</p>
 		{#each node.data.options ?? [] as opt, i}
 			<div class="option-card">
 				<div class="option-head">
-					<label>Option {i + 1}</label>
+					<label>Path {i + 1}</label>
 					<button
 						type="button"
 						class="btn btn-danger btn-sm"
 						disabled={optionCount <= 1}
-						title={optionCount <= 1 ? 'A choice needs at least one option' : 'Remove option'}
+						title={optionCount <= 1 ? 'A condition needs at least one path' : 'Remove path'}
 						onclick={() => removeOption(opt.id)}
 					>
 						Remove
 					</button>
 				</div>
 				<div class="field">
+					<label for={`path-label-${opt.id}`}>Label (optional)</label>
 					<input
+						id={`path-label-${opt.id}`}
 						value={opt.text}
+						placeholder="e.g. Has met bartender"
 						oninput={(e) => {
 							const options = [...(node!.data.options ?? [])];
 							options[i] = { ...opt, text: (e.currentTarget as HTMLInputElement).value };
@@ -234,8 +234,17 @@
 					/>
 				</div>
 				<div class="field">
-					<label>Then go to</label>
+					<span class="field-label">When state matches</span>
+					<ConditionEditor
+						conditions={opt.conditions ?? []}
+						properties={gameStateProperties}
+						onchange={(conditions) => updateOptionConditions(i, conditions)}
+					/>
+				</div>
+				<div class="field">
+					<label for={`path-target-${opt.id}`}>Then go to</label>
 					<select
+						id={`path-target-${opt.id}`}
 						value={branchTarget(opt.id)}
 						onchange={(e) =>
 							onSetBranchTarget(
@@ -252,89 +261,12 @@
 				</div>
 			</div>
 		{/each}
-		<button type="button" class="btn" onclick={addOption}>Add option</button>
+		<button type="button" class="btn" onclick={addOption}>Add path</button>
 	{:else if node.type === 'condition'}
-		<p class="hint">Branch on game state using variable names you define here — no separate registry.</p>
-		<div class="field">
-			<label>Force branch (ignore other path at export)</label>
-			<select
-				value={node.data.forceBranch ?? ''}
-				onchange={(e) => {
-					const v = (e.currentTarget as HTMLSelectElement).value;
-					updateData({
-						forceBranch: v === '' ? undefined : (v as 'true' | 'false'),
-					});
-				}}
-			>
-				<option value="">None (evaluate variable)</option>
-				<option value="true">Always true branch</option>
-				<option value="false">Always false branch</option>
-			</select>
-		</div>
-		<div class="field">
-			<label>Scope</label>
-			<select
-				value={node.data.branchScope ?? 'global'}
-				onchange={(e) =>
-					updateData({
-						branchScope: (e.currentTarget as HTMLSelectElement).value as 'global' | 'character',
-					})}
-			>
-				<option value="global">global</option>
-				<option value="character">character</option>
-			</select>
-		</div>
-		{#if node.data.branchScope === 'character'}
-			<div class="field">
-				<label>Character ID</label>
-				<select
-					value={node.data.branchCharacterId ?? ''}
-					onchange={(e) =>
-						updateData({ branchCharacterId: (e.currentTarget as HTMLSelectElement).value })}
-				>
-					<option value="">—</option>
-					{#each characters as c}
-						<option value={c.id}>{c.id}</option>
-					{/each}
-				</select>
-			</div>
-		{/if}
-		<div class="field">
-			<label>Variable</label>
-			<input
-				value={node.data.branchVar ?? ''}
-				oninput={(e) => updateData({ branchVar: (e.currentTarget as HTMLInputElement).value })}
-			/>
-		</div>
-		<div class="field">
-			<label>True branch →</label>
-			<select
-				value={branchTarget('true')}
-				onchange={(e) =>
-					onSetBranchTarget(node.id, 'true', (e.currentTarget as HTMLSelectElement).value)}
-			>
-				<option value="">—</option>
-				{#each branchTargets as id}
-					<option value={id}>{id}</option>
-				{/each}
-			</select>
-		</div>
-		<div class="field">
-			<label>False branch →</label>
-			<select
-				value={branchTarget('false')}
-				onchange={(e) =>
-					onSetBranchTarget(node.id, 'false', (e.currentTarget as HTMLSelectElement).value)}
-			>
-				<option value="">—</option>
-				{#each branchTargets as id}
-					<option value={id}>{id}</option>
-				{/each}
-			</select>
-		</div>
-		{#if nodeEdges.length > 0}
-			<BranchEdgeList {nodeEdges} {branchLabel} {updateEdge} />
-		{/if}
+		<p class="warn-box">
+			This deprecated true/false condition node is no longer supported. Change its type to
+			<strong>Condition</strong> and recreate paths with state checks, or delete it.
+		</p>
 	{:else if node.type === 'set_var'}
 		<p class="hint">Set game state in the graph; wire your Godot handler via <code>run_command</code>.</p>
 		<div class="field">
@@ -438,6 +370,13 @@
 	code {
 		font-family: var(--mono);
 		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+
+	.field-label {
+		display: block;
+		font-size: 0.85rem;
+		margin-bottom: 0.35rem;
 		color: var(--text-muted);
 	}
 

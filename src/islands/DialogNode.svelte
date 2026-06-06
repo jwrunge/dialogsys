@@ -7,8 +7,8 @@
 		entry: 'Entry',
 		blank: 'New step',
 		line: 'Line',
-		choice: 'Choice',
-		condition: 'Condition',
+		choice: 'Condition',
+		condition: 'Condition (old)',
 		set_var: 'Set var',
 		jump: 'Jump',
 		direction: 'Direction',
@@ -28,24 +28,50 @@
 	};
 
 	const nodeType = $derived((type as string) ?? 'line');
-	const title = $derived(
-		data?.label ||
-			(data?.speaker ? `${data.speaker}` : '') ||
-			labels[nodeType] ||
-			nodeType,
-	);
-	const subtitle = $derived(
-		nodeType === 'line'
-			? [
-					data?.characterState ? `[${data.characterState}]` : '',
-					(data?.text as string)?.slice(0, 36) || '',
-				]
-					.filter(Boolean)
-					.join(' ')
-			: nodeType === 'choice'
-				? `${(data?.options as unknown[])?.length ?? 0} options`
-				: '',
-	);
+
+	const title = $derived.by(() => {
+		if (data?.label) return String(data.label);
+		switch (nodeType) {
+			case 'line':
+				return data?.speaker ? String(data.speaker) : labels.line;
+			case 'direction': {
+				const text = (data?.directionText as string)?.trim();
+				return text ? text.slice(0, 40) : labels.direction;
+			}
+			case 'condition':
+				return labels.condition;
+			case 'choice': {
+				const first = (data?.options as { text?: string }[] | undefined)?.[0]?.text?.trim();
+				return first || labels.choice;
+			}
+			case 'set_var':
+				return labels.set_var;
+			case 'jump':
+				return labels.jump;
+			default:
+				return labels[nodeType] ?? nodeType;
+		}
+	});
+
+	const subtitle = $derived.by(() => {
+		if (nodeType === 'line') {
+			const parts = [
+				data?.characterState ? `[${data.characterState}]` : '',
+				(data?.text as string)?.slice(0, 36) || '',
+			].filter(Boolean);
+			return parts.join(' ');
+		}
+		if (nodeType === 'choice') {
+			const count = (data?.options as unknown[])?.length ?? 0;
+			return `${count} path${count === 1 ? '' : 's'}`;
+		}
+		if (nodeType === 'direction') {
+			const text = (data?.directionText as string)?.trim() ?? '';
+			if (!text || text.length <= 40) return '';
+			return `${text.slice(40, 76)}…`;
+		}
+		return '';
+	});
 </script>
 
 <div class="dialog-node" style="--accent-color: {colors[nodeType] ?? '#6c9eff'}">

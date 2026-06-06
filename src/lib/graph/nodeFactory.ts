@@ -35,9 +35,12 @@ export const NODE_TYPE_OPTIONS = [
 	{ value: 'blank', label: 'Choose type…' },
 	{ value: 'line', label: 'Line' },
 	{ value: 'direction', label: 'Direction' },
-	{ value: 'choice', label: 'Choice' },
-	{ value: 'condition', label: 'Condition' },
-	{ value: 'set_var', label: 'Set variable' },
-	{ value: 'jump', label: 'Jump' },
+	{ value: 'choice', label: 'Condition' },
 	{ value: 'end', label: 'End' },
 ] as const;
+
+export const LEGACY_NODE_TYPE_LABELS: Partial<Record<GraphNode['type'], string>> = {
+	condition: 'Condition (deprecated)',
+	set_var: 'Set variable',
+	jump: 'Jump',
+};

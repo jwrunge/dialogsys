@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { ConditionAtom, ConditionGroup } from '../lib/schema/conditions';
-	import type { GameStateProperty } from '../lib/schema/gameState';
+	import { initialValueForProperty, type GameStateProperty } from '../lib/schema/gameState';
 	import { conditionAtoms, atomsToConditions } from '../lib/conditions';
 
 	interface Props {
@@ -26,7 +26,7 @@
 				scope: 'global',
 				var: prop.id,
 				op: 'eq',
-				value: prop.defaultValue,
+				value: initialValueForProperty(prop),
 			},
 		]);
 	}
@@ -44,7 +44,7 @@
 		const prop = properties.find((p) => p.id === varId);
 		updateAtom(index, {
 			var: varId,
-			value: prop?.defaultValue ?? '',
+			value: prop ? initialValueForProperty(prop) : '',
 		});
 	}
 

@@ -3,6 +3,7 @@ import type { ConditionOp } from '../schema/conditions';
 import type { FlowBranchOption } from '../schema/flow';
 import {
 	defaultUseValidValues,
+	initialValueForProperty,
 	type GameStateProperty,
 	type GameStatePropertyType,
 } from '../schema/gameState';
@@ -92,7 +93,7 @@ export function createCompareBranch(
 		id: partial?.id ?? nanoid(6),
 		label: partial?.label ?? 'New branch',
 		compareOp: (partial?.compareOp ?? 'eq') as ConditionOp,
-		compareValue: partial?.compareValue ?? prop.defaultValue,
+		compareValue: partial?.compareValue ?? initialValueForProperty(prop),
 		isDefault: partial?.isDefault,
 	};
 }

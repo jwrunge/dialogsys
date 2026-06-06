@@ -3,6 +3,7 @@
 	import { nanoid } from 'nanoid';
 	import { api } from '../lib/api';
 	import type { Character, CharactersFile } from '../lib/schema/characters';
+	import type { GameStateFile, GameStateProperty } from '../lib/schema/gameState';
 	import type { DialogGraph, GraphNode, GraphEdge } from '../lib/schema/graph';
 	import {
 		insertNodeBefore,
@@ -53,6 +54,7 @@
 	let saveStatus = $state('');
 	let selectedNodeId = $state<string | null>(null);
 	let characters = $state<Character[]>([]);
+	let gameStateProperties = $state<GameStateProperty[]>([]);
 	let dialogIds = $state<string[]>([]);
 	let graphMeta = $state({ displayName: initialDisplayName, description: initialDescription });
 	let syncKey = $state('');
@@ -165,9 +167,10 @@
 		ready = false;
 		loadError = '';
 		try {
-			const [{ graph }, chars, dialogs] = await Promise.all([
+			const [{ graph }, chars, gameState, dialogs] = await Promise.all([
 				api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${dialogId}`),
 				api<CharactersFile>(`/api/projects/${slug}/characters`),
+				api<GameStateFile>(`/api/projects/${slug}/game-state`),
 				api<{ dialogs: { id: string }[] }>(`/api/projects/${slug}/dialogs`),
 			]);
 			graphMeta = { displayName: graph.displayName, description: graph.description };
@@ -175,6 +178,7 @@
 			if (!Array.isArray(graph.edges)) throw new Error('Scene has no edges array');
 			toCanvas(graph);
 			characters = Array.isArray(chars.characters) ? chars.characters : [];
+			gameStateProperties = Array.isArray(gameState.properties) ? gameState.properties : [];
 			dialogIds = dialogs.dialogs.map((d) => d.id);
 			ready = true;
 			selectFromHash();
@@ -468,6 +472,7 @@
 					nodes={graphNodes}
 					edges={graphEdges}
 					{characters}
+					{gameStateProperties}
 					{dialogIds}
 					onchange={updateNode}
 					onedgechange={updateEdge}
