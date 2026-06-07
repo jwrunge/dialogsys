@@ -6,6 +6,9 @@ dist/
 .env.*
 !.env.example
 
+# Local app settings (projects folder path)
+dialogsys.config.json
+
 # Editor / IDE
 .vscode/
 .cursor/

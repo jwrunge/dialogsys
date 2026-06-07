@@ -9,8 +9,13 @@ const projects = await listProjects();
 
 <BaseLayout title="Dialogsys">
 	<div class="container">
-		<h1>Projects</h1>
-		<p class="lead">Author branching scenes for Godot. Projects are stored as files on disk.</p>
+		<header class="page-header">
+			<div>
+				<h1>Projects</h1>
+				<p class="lead">Author branching scenes for Godot. Projects are stored as files on disk.</p>
+			</div>
+			<a class="btn" href="/settings">Settings</a>
+		</header>
 
 		<section>
 			<h2>Your projects</h2>
@@ -36,9 +41,21 @@ const projects = await listProjects();
 </BaseLayout>
 
 <style>
+	.page-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 2rem;
+	}
+
+	.page-header h1 {
+		margin-bottom: 0.35rem;
+	}
+
 	.lead {
 		color: var(--text-muted);
-		margin-bottom: 2rem;
+		margin: 0;
 	}
 
 	section {

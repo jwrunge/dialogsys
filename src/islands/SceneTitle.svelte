@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import { api } from '../lib/api';
 	import type { DialogGraph } from '../lib/schema/graph';
+	import SceneUsageTrigger from './SceneUsageTrigger.svelte';
 
 	interface Props {
 		slug: string;
@@ -33,13 +34,6 @@
 	let usageNodeCount = $state(initialNodeCount);
 	let usageSequenceCount = $state(initialSequenceCount);
 	let deleteMessage = $state('Are you sure?');
-
-	const usageLabel = $derived.by(() => {
-		if (usageNodeCount === 0 && usageSequenceCount === 0) return null;
-		const seq = `${usageSequenceCount} sequence${usageSequenceCount === 1 ? '' : 's'}`;
-		const nodes = `${usageNodeCount} node${usageNodeCount === 1 ? '' : 's'}`;
-		return `Used in ${seq} · ${nodes}`;
-	});
 
 	function getReturnPath(): string {
 		const scenesPath = `/projects/${slug}/scenes`;
@@ -167,8 +161,15 @@
 				</svg>
 			</button>
 		</div>
-		{#if usageLabel}
-			<p class="usage-meta">{usageLabel}</p>
+		{#if usageNodeCount > 0 || usageSequenceCount > 0}
+			<div class="usage-meta">
+				<SceneUsageTrigger
+					{slug}
+					{dialogId}
+					nodeCount={usageNodeCount}
+					sequenceCount={usageSequenceCount}
+				/>
+			</div>
 		{/if}
 	</div>
 	<button type="button" class="btn btn-danger" onclick={openDeleteModal}>Delete</button>

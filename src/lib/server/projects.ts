@@ -3,21 +3,22 @@ import path from 'node:path';
 import { projectMetaSchema, type ProjectMeta, createProjectInputSchema } from '../schema/project';
 import { charactersFileSchema, type CharactersFile } from '../schema/characters';
 import { dialogGraphSchema, type DialogGraph } from '../schema/graph';
-import { flowGraphSchema, type FlowGraph } from '../schema/flow';
+import {
+	flowGraphSchema,
+	type FlowGraph,
+	type SceneSequenceUsage,
+	type SequenceListItem,
+} from '../schema/flow';
 import {
 	gameStateFileSchema,
 	normalizeGameStateFile,
 	type GameStateFile,
 } from '../schema/gameState';
 import { createDefaultFlowGraph } from '../flow/flowFactory';
+import { getProjectsRoot } from './settings';
 import { ensureProjectRepo, scheduleSnapshot } from './versioning';
 
-const DEFAULT_ROOT = './projects';
-
-export function getProjectsRoot(): string {
-	const root = process.env.DIALOGSYS_PROJECTS_ROOT ?? DEFAULT_ROOT;
-	return path.resolve(process.cwd(), root);
-}
+export { getProjectsRoot } from './settings';
 
 function assertSafeSlug(slug: string): void {
 	if (!/^[a-z0-9][a-z0-9_-]*$/.test(slug)) {
@@ -210,11 +211,7 @@ export type DialogListItem = {
 	sequenceCount: number;
 };
 
-export type SequenceListItem = {
-	id: string;
-	displayName: string;
-	updatedAt: string;
-};
+export type { SceneSequenceUsage, SequenceListItem };
 
 export type SceneUsageStats = {
 	nodeCount: number;
@@ -380,6 +377,34 @@ export async function getSceneUsageStats(
 	}
 
 	return stats;
+}
+
+export async function getSceneSequenceUsage(
+	slug: string,
+	dialogId: string,
+): Promise<SceneSequenceUsage[]> {
+	const sequences = await loadAllSequences(slug);
+	const counts = new Map<string, { displayName: string; nodeCount: number }>();
+
+	for (const graph of sequences) {
+		let nodeCount = 0;
+		for (const node of graph.nodes) {
+			if (node.type === 'scene' && node.data.dialogId === dialogId) nodeCount++;
+		}
+		if (nodeCount === 0) continue;
+		counts.set(graph.id, {
+			displayName: graph.displayName || graph.id,
+			nodeCount,
+		});
+	}
+
+	return [...counts.entries()]
+		.map(([sequenceId, { displayName, nodeCount }]) => ({
+			sequenceId,
+			displayName,
+			nodeCount,
+		}))
+		.sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
 export async function listSequences(slug: string): Promise<SequenceListItem[]> {

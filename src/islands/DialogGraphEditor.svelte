@@ -474,6 +474,7 @@
 					</div>
 				{/if}
 				<NodeInspector
+					{slug}
 					node={selectedNode}
 					nodes={graphNodes}
 					edges={graphEdges}
@@ -484,6 +485,9 @@
 					onedgechange={updateEdge}
 					onSetBranchTarget={handleSetBranchTarget}
 					onRemoveChoiceOption={handleRemoveChoiceOption}
+					oncharacterschange={(chars) => {
+						characters = chars;
+					}}
 					ondelete={openDeleteNodeConfirm}
 				/>
 			</aside>

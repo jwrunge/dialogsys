@@ -13,7 +13,7 @@ Open [http://localhost:4321](http://localhost:4321) and open the **demo** projec
 
 ## Configuration
 
-Set `DIALOGSYS_PROJECTS_ROOT` to change where projects are stored (default: `./projects`).
+Projects are saved as folders on disk (default: `./projects` in the app directory). Open **Settings** (`/settings`) to change the path, or set `DIALOGSYS_PROJECTS_ROOT` in the environment to override.
 
 ## Project structure
 

@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import SettingsEditor from '../islands/SettingsEditor.svelte';
+import { getProjectsRootInfo } from '../lib/server/settings';
+
+const info = getProjectsRootInfo();
+---
+
+<BaseLayout title="Settings · Dialogsys">
+	<div class="container">
+		<h1>Settings</h1>
+		<p class="lead">
+			Projects are stored as folders on disk. The default location is
+			<code>{info.resolvedPath}</code>.
+		</p>
+		<SettingsEditor client:load />
+	</div>
+</BaseLayout>
+
+<style>
+	.lead {
+		color: var(--text-muted);
+		margin-bottom: 1.5rem;
+		max-width: 40rem;
+	}
+
+	.lead code {
+		font-family: var(--mono);
+		font-size: 0.85rem;
+	}
+</style>

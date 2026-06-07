@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import Fuse from 'fuse.js';
 	import { api } from '../lib/api';
-	import type { SequenceListItem } from '../lib/server/projects';
+	import type { SequenceListItem } from '../lib/schema/flow';
 
 	interface Props {
 		slug: string;

@@ -3,6 +3,7 @@
 	import Fuse from 'fuse.js';
 	import { api } from '../lib/api';
 	import type { DialogListItem } from '../lib/server/projects';
+	import SceneUsageTrigger from './SceneUsageTrigger.svelte';
 
 	interface Props {
 		slug: string;
@@ -51,16 +52,6 @@
 
 	function stepLabel(count: number): string {
 		return `${count} step${count === 1 ? '' : 's'}`;
-	}
-
-	function usageLabel(dialog: DialogListItem): string {
-		const parts: string[] = [stepLabel(dialog.stepCount)];
-		if (dialog.sequenceCount > 0 || dialog.nodeCount > 0) {
-			const seq = `${dialog.sequenceCount} sequence${dialog.sequenceCount === 1 ? '' : 's'}`;
-			const nodes = `${dialog.nodeCount} node${dialog.nodeCount === 1 ? '' : 's'}`;
-			parts.push(`Used in ${seq} · ${nodes}`);
-		}
-		return parts.join(' · ');
 	}
 
 	async function load() {
@@ -153,7 +144,18 @@
 						<a class="btn" href={`/projects/${slug}/scenes/${dialog.id}`}>Edit</a>
 					</div>
 					<p class="summary-desc">{descriptionPreview(dialog.description)}</p>
-					<p class="summary-meta">{usageLabel(dialog)}</p>
+					<p class="summary-meta">
+						{stepLabel(dialog.stepCount)}
+						{#if dialog.sequenceCount > 0 || dialog.nodeCount > 0}
+							<span class="meta-sep"> · </span>
+							<SceneUsageTrigger
+								{slug}
+								dialogId={dialog.id}
+								nodeCount={dialog.nodeCount}
+								sequenceCount={dialog.sequenceCount}
+							/>
+						{/if}
+					</p>
 				</div>
 			</article>
 		{/each}

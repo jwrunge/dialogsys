@@ -6,5 +6,14 @@ const { slug } = Astro.params;
 ---
 
 <ProjectLayout slug={slug!} current="sequences" title="Sequences">
-	<SequenceListManager client:load slug={slug!} />
+	<SequenceListManager client:only="svelte" slug={slug!}>
+		<p slot="fallback" class="loading">Loading sequences…</p>
+	</SequenceListManager>
 </ProjectLayout>
+
+<style>
+	.loading {
+		color: var(--text-muted);
+		font-size: 0.9rem;
+	}
+</style>

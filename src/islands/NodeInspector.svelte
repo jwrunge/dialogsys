@@ -7,8 +7,10 @@
 	import { LEGACY_NODE_TYPE_LABELS, NODE_TYPE_OPTIONS } from '../lib/graph/nodeFactory';
 	import { nanoid } from 'nanoid';
 	import ConditionEditor from './ConditionEditor.svelte';
+	import SpeakerPicker from './SpeakerPicker.svelte';
 
 	interface Props {
+		slug: string;
 		node: GraphNode | null;
 		edges: GraphEdge[];
 		nodes: GraphNode[];
@@ -19,10 +21,12 @@
 		onedgechange: (edge: GraphEdge) => void;
 		onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
 		onRemoveChoiceOption: (optionId: string) => void;
+		oncharacterschange: (characters: Character[]) => void;
 		ondelete: () => void;
 	}
 
 	let {
+		slug,
 		node,
 		edges,
 		nodes,
@@ -33,6 +37,7 @@
 		onedgechange,
 		onSetBranchTarget,
 		onRemoveChoiceOption,
+		oncharacterschange,
 		ondelete,
 	}: Props = $props();
 
@@ -153,24 +158,20 @@
 		<p class="muted">Choose a type above to configure this step.</p>
 	{:else if node.type === 'line'}
 		<div class="field">
-			<label>Speaker</label>
-			<select
+			<span class="field-label">Speaker</span>
+			<SpeakerPicker
+				{slug}
+				{characters}
 				value={node.data.speaker ?? ''}
-				onchange={(e) => {
-					const speaker = (e.currentTarget as HTMLSelectElement).value;
-					const char = characters.find((c) => c.id === speaker);
+				onchange={(speaker, char) => {
 					updateData({
 						speaker,
 						characterState: char?.defaultStateId ?? '',
 						portraitPath: '',
 					});
 				}}
-			>
-				<option value="">—</option>
-				{#each characters as c}
-					<option value={c.id}>{c.displayName}</option>
-				{/each}
-			</select>
+				{oncharacterschange}
+			/>
 		</div>
 		{#if speakerChar}
 			<div class="field">

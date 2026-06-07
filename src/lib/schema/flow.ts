@@ -61,3 +61,15 @@ export type FlowEdge = z.infer<typeof flowEdgeSchema>;
 export type FlowNodeData = z.infer<typeof flowNodeDataSchema>;
 export type FlowBranchOption = z.infer<typeof flowBranchOptionSchema>;
 export type FlowFirstMeeting = z.infer<typeof flowFirstMeetingSchema>;
+
+export type SequenceListItem = {
+	id: string;
+	displayName: string;
+	updatedAt: string;
+};
+
+export type SceneSequenceUsage = {
+	sequenceId: string;
+	displayName: string;
+	nodeCount: number;
+};
