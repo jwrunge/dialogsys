@@ -448,6 +448,7 @@
 		<div class="editor-layout flow-layout">
 			<div class="editor-canvas">
 				<DialogFlowCanvas
+					{characters}
 					nodes={canvasNodes}
 					edges={canvasEdges}
 					{syncKey}

@@ -9,10 +9,14 @@
 		type Connection,
 		type OnConnectEnd,
 	} from '@xyflow/svelte';
+	import { setContext } from 'svelte';
 	import '@xyflow/svelte/dist/style.css';
+	import type { Character } from '../lib/schema/characters';
+	import { DIALOG_CHARACTERS_KEY, type DialogCharactersContext } from '../lib/graph/dialogContext';
 	import DialogNode from './DialogNode.svelte';
 
 	interface Props {
+		characters?: Character[];
 		nodes: Node[];
 		edges: Edge[];
 		syncKey: string;
@@ -30,6 +34,7 @@
 	}
 
 	let {
+		characters = [],
 		nodes: propNodes,
 		edges: propEdges,
 		syncKey,
@@ -43,6 +48,8 @@
 	}: Props = $props();
 
 	const { screenToFlowPosition } = useSvelteFlow();
+
+	setContext<DialogCharactersContext>(DIALOG_CHARACTERS_KEY, () => characters);
 
 	let flowNodes = $state.raw<Node[]>([]);
 	let flowEdges = $state.raw<Edge[]>([]);

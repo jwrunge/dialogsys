@@ -1,7 +1,13 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
+	import { characterById } from '../lib/characters';
+	import { DIALOG_CHARACTERS_KEY, type DialogCharactersContext } from '../lib/graph/dialogContext';
 
 	let { data, type }: NodeProps = $props();
+
+	const getCharacters = getContext<DialogCharactersContext | undefined>(DIALOG_CHARACTERS_KEY);
+	const characters = $derived(getCharacters?.() ?? []);
 
 	const labels: Record<string, string> = {
 		entry: 'Entry',
@@ -32,8 +38,11 @@
 	const title = $derived.by(() => {
 		if (data?.label) return String(data.label);
 		switch (nodeType) {
-			case 'line':
-				return data?.speaker ? String(data.speaker) : labels.line;
+			case 'line': {
+				const speaker = data?.speaker as string | undefined;
+				if (!speaker) return labels.line;
+				return characterById(characters, speaker)?.displayName ?? speaker;
+			}
 			case 'direction': {
 				const text = (data?.directionText as string)?.trim();
 				return text ? text.slice(0, 40) : labels.direction;

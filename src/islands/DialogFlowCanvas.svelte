@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SvelteFlowProvider } from '@xyflow/svelte';
+	import type { Character } from '../lib/schema/characters';
 	import DialogFlowCanvasInner from './DialogFlowCanvasInner.svelte';
 
 	type FlowNode = {
@@ -24,6 +25,7 @@
 	};
 
 	interface Props {
+		characters?: Character[];
 		nodes: FlowNode[];
 		edges: FlowEdge[];
 		syncKey: string;
@@ -41,6 +43,7 @@
 	}
 
 	let {
+		characters = [],
 		nodes,
 		edges,
 		syncKey,
@@ -57,6 +60,7 @@
 <div class="editor-canvas-wrap">
 	<SvelteFlowProvider>
 		<DialogFlowCanvasInner
+			{characters}
 			{nodes}
 			{edges}
 			{syncKey}
