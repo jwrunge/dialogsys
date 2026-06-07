@@ -87,6 +87,7 @@
 		border: 2px solid var(--accent-color);
 		border-radius: var(--radius);
 		font-size: 0.85rem;
+		color: var(--text);
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 	}
 

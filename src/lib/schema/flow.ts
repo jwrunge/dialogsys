@@ -49,7 +49,7 @@ export const flowEdgeSchema = z.object({
 
 export const flowGraphSchema = z.object({
 	id: z.string().default('main'),
-	displayName: z.string().default('Game flow'),
+	displayName: z.string().default('Main sequence'),
 	nodes: z.array(flowNodeSchema),
 	edges: z.array(flowEdgeSchema),
 	updatedAt: z.string().optional(),

@@ -9,6 +9,7 @@ export type ValidationIssue = {
 	dialogId?: string;
 	nodeId?: string;
 	flowNodeId?: string;
+	sequenceId?: string;
 	characterId?: string;
 	stateId?: string;
 	edgeId?: string;

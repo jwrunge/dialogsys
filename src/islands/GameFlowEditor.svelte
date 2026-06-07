@@ -15,9 +15,10 @@
 
 	interface Props {
 		slug: string;
+		sequenceId: string;
 	}
 
-	let { slug }: Props = $props();
+	let { slug, sequenceId }: Props = $props();
 
 	type CanvasNode = {
 		id: string;
@@ -49,6 +50,7 @@
 	let editorDialogId = $state<string | null>(null);
 	let editorTitle = $state('Edit scene');
 	let analyzing = $state(false);
+	let sequenceDisplayName = $state('Main sequence');
 
 	let flowNodes = $state<FlowNode[]>([]);
 	let flowEdges = $state<FlowEdge[]>([]);
@@ -87,8 +89,8 @@
 
 	function fromCanvas(): FlowGraph {
 		return {
-			id: 'main',
-			displayName: 'Game flow',
+			id: sequenceId,
+			displayName: sequenceDisplayName,
 			nodes: canvasNodes.map((n) => ({
 				id: n.id,
 				type: n.type as FlowNode['type'],
@@ -128,10 +130,13 @@
 		saveStatus = 'Saving…';
 		try {
 			const graph = fromCanvas();
-			const res = await api<{ graph: FlowGraph }>(`/api/projects/${slug}/flow`, {
+			const res = await api<{ graph: FlowGraph }>(
+				`/api/projects/${slug}/sequences/${sequenceId}`,
+				{
 				method: 'PUT',
-				body: JSON.stringify({ graph }),
-			});
+					body: JSON.stringify({ graph }),
+				},
+			);
 			flowNodes = res.graph.nodes;
 			flowEdges = res.graph.edges;
 			saveStatus = 'Saved';
@@ -159,10 +164,11 @@
 		loadError = '';
 		try {
 			const [{ graph }] = await Promise.all([
-				api<{ graph: FlowGraph }>(`/api/projects/${slug}/flow`),
+				api<{ graph: FlowGraph }>(`/api/projects/${slug}/sequences/${sequenceId}`),
 				loadDialogs(),
 				loadGameState(),
 			]);
+			sequenceDisplayName = graph.displayName || sequenceId;
 			flowNodes = graph.nodes;
 			flowEdges = graph.edges;
 			toCanvas(graph);
@@ -264,7 +270,7 @@
 		const label = (node.data?.label as string | undefined) ?? node.id;
 		confirmMode = 'node';
 		pendingEdge = null;
-		confirmMessage = `Delete "${label}" from the flow chart?`;
+		confirmMessage = `Delete "${label}" from this sequence?`;
 		await tick();
 		confirmDialogEl?.showModal();
 	}
@@ -281,7 +287,7 @@
 	async function requestDeleteEdge(edge: CanvasEdge) {
 		confirmMode = 'edge';
 		pendingEdge = edge;
-		confirmMessage = 'Remove this connection from the flow chart?';
+		confirmMessage = 'Remove this connection from this sequence?';
 		await tick();
 		confirmDialogEl?.showModal();
 	}
@@ -489,6 +495,7 @@
 
 <DialogEditorModal
 	{slug}
+	{sequenceId}
 	dialogId={editorDialogId}
 	title={editorTitle}
 	onclose={closeDialogEditor}

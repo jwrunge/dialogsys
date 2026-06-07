@@ -4,11 +4,12 @@
 	interface Props {
 		slug: string;
 		dialogId: string | null;
+		sequenceId?: string;
 		title?: string;
 		onclose: () => void;
 	}
 
-	let { slug, dialogId, title = 'Edit scene', onclose }: Props = $props();
+	let { slug, dialogId, sequenceId, title = 'Edit scene', onclose }: Props = $props();
 
 	type EditorComponent = typeof import('./DialogGraphEditor.svelte').default;
 
@@ -51,7 +52,12 @@
 			<h2>{title}</h2>
 			<div class="header-actions">
 				{#if dialogId}
-					<a class="btn" href={`/projects/${slug}/scenes/${dialogId}?from=flow`}>Open full editor</a>
+					<a
+						class="btn"
+						href={`/projects/${slug}/scenes/${dialogId}?from=sequence${sequenceId ? `&sequence=${sequenceId}` : ''}`}
+					>
+						Open full editor
+					</a>
 				{/if}
 				<button type="button" class="btn btn-primary" onclick={handleClose}>Done</button>
 			</div>

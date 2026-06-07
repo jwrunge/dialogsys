@@ -5,7 +5,8 @@ import {
 	listDialogs,
 	getDialog,
 	getCharacters,
-	getFlow,
+	listSequences,
+	getSequence,
 	jsonResponse,
 	errorResponse,
 } from '../../../../lib/server/projects';
@@ -18,11 +19,17 @@ export const POST: APIRoute = async ({ params }) => {
 		const graphs = await Promise.all(
 			dialogList.map((d) => getDialog(slug, d.id)),
 		);
-		const flow = await getFlow(slug);
+		const sequences = await listSequences(slug);
 		const dialogIds = dialogList.map((d) => d.id);
+		const sequenceIssues = await Promise.all(
+			sequences.map(async (seq) => {
+				const graph = await getSequence(slug, seq.id);
+				return validateFlow(graph, dialogIds, seq.id);
+			}),
+		);
 		const issues = [
 			...validateProject(graphs, characters),
-			...validateFlow(flow, dialogIds),
+			...sequenceIssues.flat(),
 		];
 		return jsonResponse({ issues });
 	} catch (e) {

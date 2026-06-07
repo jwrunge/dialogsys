@@ -1,10 +1,15 @@
 import type { ValidationIssue } from '../compile/validate';
 import type { FlowGraph } from '../schema/flow';
 
-export function validateFlow(graph: FlowGraph, dialogIds: string[]): ValidationIssue[] {
+export function validateFlow(
+	graph: FlowGraph,
+	dialogIds: string[],
+	sequenceId?: string,
+): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
 	const dialogIdSet = new Set(dialogIds);
 	const nodeIds = new Set(graph.nodes.map((n) => n.id));
+	const seqLabel = graph.displayName || sequenceId || 'sequence';
 
 	for (const node of graph.nodes) {
 		if (node.type === 'scene') {
@@ -12,15 +17,17 @@ export function validateFlow(graph: FlowGraph, dialogIds: string[]): ValidationI
 				issues.push({
 					level: 'warning',
 					code: 'unassigned_scene',
-					message: `Flow node "${node.data.label || node.id}" has no linked scene`,
+					message: `Sequence node "${node.data.label || node.id}" in "${seqLabel}" has no linked scene`,
 					flowNodeId: node.id,
+					sequenceId,
 				});
 			} else if (!dialogIdSet.has(node.data.dialogId)) {
 				issues.push({
 					level: 'error',
 					code: 'missing_scene',
-					message: `Scene "${node.data.label || node.id}" references missing scene "${node.data.dialogId}"`,
+					message: `Scene "${node.data.label || node.id}" in "${seqLabel}" references missing scene "${node.data.dialogId}"`,
 					flowNodeId: node.id,
+					sequenceId,
 				});
 			}
 		}
@@ -37,8 +44,9 @@ export function validateFlow(graph: FlowGraph, dialogIds: string[]): ValidationI
 					issues.push({
 						level: 'warning',
 						code: 'dead_end_branch',
-						message: `Branch "${node.data.label || node.id}" path "${opt.label}" has no outgoing connection`,
+						message: `Branch "${node.data.label || node.id}" in "${seqLabel}" path "${opt.label}" has no outgoing connection`,
 						flowNodeId: node.id,
+						sequenceId,
 					});
 				}
 			}
@@ -50,8 +58,9 @@ export function validateFlow(graph: FlowGraph, dialogIds: string[]): ValidationI
 			issues.push({
 				level: 'error',
 				code: 'dangling_flow_edge',
-				message: `Flow connection ${edge.id} references a missing node`,
+				message: `Sequence connection ${edge.id} in "${seqLabel}" references a missing node`,
 				edgeId: edge.id,
+				sequenceId,
 			});
 		}
 	}

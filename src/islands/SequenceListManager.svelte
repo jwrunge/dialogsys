@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import Fuse from 'fuse.js';
 	import { api } from '../lib/api';
-	import type { DialogListItem } from '../lib/server/projects';
+	import type { SequenceListItem } from '../lib/server/projects';
 
 	interface Props {
 		slug: string;
@@ -10,7 +10,7 @@
 
 	let { slug }: Props = $props();
 
-	let dialogs = $state<DialogListItem[]>([]);
+	let sequences = $state<SequenceListItem[]>([]);
 	let ready = $state(false);
 	let loadError = $state('');
 	let searchQuery = $state('');
@@ -21,58 +21,46 @@
 	let modalError = $state('');
 	let creating = $state(false);
 
-	type ListedDialog = { dialog: DialogListItem; index: number };
+	type ListedSequence = { sequence: SequenceListItem; index: number };
 
-	const listedDialogs = $derived.by((): ListedDialog[] => {
+	const listedSequences = $derived.by((): ListedSequence[] => {
 		const q = searchQuery.trim();
 		if (!q) {
-			return dialogs.map((dialog, index) => ({ dialog, index }));
+			return sequences.map((sequence, index) => ({ sequence, index }));
 		}
-		const fuse = new Fuse(dialogs, {
+		const fuse = new Fuse(sequences, {
 			keys: [
-				{ name: 'displayName', weight: 0.5 },
-				{ name: 'id', weight: 0.35 },
-				{ name: 'description', weight: 0.15 },
+				{ name: 'displayName', weight: 0.6 },
+				{ name: 'id', weight: 0.4 },
 			],
 			threshold: 0.4,
 			ignoreLocation: true,
 		});
 		return fuse.search(q).map((result) => ({
-			dialog: result.item,
-			index: dialogs.findIndex((d) => d.id === result.item.id),
+			sequence: result.item,
+			index: sequences.findIndex((s) => s.id === result.item.id),
 		}));
 	});
 
-	function descriptionPreview(description: string): string {
-		const t = description.trim();
-		if (!t) return 'No description';
-		return t.length > 120 ? `${t.slice(0, 120)}…` : t;
-	}
-
-	function stepLabel(count: number): string {
-		return `${count} step${count === 1 ? '' : 's'}`;
-	}
-
-	function usageLabel(dialog: DialogListItem): string {
-		const parts: string[] = [stepLabel(dialog.stepCount)];
-		if (dialog.sequenceCount > 0 || dialog.nodeCount > 0) {
-			const seq = `${dialog.sequenceCount} sequence${dialog.sequenceCount === 1 ? '' : 's'}`;
-			const nodes = `${dialog.nodeCount} node${dialog.nodeCount === 1 ? '' : 's'}`;
-			parts.push(`Used in ${seq} · ${nodes}`);
-		}
-		return parts.join(' · ');
+	function updatedLabel(updatedAt: string): string {
+		if (!updatedAt) return 'Not saved yet';
+		const date = new Date(updatedAt);
+		if (Number.isNaN(date.getTime())) return 'Updated';
+		return `Updated ${date.toLocaleDateString()}`;
 	}
 
 	async function load() {
 		ready = false;
 		loadError = '';
 		try {
-			const res = await api<{ dialogs: DialogListItem[] }>(`/api/projects/${slug}/dialogs`);
-			dialogs = res.dialogs;
+			const res = await api<{ sequences: SequenceListItem[] }>(
+				`/api/projects/${slug}/sequences`,
+			);
+			sequences = res.sequences;
 			ready = true;
 		} catch (e) {
 			loadError = (e as Error).message;
-			dialogs = [];
+			sequences = [];
 		}
 	}
 
@@ -99,12 +87,12 @@
 		const id = draftId.trim();
 		const displayName = draftName.trim();
 		try {
-			await api(`/api/projects/${slug}/dialogs`, {
+			await api(`/api/projects/${slug}/sequences`, {
 				method: 'POST',
 				body: JSON.stringify({ id, displayName }),
 			});
 			createDialogEl?.close();
-			window.location.assign(`/projects/${slug}/scenes/${id}`);
+			window.location.assign(`/projects/${slug}/sequences/${id}`);
 		} catch (err) {
 			modalError = (err as Error).message;
 		} finally {
@@ -120,40 +108,39 @@
 		class="search"
 		type="search"
 		bind:value={searchQuery}
-		placeholder="Search by name or description…"
-		aria-label="Search scenes"
+		placeholder="Search by name or id…"
+		aria-label="Search sequences"
 		disabled={!ready}
 	/>
 	<button type="button" class="btn btn-primary toolbar-add" onclick={openCreateModal} disabled={!ready}>
-		Add scene
+		Add sequence
 	</button>
 </div>
 
 {#if loadError}
 	<p class="error-banner">{loadError}</p>
 {:else if !ready}
-	<p class="muted">Loading scenes…</p>
-{:else if dialogs.length === 0}
-	<p class="muted">No scenes yet. Click <strong>Add scene</strong> to create one.</p>
-{:else if listedDialogs.length === 0}
-	<p class="muted">No scenes match “{searchQuery.trim()}”.</p>
+	<p class="muted">Loading sequences…</p>
+{:else if sequences.length === 0}
+	<p class="muted">No sequences yet. Click <strong>Add sequence</strong> to create one.</p>
+{:else if listedSequences.length === 0}
+	<p class="muted">No sequences match "{searchQuery.trim()}".</p>
 {:else}
 	<div class="summary-list">
-		{#each listedDialogs as { dialog } (dialog.id)}
+		{#each listedSequences as { sequence } (sequence.id)}
 			<article class="summary-card">
-				<div class="scene-icon" title="Scene">
-					<span class="scene-icon-fallback">{dialog.displayName.charAt(0).toUpperCase()}</span>
+				<div class="sequence-icon" title="Sequence">
+					<span class="sequence-icon-fallback">{sequence.displayName.charAt(0).toUpperCase()}</span>
 				</div>
 				<div class="summary-body">
 					<div class="summary-head">
 						<div>
-							<h3>{dialog.displayName}</h3>
-							<p class="id">{dialog.id}</p>
+							<h3>{sequence.displayName}</h3>
+							<p class="id">{sequence.id}</p>
 						</div>
-						<a class="btn" href={`/projects/${slug}/scenes/${dialog.id}`}>Edit</a>
+						<a class="btn" href={`/projects/${slug}/sequences/${sequence.id}`}>Edit</a>
 					</div>
-					<p class="summary-desc">{descriptionPreview(dialog.description)}</p>
-					<p class="summary-meta">{usageLabel(dialog)}</p>
+					<p class="summary-meta">{updatedLabel(sequence.updatedAt)}</p>
 				</div>
 			</article>
 		{/each}
@@ -163,7 +150,7 @@
 <dialog bind:this={createDialogEl} class="modal" onclose={closeCreateModal}>
 	<form class="modal-panel" onsubmit={submitCreate}>
 		<header class="modal-header">
-			<h2>Add scene</h2>
+			<h2>Add sequence</h2>
 		</header>
 
 		<div class="modal-body">
@@ -171,23 +158,23 @@
 				<p class="error">{modalError}</p>
 			{/if}
 			<div class="field">
-				<label for="dialog-id">ID</label>
+				<label for="sequence-id">ID</label>
 				<input
-					id="dialog-id"
+					id="sequence-id"
 					bind:value={draftId}
 					required
 					pattern="[a-z][a-z0-9_]*"
-					placeholder="tavern_intro"
+					placeholder="main_story"
 					autocomplete="off"
 				/>
 			</div>
 			<div class="field">
-				<label for="dialog-name">Display name</label>
+				<label for="sequence-name">Display name</label>
 				<input
-					id="dialog-name"
+					id="sequence-name"
 					bind:value={draftName}
 					required
-					placeholder="Tavern Intro"
+					placeholder="Main story"
 					autocomplete="off"
 				/>
 			</div>
@@ -245,7 +232,7 @@
 		min-width: 0;
 	}
 
-	.scene-icon {
+	.sequence-icon {
 		flex-shrink: 0;
 		width: 72px;
 		height: 72px;
@@ -258,7 +245,7 @@
 		justify-content: center;
 	}
 
-	.scene-icon-fallback {
+	.sequence-icon-fallback {
 		font-size: 1.4rem;
 		font-weight: 600;
 		color: var(--text-muted);
@@ -284,7 +271,6 @@
 		color: var(--text-muted);
 	}
 
-	.summary-desc,
 	.summary-meta {
 		margin: 0.35rem 0 0;
 		font-size: 0.9rem;

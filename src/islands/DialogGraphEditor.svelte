@@ -22,6 +22,8 @@
 		dialogId: string;
 		displayName?: string;
 		description?: string;
+		nodeCount?: number;
+		sequenceCount?: number;
 		embedded?: boolean;
 	}
 
@@ -30,6 +32,8 @@
 		dialogId,
 		displayName: initialDisplayName = '',
 		description: initialDescription = '',
+		nodeCount = 0,
+		sequenceCount = 0,
 		embedded = false,
 	}: Props = $props();
 
@@ -464,6 +468,8 @@
 							{dialogId}
 							displayName={graphMeta.displayName}
 							description={graphMeta.description}
+							{nodeCount}
+							{sequenceCount}
 						/>
 					</div>
 				{/if}

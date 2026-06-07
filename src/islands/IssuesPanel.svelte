@@ -30,7 +30,7 @@
 		unassigned_scene: 'Unassigned scene',
 		missing_scene: 'Missing scene',
 		dead_end_branch: 'Dead-end branch',
-		dangling_flow_edge: 'Dangling flow connection',
+		dangling_flow_edge: 'Dangling sequence connection',
 	};
 
 	let filtered = $derived(
@@ -62,7 +62,8 @@
 
 	function issueLink(issue: ValidationIssue): string | null {
 		if (issue.flowNodeId) {
-			return `/projects/${slug}/flow#${issue.flowNodeId}`;
+			const seq = issue.sequenceId ?? 'main';
+			return `/projects/${slug}/sequences/${seq}#${issue.flowNodeId}`;
 		}
 		if (issue.dialogId && issue.nodeId) {
 			return `/projects/${slug}/scenes/${issue.dialogId}#${issue.nodeId}`;

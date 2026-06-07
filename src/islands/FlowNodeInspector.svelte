@@ -593,7 +593,7 @@
 				<label for="new-scene-name">Display name</label>
 				<input id="new-scene-name" bind:value={draftName} required autocomplete="off" />
 			</div>
-			<p class="hint">The new scene is created and assigned to this flow node automatically.</p>
+			<p class="hint">The new scene is created and assigned to this sequence node automatically.</p>
 		</div>
 		<footer class="modal-footer">
 			<div class="modal-footer-right">

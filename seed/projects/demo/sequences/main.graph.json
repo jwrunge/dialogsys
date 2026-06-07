@@ -1,0 +1,54 @@
+{
+  "id": "main",
+  "displayName": "Game flow",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "position": {
+        "x": -215.03154425612053,
+        "y": -12.468970692090295
+      },
+      "data": {
+        "label": "Game start"
+      }
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "position": {
+        "x": 988.8333333333333,
+        "y": 30.5
+      },
+      "data": {
+        "label": "Game end"
+      }
+    },
+    {
+      "id": "scene_jTJ869",
+      "type": "scene",
+      "position": {
+        "x": -214.64124293785312,
+        "y": 75.20220177142187
+      },
+      "data": {
+        "label": "New scene",
+        "dialogId": "new_scene",
+        "firstMeetings": [
+          {
+            "characterId": "player",
+            "displayName": "Player"
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-start-scene_jTJ869-dPrm",
+      "source": "start",
+      "target": "scene_jTJ869"
+    }
+  ],
+  "updatedAt": "2026-06-07T18:18:49.629Z"
+}

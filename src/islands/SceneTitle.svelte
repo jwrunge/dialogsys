@@ -2,17 +2,24 @@
 	import { tick } from 'svelte';
 	import { api } from '../lib/api';
 	import type { DialogGraph } from '../lib/schema/graph';
-	import type { FlowGraph } from '../lib/schema/flow';
 
 	interface Props {
 		slug: string;
 		dialogId: string;
 		displayName: string;
 		description?: string;
+		nodeCount?: number;
+		sequenceCount?: number;
 	}
 
-	let { slug, dialogId, displayName: initialName, description: initialDescription = '' }: Props =
-		$props();
+	let {
+		slug,
+		dialogId,
+		displayName: initialName,
+		description: initialDescription = '',
+		nodeCount: initialNodeCount = 0,
+		sequenceCount: initialSequenceCount = 0,
+	}: Props = $props();
 
 	let displayName = $state(initialName);
 	let description = $state(initialDescription);
@@ -23,19 +30,33 @@
 	let error = $state('');
 	let saving = $state(false);
 	let deleting = $state(false);
-	let flowNodeCount = $state(0);
+	let usageNodeCount = $state(initialNodeCount);
+	let usageSequenceCount = $state(initialSequenceCount);
 	let deleteMessage = $state('Are you sure?');
+
+	const usageLabel = $derived.by(() => {
+		if (usageNodeCount === 0 && usageSequenceCount === 0) return null;
+		const seq = `${usageSequenceCount} sequence${usageSequenceCount === 1 ? '' : 's'}`;
+		const nodes = `${usageNodeCount} node${usageNodeCount === 1 ? '' : 's'}`;
+		return `Used in ${seq} · ${nodes}`;
+	});
 
 	function getReturnPath(): string {
 		const scenesPath = `/projects/${slug}/scenes`;
-		const flowPath = `/projects/${slug}/flow`;
+		const sequencesPath = `/projects/${slug}/sequences`;
 
 		const params = new URLSearchParams(window.location.search);
-		if (params.get('from') === 'flow') return flowPath;
+		const from = params.get('from');
+		const fromSequence = params.get('sequence');
+		if (from === 'sequence') {
+			return fromSequence
+				? `/projects/${slug}/sequences/${fromSequence}`
+				: sequencesPath;
+		}
 
 		try {
 			const ref = new URL(document.referrer);
-			if (ref.pathname === flowPath || ref.pathname.endsWith(flowPath)) return flowPath;
+			if (ref.pathname.startsWith(`/projects/${slug}/sequences`)) return ref.pathname;
 		} catch {
 			/* ignore invalid referrer */
 		}
@@ -86,16 +107,18 @@
 	async function openDeleteModal() {
 		error = '';
 		try {
-			const res = await api<{ graph: FlowGraph }>(`/api/projects/${slug}/flow`);
-			flowNodeCount = res.graph.nodes.filter(
-				(n) => n.type === 'scene' && n.data.dialogId === dialogId,
-			).length;
+			const res = await api<{ dialogs: { id: string; nodeCount: number; sequenceCount: number }[] }>(
+				`/api/projects/${slug}/dialogs`,
+			);
+			const item = res.dialogs.find((d) => d.id === dialogId);
+			usageNodeCount = item?.nodeCount ?? usageNodeCount;
+			usageSequenceCount = item?.sequenceCount ?? usageSequenceCount;
 		} catch {
-			flowNodeCount = 0;
+			/* keep existing counts */
 		}
 		deleteMessage =
-			flowNodeCount > 0
-				? `This scene is used in ${flowNodeCount} node${flowNodeCount === 1 ? '' : 's'}. Are you sure you want to delete it?`
+			usageNodeCount > 0
+				? `This scene is used in ${usageSequenceCount} sequence${usageSequenceCount === 1 ? '' : 's'} (${usageNodeCount} node${usageNodeCount === 1 ? '' : 's'}). Are you sure you want to delete it?`
 				: 'Are you sure?';
 		await tick();
 		deleteDialogEl?.showModal();
@@ -122,26 +145,31 @@
 </script>
 
 <div class="scene-header">
-	<div class="title-row">
-		<h2>{displayName}</h2>
-		<button type="button" class="icon-btn" aria-label="Edit scene" onclick={openEditModal}>
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-				<path
-					d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				/>
-				<path
-					d="M13.5 6.5l3 3"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				/>
-			</svg>
-		</button>
+	<div class="title-block">
+		<div class="title-row">
+			<h2>{displayName}</h2>
+			<button type="button" class="icon-btn" aria-label="Edit scene" onclick={openEditModal}>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<path
+						d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M13.5 6.5l3 3"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
+			</button>
+		</div>
+		{#if usageLabel}
+			<p class="usage-meta">{usageLabel}</p>
+		{/if}
 	</div>
 	<button type="button" class="btn btn-danger" onclick={openDeleteModal}>Delete</button>
 </div>
@@ -205,10 +233,14 @@
 <style>
 	.scene-header {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		justify-content: space-between;
 		gap: 1rem;
 		margin-bottom: 0.75rem;
+	}
+
+	.title-block {
+		min-width: 0;
 	}
 
 	.title-row {
@@ -222,6 +254,12 @@
 		margin: 0;
 		font-size: 1.15rem;
 		font-weight: 600;
+	}
+
+	.usage-meta {
+		margin: 0.25rem 0 0;
+		font-size: 0.85rem;
+		color: var(--text-muted);
 	}
 
 	.icon-btn {

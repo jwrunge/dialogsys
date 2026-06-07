@@ -1,0 +1,10 @@
+---
+import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
+import SequenceListManager from '../../../../islands/SequenceListManager.svelte';
+
+const { slug } = Astro.params;
+---
+
+<ProjectLayout slug={slug!} current="sequences" title="Sequences">
+	<SequenceListManager client:load slug={slug!} />
+</ProjectLayout>

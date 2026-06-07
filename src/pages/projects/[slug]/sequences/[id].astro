@@ -1,0 +1,19 @@
+---
+import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
+import GameFlowEditor from '../../../../islands/GameFlowEditor.svelte';
+import { getSequence } from '../../../../lib/server/projects';
+
+const { slug, id } = Astro.params;
+
+let sequenceTitle = id!;
+try {
+	const graph = await getSequence(slug!, id!);
+	sequenceTitle = graph.displayName || id!;
+} catch {
+	/* use id as fallback */
+}
+---
+
+<ProjectLayout slug={slug!} current="sequences" title={sequenceTitle} variant="flow">
+	<GameFlowEditor client:only="svelte" slug={slug!} sequenceId={id!} />
+</ProjectLayout>

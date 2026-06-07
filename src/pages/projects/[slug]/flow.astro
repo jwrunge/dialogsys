@@ -1,10 +1,4 @@
 ---
-import ProjectLayout from '../../../layouts/ProjectLayout.astro';
-import GameFlowEditor from '../../../islands/GameFlowEditor.svelte';
-
 const { slug } = Astro.params;
+return Astro.redirect(`/projects/${slug}/sequences`);
 ---
-
-<ProjectLayout slug={slug!} current="flow" title="Flow" variant="flow">
-	<GameFlowEditor client:only="svelte" slug={slug!} />
-</ProjectLayout>

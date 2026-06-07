@@ -126,7 +126,12 @@ export async function createProject(input: {
 
 	await ensureDir(dir);
 	await ensureDir(projectFilePath(parsed.slug, 'dialogs'));
+	await ensureDir(projectFilePath(parsed.slug, 'sequences'));
 	await ensureDir(projectFilePath(parsed.slug, 'export', 'godot', 'dialogs'));
+	await writeJsonAtomic(
+		projectFilePath(parsed.slug, 'sequences', 'main.graph.json'),
+		createDefaultFlowGraph(),
+	);
 
 	await writeJsonAtomic(projectFilePath(parsed.slug, 'project.json'), meta);
 	await writeJsonAtomic(projectFilePath(parsed.slug, 'characters.json'), { characters: [] });
@@ -201,17 +206,32 @@ export type DialogListItem = {
 	displayName: string;
 	description: string;
 	stepCount: number;
+	nodeCount: number;
+	sequenceCount: number;
+};
+
+export type SequenceListItem = {
+	id: string;
+	displayName: string;
+	updatedAt: string;
+};
+
+export type SceneUsageStats = {
+	nodeCount: number;
+	sequenceCount: number;
 };
 
 export async function listDialogs(slug: string): Promise<DialogListItem[]> {
 	const dir = projectFilePath(slug, 'dialogs');
 	await ensureDir(dir);
 	const files = await fs.readdir(dir);
+	const usage = await getSceneUsageStats(slug);
 	const results: DialogListItem[] = [];
 
 	for (const file of files) {
 		if (!file.endsWith('.graph.json')) continue;
 		const id = file.replace(/\.graph\.json$/, '');
+		const stats = usage[id] ?? { nodeCount: 0, sequenceCount: 0 };
 		try {
 			const graph = await getDialog(slug, id);
 			results.push({
@@ -221,9 +241,18 @@ export async function listDialogs(slug: string): Promise<DialogListItem[]> {
 				stepCount: graph.nodes.filter(
 					(n) => n.type !== 'entry' && n.type !== 'blank',
 				).length,
+				nodeCount: stats.nodeCount,
+				sequenceCount: stats.sequenceCount,
 			});
 		} catch {
-			results.push({ id, displayName: id, description: '', stepCount: 0 });
+			results.push({
+				id,
+				displayName: id,
+				description: '',
+				stepCount: 0,
+				nodeCount: stats.nodeCount,
+				sequenceCount: stats.sequenceCount,
+			});
 		}
 	}
 
@@ -307,43 +336,177 @@ export async function updateDialogMeta(
 	});
 }
 
-export async function clearDialogFromFlow(slug: string, dialogId: string): Promise<number> {
-	const flow = await getFlow(slug);
-	let count = 0;
-	let changed = false;
-	const nodes = flow.nodes.map((node) => {
-		if (node.type !== 'scene' || node.data.dialogId !== dialogId) return node;
-		count++;
-		changed = true;
-		const nextData = { ...node.data };
-		delete nextData.dialogId;
-		delete nextData.firstMeetings;
-		return { ...node, data: nextData };
-	});
-	if (changed) {
-		await saveFlow(slug, { ...flow, nodes });
+function assertSequenceId(id: string): void {
+	assertSafeRelative(id);
+	if (!/^[a-z][a-z0-9_]*$/.test(id)) throw new Error('Invalid sequence id');
+}
+
+function sequenceFilePath(slug: string, id: string): string {
+	assertSequenceId(id);
+	return projectFilePath(slug, 'sequences', `${id}.graph.json`);
+}
+
+async function readLegacyFlow(slug: string): Promise<FlowGraph | null> {
+	const file = projectFilePath(slug, 'flow.graph.json');
+	const raw = await readJsonFile(file, null);
+	if (!raw) return null;
+	return flowGraphSchema.parse(raw);
+}
+
+async function loadAllSequences(slug: string): Promise<FlowGraph[]> {
+	const sequences = await listSequences(slug);
+	if (sequences.length === 0) return [];
+	return Promise.all(sequences.map((s) => getSequence(slug, s.id)));
+}
+
+export async function getSceneUsageStats(
+	slug: string,
+): Promise<Record<string, SceneUsageStats>> {
+	const stats: Record<string, SceneUsageStats> = {};
+	const sequences = await loadAllSequences(slug);
+
+	for (const graph of sequences) {
+		const dialogIdsInSequence = new Set<string>();
+		for (const node of graph.nodes) {
+			if (node.type !== 'scene' || !node.data.dialogId) continue;
+			const dialogId = node.data.dialogId;
+			dialogIdsInSequence.add(dialogId);
+			if (!stats[dialogId]) stats[dialogId] = { nodeCount: 0, sequenceCount: 0 };
+			stats[dialogId].nodeCount++;
+		}
+		for (const dialogId of dialogIdsInSequence) {
+			stats[dialogId]!.sequenceCount++;
+		}
 	}
-	return count;
+
+	return stats;
+}
+
+export async function listSequences(slug: string): Promise<SequenceListItem[]> {
+	const dir = projectFilePath(slug, 'sequences');
+	await ensureDir(dir);
+	const files = await fs.readdir(dir);
+	const results: SequenceListItem[] = [];
+
+	for (const file of files) {
+		if (!file.endsWith('.graph.json')) continue;
+		const id = file.replace(/\.graph\.json$/, '');
+		try {
+			const graph = await getSequence(slug, id);
+			results.push({
+				id,
+				displayName: graph.displayName,
+				updatedAt: graph.updatedAt ?? '',
+			});
+		} catch {
+			results.push({ id, displayName: id, updatedAt: '' });
+		}
+	}
+
+	if (results.length === 0) {
+		const legacy = await readLegacyFlow(slug);
+		if (legacy) {
+			results.push({
+				id: legacy.id || 'main',
+				displayName: legacy.displayName,
+				updatedAt: legacy.updatedAt ?? '',
+			});
+		}
+	}
+
+	return results.sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+export async function getSequence(slug: string, id: string): Promise<FlowGraph> {
+	const file = sequenceFilePath(slug, id);
+	const raw = await readJsonFile(file, null);
+	if (raw) {
+		const graph = flowGraphSchema.parse(raw);
+		return { ...graph, id };
+	}
+
+	if (id === 'main') {
+		const legacy = await readLegacyFlow(slug);
+		if (legacy) return { ...legacy, id: legacy.id || 'main' };
+	}
+
+	const graph = createDefaultFlowGraph(id);
+	await saveSequence(slug, graph);
+	return graph;
+}
+
+export async function saveSequence(slug: string, graph: FlowGraph): Promise<FlowGraph> {
+	assertSequenceId(graph.id);
+	const parsed = flowGraphSchema.parse({
+		...graph,
+		updatedAt: new Date().toISOString(),
+	});
+	await writeJsonAtomic(sequenceFilePath(slug, parsed.id), parsed);
+	await touchProject(slug);
+	void scheduleSnapshot(slug, `sequence saved: ${parsed.id}`);
+	return parsed;
+}
+
+export async function createSequence(
+	slug: string,
+	input: { id: string; displayName: string },
+): Promise<FlowGraph> {
+	assertSequenceId(input.id);
+	const file = sequenceFilePath(slug, input.id);
+	try {
+		await fs.access(file);
+		throw new Error('Sequence already exists');
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+	}
+
+	const graph = createDefaultFlowGraph(input.id, input.displayName.trim());
+	const saved = await saveSequence(slug, graph);
+	void scheduleSnapshot(slug, `sequence created: ${input.id}`, { immediate: true });
+	return saved;
+}
+
+export async function deleteSequence(slug: string, id: string): Promise<void> {
+	if (id === 'main') throw new Error('Cannot delete the main sequence');
+	const file = sequenceFilePath(slug, id);
+	await fs.unlink(file);
+	await touchProject(slug);
+	void scheduleSnapshot(slug, `sequence deleted: ${id}`, { immediate: true });
+}
+
+export async function clearDialogFromSequences(slug: string, dialogId: string): Promise<number> {
+	const sequences = await listSequences(slug);
+	let total = 0;
+
+	for (const { id } of sequences) {
+		const graph = await getSequence(slug, id);
+		let count = 0;
+		let changed = false;
+		const nodes = graph.nodes.map((node) => {
+			if (node.type !== 'scene' || node.data.dialogId !== dialogId) return node;
+			count++;
+			changed = true;
+			const nextData = { ...node.data };
+			delete nextData.dialogId;
+			delete nextData.firstMeetings;
+			return { ...node, data: nextData };
+		});
+		if (changed) {
+			await saveSequence(slug, { ...graph, nodes });
+			total += count;
+		}
+	}
+
+	return total;
 }
 
 export async function deleteDialog(slug: string, id: string): Promise<{ flowNodesCleared: number }> {
-	const flowNodesCleared = await clearDialogFromFlow(slug, id);
+	const flowNodesCleared = await clearDialogFromSequences(slug, id);
 	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
 	await fs.unlink(file);
 	await touchProject(slug);
 	void scheduleSnapshot(slug, `dialog deleted: ${id}`, { immediate: true });
 	return { flowNodesCleared };
-}
-
-export async function getFlow(slug: string): Promise<FlowGraph> {
-	const file = projectFilePath(slug, 'flow.graph.json');
-	const raw = await readJsonFile(file, null);
-	if (!raw) {
-		const graph = createDefaultFlowGraph();
-		await saveFlow(slug, graph);
-		return graph;
-	}
-	return flowGraphSchema.parse(raw);
 }
 
 export async function getGameState(slug: string): Promise<GameStateFile> {
@@ -357,17 +520,6 @@ export async function saveGameState(slug: string, data: GameStateFile): Promise<
 	await writeJsonAtomic(projectFilePath(slug, 'gameState.json'), parsed);
 	await touchProject(slug);
 	await scheduleSnapshot(slug, 'game state saved', { immediate: true });
-	return parsed;
-}
-
-export async function saveFlow(slug: string, graph: FlowGraph): Promise<FlowGraph> {
-	const parsed = flowGraphSchema.parse({
-		...graph,
-		updatedAt: new Date().toISOString(),
-	});
-	await writeJsonAtomic(projectFilePath(slug, 'flow.graph.json'), parsed);
-	await touchProject(slug);
-	void scheduleSnapshot(slug, 'flow saved');
 	return parsed;
 }
 

@@ -109,6 +109,7 @@
 		border: 2px solid var(--accent-color);
 		border-radius: var(--radius);
 		font-size: 0.75rem;
+		color: var(--text);
 	}
 
 	.type {

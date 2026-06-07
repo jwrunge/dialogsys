@@ -1,10 +1,13 @@
 import { nanoid } from 'nanoid';
 import type { FlowGraph, FlowNode } from '../schema/flow';
 
-export function createDefaultFlowGraph(): FlowGraph {
+export function createDefaultFlowGraph(
+	id = 'main',
+	displayName = 'Main sequence',
+): FlowGraph {
 	return {
-		id: 'main',
-		displayName: 'Game flow',
+		id,
+		displayName,
 		nodes: [
 			{
 				id: 'start',

@@ -80,7 +80,7 @@
 			/>
 		</SvelteFlowProvider>
 	{:else}
-		<p class="canvas-loading">Loading flow chart…</p>
+		<p class="canvas-loading">Loading sequence…</p>
 	{/if}
 </div>
 

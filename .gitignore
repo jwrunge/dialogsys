@@ -31,3 +31,4 @@ projects/**/*.tmp
 # Generated / autosaved artifacts (all projects)
 projects/**/export/
 projects/**/flow.graph.json
+projects/**/sequences/*.graph.json

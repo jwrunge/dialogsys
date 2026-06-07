@@ -100,6 +100,7 @@
 		bind:edges={flowEdges}
 		{nodeTypes}
 		{proOptions}
+		colorMode="dark"
 		connectionRadius={80}
 		fitView
 		onnodeclick={({ node }) => onNodeSelect(node.id)}
