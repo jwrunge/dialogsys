@@ -4,6 +4,8 @@ import { onMount, tick } from 'svelte';
 import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
 import { api } from '../lib/api';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
+import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { isProjectReadOnly } from '../lib/client/project-access';
 import {
 	type CanvasEdge,
 	type CanvasNode,
@@ -110,7 +112,8 @@ function fromCanvas(): DialogGraph {
 const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
 
 function scheduleSave() {
-	if (loading || !ready) return;
+	if (loading || !ready || isProjectReadOnly()) return;
+	markDirty();
 	saveTask.schedule();
 }
 
@@ -122,10 +125,12 @@ async function save() {
 			body: JSON.stringify({ graph: fromCanvas() }),
 		});
 		saveStatus = 'Saved';
+		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'Saved') saveStatus = '';
 		}, 1500);
 	} catch (e) {
+		notifySaveConflict(e);
 		saveStatus = (e as Error).message;
 	}
 }
@@ -401,7 +406,7 @@ onMount(async () => {
 });
 </script>
 
-<div class="scene-editor" class:embedded class:editor-shell={embedded}>
+<div class="scene-editor" class:embedded class:editor-shell={embedded} data-transmut="include">
 	<EditorStatusBanner {loadError} />
 	{#if !loadError && ready}
 		<div class="editor-layout flow-layout">

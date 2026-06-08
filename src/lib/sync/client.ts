@@ -1,6 +1,7 @@
 import type { OriginMeta } from '../schema/origin';
 import type { ProjectMeta } from '../schema/project';
 import { normalizeSyncCredentials, type SyncCredentials, syncAuthHeaders } from './credentials';
+import { SyncApiError, SyncConflictError } from './errors';
 
 export type { SyncCredentials } from './credentials';
 
@@ -12,6 +13,12 @@ export type SyncConnectionResult = {
 	ok: boolean;
 	projectCount: number;
 	error?: string;
+};
+
+export type SyncAccessRole = 'read' | 'write';
+
+export type SyncAuthCapabilities = {
+	role: SyncAccessRole;
 };
 
 export type SyncFileInfo = {
@@ -26,6 +33,14 @@ export type SyncFileRead = {
 	originId: string;
 	path: string;
 	content: string;
+	timestamp: string;
+	contentHash: string;
+	requestId: string;
+};
+
+export type SyncFileWrite = {
+	project: string;
+	path: string;
 	timestamp: string;
 	contentHash: string;
 	requestId: string;
@@ -68,9 +83,18 @@ async function syncFetch<T>(
 			(data as { error?: string })?.error ??
 			(data as { message?: string })?.message ??
 			res.statusText;
-		throw new Error(message || `Request failed (${res.status})`);
+		if (res.status === 409) {
+			throw new SyncConflictError(message || 'File changed on server', path, undefined);
+		}
+		throw new SyncApiError(message || `Request failed (${res.status})`, res.status, data);
 	}
 	return data as T;
+}
+
+export async function getSyncCapabilities(
+	credentials: string | SyncCredentials,
+): Promise<SyncAuthCapabilities> {
+	return syncFetch<SyncAuthCapabilities>(credentials, '/auth/capabilities');
 }
 
 export async function checkSyncHealth(credentials: string | SyncCredentials): Promise<SyncHealth> {
@@ -147,11 +171,15 @@ export async function writeOriginFile(
 	filePath: string,
 	content: string,
 	previousContentHash?: string,
-): Promise<void> {
-	await syncFetch(credentials, `/projects/${slug}/origins/${originId}/files/${filePath}`, {
-		method: 'PUT',
-		body: JSON.stringify({ content, previousContentHash }),
-	});
+): Promise<SyncFileWrite> {
+	return syncFetch<SyncFileWrite>(
+		credentials,
+		`/projects/${slug}/origins/${originId}/files/${filePath}`,
+		{
+			method: 'PUT',
+			body: JSON.stringify({ content, previousContentHash }),
+		},
+	);
 }
 
 export async function deleteOriginFile(

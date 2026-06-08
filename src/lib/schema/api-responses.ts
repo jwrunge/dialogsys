@@ -27,6 +27,8 @@ export const settingsResponseSchema = z.object({
 	clientId: z.string(),
 	configFile: z.string().nullable(),
 	locale: z.string(),
+	syncAccessRole: z.enum(['read', 'write']),
+	deviceDisplayName: z.string(),
 });
 
 export const charactersResponseSchema = charactersFileSchema;

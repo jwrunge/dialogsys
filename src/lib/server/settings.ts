@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
-import { type AppSettings, appSettingsSchema, type StorageMode } from '../schema/settings';
+import {
+	type AppSettings,
+	appSettingsSchema,
+	type StorageMode,
+	type SyncAccessRole,
+} from '../schema/settings';
 import { isValidSyncServerUrl } from '../sync/client';
 import { getClientId } from './client';
 import { validateConfiguredProjectsRoot } from './projectsRoot';
@@ -28,7 +33,13 @@ export type AppSettingsInfo = {
 	hasSyncServerToken: boolean;
 	clientId: string;
 	locale: string;
+	syncAccessRole: SyncAccessRole;
+	deviceDisplayName: string;
 };
+
+export function getPluginSettings(): NonNullable<AppSettings['plugins']> {
+	return readConfigSync().plugins ?? {};
+}
 
 export function getConfiguredLocale(): string | undefined {
 	const locale = readConfigSync().locale?.trim();
@@ -124,9 +135,16 @@ export function getStoredSyncServerToken(): string | undefined {
 	return token || undefined;
 }
 
+export function getDeviceDisplayName(): string {
+	const config = readConfigSync();
+	const clientId = getClientId();
+	return config.deviceDisplayName?.trim() || config.originLabels?.[clientId]?.trim() || '';
+}
+
 export function getAppSettingsInfo(): AppSettingsInfo {
 	const config = readConfigSync();
 	const root = resolveProjectsRoot(config);
+	const clientId = getClientId();
 	return {
 		projectsRoot: root.configuredPath,
 		resolvedPath: root.resolvedPath,
@@ -135,8 +153,22 @@ export function getAppSettingsInfo(): AppSettingsInfo {
 		storageMode: config.storageMode ?? 'local',
 		syncServerUrl: config.syncServerUrl?.trim() ?? '',
 		hasSyncServerToken: Boolean(getStoredSyncServerToken()),
-		clientId: getClientId(),
+		clientId,
 		locale: getConfiguredLocale() ?? 'en',
+		syncAccessRole: 'write',
+		deviceDisplayName: getDeviceDisplayName(),
+	};
+}
+
+export async function getAppSettingsInfoAsync(): Promise<AppSettingsInfo> {
+	const info = getAppSettingsInfo();
+	if (info.storageMode !== 'remote' || !info.syncServerUrl) {
+		return info;
+	}
+	const { resolveSyncAccessRole } = await import('./collaboration/access');
+	return {
+		...info,
+		syncAccessRole: await resolveSyncAccessRole(),
 	};
 }
 
@@ -183,6 +215,13 @@ function normalizeSettingsInput(
 	}
 
 	const locale = input.locale?.trim() || current.locale?.trim() || undefined;
+	const deviceDisplayName =
+		input.deviceDisplayName?.trim() || current.deviceDisplayName?.trim() || undefined;
+	const clientId = current.clientId ?? getClientId();
+	const originLabels = { ...current.originLabels };
+	if (deviceDisplayName) {
+		originLabels[clientId] = deviceDisplayName;
+	}
 
 	const settings: AppSettings = {
 		projectsRoot: safeRoot,
@@ -190,6 +229,8 @@ function normalizeSettingsInput(
 		syncServerUrl: syncServerUrl || undefined,
 		syncServerToken,
 		locale,
+		deviceDisplayName,
+		originLabels: Object.keys(originLabels).length > 0 ? originLabels : undefined,
 	};
 
 	return { settings, externalTokenUpdate };

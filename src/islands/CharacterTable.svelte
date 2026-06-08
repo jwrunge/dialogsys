@@ -4,7 +4,9 @@ import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import { api } from '../lib/api';
 import { defaultPortraitPath, portraitPreviewUrl } from '../lib/characters';
+import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { uploadPortrait } from '../lib/client/download';
+import { isProjectReadOnly } from '../lib/client/project-access';
 import type { Character, CharacterState, CharactersFile } from '../lib/schema/characters';
 
 interface Props {
@@ -126,8 +128,10 @@ async function load() {
 }
 
 async function persistCharacters() {
+	if (isProjectReadOnly()) return;
 	saveStatus = 'saving';
 	saveMessage = 'Saving…';
+	markDirty();
 	try {
 		await api(`/api/projects/${slug}/characters`, {
 			method: 'PUT',
@@ -135,6 +139,7 @@ async function persistCharacters() {
 		});
 		saveStatus = 'saved';
 		saveMessage = 'Saved';
+		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'saved') {
 				saveStatus = 'idle';
@@ -142,6 +147,7 @@ async function persistCharacters() {
 			}
 		}, 2000);
 	} catch (e) {
+		notifySaveConflict(e);
 		saveStatus = 'error';
 		saveMessage = (e as Error).message;
 	}
@@ -276,6 +282,7 @@ function onStateLabelBlur() {
 onMount(load);
 </script>
 
+<div data-transmut="include">
 <div class="toolbar">
 	<input
 		class="search"
@@ -556,6 +563,7 @@ onMount(load);
 		</form>
 	{/if}
 </dialog>
+</div>
 
 <style>
 	.toolbar {

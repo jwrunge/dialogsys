@@ -22,7 +22,7 @@ async function validate() {
 	issues = res.issues;
 }
 
-async function exportProject(format: 'godot' | 'generic') {
+async function exportProject(format: 'godot' | 'generic' | 'unity' | 'unreal') {
 	exporting = true;
 	error = '';
 	result = null;
@@ -58,6 +58,12 @@ onMount(validate);
 	</button>
 	<button type="button" class="btn" onclick={() => exportProject('generic')} disabled={exporting}>
 		Export generic (.zip)
+	</button>
+	<button type="button" class="btn" onclick={() => exportProject('unity')} disabled={exporting}>
+		Export Unity (.zip)
+	</button>
+	<button type="button" class="btn" onclick={() => exportProject('unreal')} disabled={exporting}>
+		Export Unreal (.zip)
 	</button>
 </div>
 
@@ -100,6 +106,12 @@ onMount(validate);
 		<li>Portrait paths in JSON use <code>res://dialogue/portraits/…</code></li>
 		<li>Call <code>start("scene_id")</code> and connect <code>line_shown</code>, <code>choices_shown</code>, <code>dialogue_ended</code></li>
 		<li>Handle <code>run_command</code> for <code>set_var</code> and gameplay hooks</li>
+	</ol>
+	<h4>Unity</h4>
+	<ol>
+		<li>Unzip the <code>unity/</code> folder into your project (e.g. <code>Assets/Dialogue/</code>)</li>
+		<li>Use <code>DialogueRunner.cs</code> as a starting point for loading JSON</li>
+		<li>Portrait paths are relative (<code>portraits/…</code>)</li>
 	</ol>
 	<h4>Generic</h4>
 	<ol>

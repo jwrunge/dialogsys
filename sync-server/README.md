@@ -41,6 +41,12 @@ When `authToken` is configured (or `--auth-token` is passed), all routes except 
 Authorization: Bearer <authToken>
 ```
 
+Optional **read-only** tokens (`readAuthToken` or `readAuthTokens` in config) can list and download project files but cannot create projects or write/delete files. Use them for reviewers or hosted subscription viewers.
+
+Example hook script: `hooks/example.mjs` (reject writes under `.git/`).
+
+`GET /auth/capabilities` (authenticated) returns `{ "role": "read" | "write" }`.
+
 Use HTTPS behind a reverse proxy when the server is reachable outside your LAN.
 
 ## API

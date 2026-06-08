@@ -45,14 +45,17 @@ export function portraitPathForPreview(slug: string, path: string | undefined): 
 	return null;
 }
 
-export function portraitPathForExport(path: string, format: 'godot' | 'generic'): string {
+export function portraitPathForExport(
+	path: string,
+	format: 'godot' | 'generic' | 'unity' | 'unreal',
+): string {
 	const p = path.trim();
 	if (!p) return '';
 	if (p.startsWith('http://') || p.startsWith('https://')) return p;
 
 	const rel = isProjectPortraitPath(p) ? p : (legacyPortraitRelPath(p) ?? p);
 
-	if (format === 'generic') {
+	if (format === 'generic' || format === 'unity' || format === 'unreal') {
 		if (rel.startsWith('portraits/')) return rel;
 		return p;
 	}

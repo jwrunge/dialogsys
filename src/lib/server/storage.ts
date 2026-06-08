@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { assertWritable, resolveSyncAccessRole } from './collaboration/access';
 import { projectFilePath } from './paths';
 import { getAppSettingsInfo } from './settings';
 import {
@@ -38,11 +39,18 @@ export async function readTextFile(slug: string, ...segments: string[]): Promise
 	}
 }
 
+async function assertWritableIfRemote(): Promise<void> {
+	if (isRemoteStorage()) {
+		assertWritable(await resolveSyncAccessRole());
+	}
+}
+
 export async function writeTextFile(
 	slug: string,
 	segments: string[],
 	content: string,
 ): Promise<void> {
+	await assertWritableIfRemote();
 	await ensureProjectReady(slug);
 	const file = projectFilePath(slug, ...segments);
 	await fs.mkdir(path.dirname(file), { recursive: true });
@@ -95,6 +103,7 @@ export async function fileExists(slug: string, ...segments: string[]): Promise<b
 }
 
 export async function deleteFile(slug: string, ...segments: string[]): Promise<void> {
+	await assertWritableIfRemote();
 	await ensureProjectReady(slug);
 	const file = projectFilePath(slug, ...segments);
 	await fs.unlink(file);
@@ -114,6 +123,7 @@ export async function writeBinaryFile(
 	segments: string[],
 	data: Buffer,
 ): Promise<void> {
+	await assertWritableIfRemote();
 	await ensureProjectReady(slug);
 	const file = projectFilePath(slug, ...segments);
 	await fs.mkdir(path.dirname(file), { recursive: true });

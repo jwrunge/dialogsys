@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { ZipArchive } from 'archiver';
 import { collectPortraitBundlePaths, portraitPathForExport } from '../portraits';
 import type { Character, CharacterState } from '../schema/characters';
+import { loadExportHooks } from '../server/plugins/load';
 import {
 	getCharacters,
 	getDialog,
@@ -11,10 +12,11 @@ import {
 	portraitExists,
 	readPortraitFile,
 } from '../server/projects';
+import { getPluginSettings } from '../server/settings';
 import { compileDialogToGodot, type GodotDialogExport } from './dialogToGodot';
 import { validateProject } from './validate';
 
-export type ExportFormat = 'godot' | 'generic';
+export type ExportFormat = 'godot' | 'generic' | 'unity' | 'unreal';
 
 export type ExportZipResult = {
 	buffer: Buffer;
@@ -89,7 +91,14 @@ export async function buildExportZip(slug: string, format: ExportFormat): Promis
 	);
 
 	const entries: ZipEntry[] = [];
-	const root = format === 'godot' ? 'godot' : 'generic';
+	const root =
+		format === 'godot'
+			? 'godot'
+			: format === 'unity'
+				? 'unity'
+				: format === 'unreal'
+					? 'unreal'
+					: 'generic';
 
 	for (const compiled of dialogExports) {
 		entries.push({
@@ -119,7 +128,53 @@ export async function buildExportZip(slug: string, format: ExportFormat): Promis
 		content: JSON.stringify(manifest, null, 2) + '\n',
 	});
 
-	if (format === 'generic') {
+	if (format === 'unity') {
+		const templatePath = path.resolve(process.cwd(), 'templates/unity/DialogueRunner.cs');
+		const runner = await fs.readFile(templatePath, 'utf-8');
+		entries.push({ name: `${root}/DialogueRunner.cs`, content: runner });
+		entries.push({
+			name: `${root}/characters.json`,
+			content:
+				JSON.stringify(
+					{ characters: mapCharacterPortraits(characters.characters, format) },
+					null,
+					2,
+				) + '\n',
+		});
+		entries.push({
+			name: `${root}/README.txt`,
+			content: [
+				'Dialogsys Unity export',
+				'',
+				'Copy this folder into your Unity project (e.g. Assets/Dialogue/).',
+				'Attach DialogueRunner.cs to a GameObject and load JSON from StreamingAssets or Resources.',
+				'dialogs/ — scene JSON (same schema as Godot export)',
+				'portraits/ — portrait images',
+				'',
+			].join('\n'),
+		});
+	} else if (format === 'unreal') {
+		entries.push({
+			name: `${root}/characters.json`,
+			content:
+				JSON.stringify(
+					{ characters: mapCharacterPortraits(characters.characters, 'generic') },
+					null,
+					2,
+				) + '\n',
+		});
+		entries.push({
+			name: `${root}/README.txt`,
+			content: [
+				'Dialogsys Unreal export',
+				'',
+				'Import dialogs/*.json into DataTables or a custom UObject loader.',
+				'Portrait paths are relative (portraits/…).',
+				'See generic export schema — same dialog JSON node types as Godot.',
+				'',
+			].join('\n'),
+		});
+	} else if (format === 'generic') {
 		entries.push({
 			name: `${root}/characters.json`,
 			content:
@@ -158,7 +213,18 @@ export async function buildExportZip(slug: string, format: ExportFormat): Promis
 		});
 	}
 
-	const buffer = await buildZip(entries);
+	let finalEntries = entries;
+	const hookPaths = getPluginSettings().exportHooks ?? [];
+	if (hookPaths.length > 0) {
+		const hooks = await loadExportHooks(hookPaths);
+		let ctx = { slug, format, entries: finalEntries };
+		for (const hook of hooks) {
+			ctx = await hook(ctx);
+		}
+		finalEntries = ctx.entries;
+	}
+
+	const buffer = await buildZip(finalEntries);
 
 	return {
 		buffer,

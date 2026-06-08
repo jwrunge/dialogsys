@@ -4,6 +4,8 @@ import { marked } from 'marked';
 import { onMount } from 'svelte';
 import { api } from '../lib/api';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
+import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { isProjectReadOnly } from '../lib/client/project-access';
 
 interface Props {
 	slug: string;
@@ -54,16 +56,24 @@ async function loadOverview() {
 }
 
 async function saveNow(content: string) {
-	await api(`/api/projects/${slug}/notes/overview.md`, {
-		method: 'PUT',
-		body: JSON.stringify({ content }),
-	});
-	loadedContent = content;
-	status = 'Saved';
-	setTimeout(() => (status = ''), 1500);
+	try {
+		await api(`/api/projects/${slug}/notes/overview.md`, {
+			method: 'PUT',
+			body: JSON.stringify({ content }),
+		});
+		loadedContent = content;
+		status = 'Saved';
+		markClean();
+		setTimeout(() => (status = ''), 1500);
+	} catch (e) {
+		notifySaveConflict(e);
+		throw e;
+	}
 }
 
 function scheduleSave(_content: string) {
+	if (isProjectReadOnly()) return;
+	markDirty();
 	saveTask.schedule();
 }
 
@@ -93,6 +103,7 @@ onMount(async () => {
 });
 </script>
 
+<div data-transmut="include">
 <div class="header">
 	<h2>Overview</h2>
 	{#if status}
@@ -150,6 +161,7 @@ onMount(async () => {
 		{@html previewHtml}
 	</div>
 {/if}
+</div>
 
 <style>
 	.header {

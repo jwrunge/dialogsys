@@ -140,10 +140,15 @@ pub fn load_error_page(app: &AppHandle, message: &str) -> Result<(), String> {
 #[cfg(mobile)]
 pub fn load_mobile_fallback(app: &AppHandle) -> Result<(), String> {
     let html = "data:text/html,\
-        <html><body style='font-family:system-ui;padding:2rem;max-width:40rem'>\
+        <html><body style='font-family:system-ui;padding:2rem;max-width:40rem;line-height:1.5'>\
         <h1>Dialogsys</h1>\
-        <p>Offline editing on mobile is not available in this build. Use the desktop app for full local authoring, \
-        or run <code>npm run tauri ios dev</code> / <code>npm run tauri android dev</code> against a dev server on your computer.</p>\
+        <p>Mobile release builds need a network connection to your sync server for authoring.</p>\
+        <ol>\
+        <li>Run the desktop app or <code>dialogsys-server</code> on a machine that holds project files.</li>\
+        <li>On this device, use <strong>Settings → Remote sync server</strong> with the server URL and token.</li>\
+        <li>For local development, run <code>npm run tauri ios dev</code> or <code>tauri android dev</code> on your computer.</li>\
+        </ol>\
+        <p>Queued edits sync automatically when you reconnect (desktop and browser). Full offline mobile authoring is planned.</p>\
         </body></html>";
     navigate_first_window(app, html)
 }

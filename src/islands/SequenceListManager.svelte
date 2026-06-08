@@ -101,6 +101,7 @@ async function submitCreate(e: Event) {
 onMount(load);
 </script>
 
+<div data-transmut="include">
 <div class="toolbar">
 	<input
 		class="search"
@@ -190,6 +191,7 @@ onMount(load);
 		</footer>
 	</form>
 </dialog>
+</div>
 
 <style>
 	.toolbar {

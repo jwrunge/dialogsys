@@ -61,6 +61,21 @@ The graph editor should show Entry, Direction, Line, Condition, Set var, and End
 - Default projects root: `./projects`
 - Override via **Settings** (`/settings`) or env var `DIALOGSYS_PROJECTS_ROOT` (see `.env.example`)
 
+### Collaboration (async)
+
+- Per-device **origin threads** on sync server; `CollaborationPanel` in project layout
+- Read-only tokens (`readAuthToken` on sync server) → `ReadOnlyBanner` + write blocking
+- File-level conflicts (409) with reload / force-keep-mine; offline write queue when network drops
+
+### Writer lines
+
+- Scenes list → **Writer lines (CSV)** — export/import line text (`scene_id,node_id,speaker,text`); graph structure stays JSON
+
+### Plugins
+
+- `dialogsys.config.json` → `plugins.validators` / `plugins.exportHooks` (see `plugins/example-validator.mjs`)
+- Sync-server storage hooks: `sync-server/hooks/example.mjs`
+
 ### Localization
 
 - Client: `@jwrunge/transmut` `TranslationObserver` with `requireExplicitOptIn: true` (mark app UI with `data-transmut="include"`).

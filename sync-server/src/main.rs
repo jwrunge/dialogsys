@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, path::PathBuf};
 
 use dialogsys_server::{
-    default_bind_addr, load_config, serve, validate_bind_and_auth, AppState, HookConfig,
+    default_bind_addr, load_config, serve, validate_bind_and_auth, AppState, AuthConfig, HookConfig,
 };
 
 #[derive(Debug, Default)]
@@ -23,6 +23,7 @@ async fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = parse_args(std::env::args().skip(1))?;
     let config = load_config(cli.config.as_deref()).await?;
+    let mut auth = AuthConfig::from_server_config(&config);
 
     let root = cli
         .root
@@ -33,17 +34,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .or(config.bind)
         .unwrap_or_else(|| default_bind_addr().to_string());
     let addr: SocketAddr = bind.parse()?;
-    let auth_token = cli.auth_token.or(config.auth_token);
+    if let Some(token) = cli.auth_token {
+        auth.write_token = Some(token);
+    }
 
-    validate_bind_and_auth(&addr, &auth_token)?;
+    validate_bind_and_auth(&addr, &auth)?;
 
     let hooks: HookConfig = config.hooks;
-    let state = AppState::new(root, hooks, auth_token);
+    let state = AppState::with_auth_config(root, hooks, &auth);
 
     println!("Dialogsys server listening on http://{addr}");
     println!("Projects root: {}", state.root().display());
-    if state.auth_token().is_some() {
-        println!("Authentication: Bearer token required");
+    if state.has_auth() {
+        println!("Authentication: Bearer token required (write and/or read-only tokens)");
     } else {
         println!("Authentication: disabled (loopback only)");
     }

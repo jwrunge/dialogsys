@@ -49,6 +49,27 @@ Open **Issues** (`/projects/<slug>/issues`) to see warnings such as:
 
 On condition and choice nodes, use **Force branch** or per-edge **Just use this branch** to always follow one path at export and suppress alternate-branch warnings.
 
+## Writer lines (CSV)
+
+On the **Scenes** list, expand **Writer lines (CSV)** to export all dialogue line text as CSV (`scene_id,node_id,speaker,text`) or import updates. Import only changes existing line nodes; graph structure stays in JSON (compatible with future text↔node authoring).
+
+## Plugins
+
+Optional hooks in `dialogsys.config.json`:
+
+```json
+{
+  "plugins": {
+    "validators": ["plugins/example-validator.mjs"],
+    "exportHooks": []
+  }
+}
+```
+
+Validator plugins return extra Issues panel warnings/errors. Export hooks can add files to export zips. See `plugins/example-validator.mjs`.
+
+Sync-server storage hooks are documented in `sync-server/README.md` (`sync-server/hooks/example.mjs`).
+
 ## Cloud sync (self-hosted server)
 
 Dialogsys includes a Rust sync server in `sync-server/`. In **Settings**, choose **Remote sync server** and enter its URL.
@@ -77,6 +98,8 @@ The server intentionally serves HTTP only; put HTTPS behind nginx, Caddy, Traefi
 Open **Export** in a project to validate and download a zip bundle.
 
 - **Godot** — `godot/` folder with `DialogueRunner.gd`, dialog JSON (`res://dialogue/portraits/…` paths), and bundled portraits. Unzip and copy into your game as `res://dialogue/`.
+- **Unity** — `unity/` folder with `DialogueRunner.cs` stub, dialog JSON, `characters.json`, and portraits (relative paths).
+- **Unreal** — `unreal/` folder with dialog JSON, `characters.json`, portraits, and import notes for DataTables/custom loaders.
 - **Generic** — portable `generic/` folder with dialog JSON (relative `portraits/…` paths), `characters.json`, `manifest.json`, and portrait images for custom engines.
 
 ## Godot integration
@@ -129,7 +152,7 @@ Prepare bundled assets manually with `npm run tauri:prepare` (also runs automati
 | `npm run tauri:android:dev` | Android emulator/device + Astro dev server |
 | `npm run tauri:android:build` | Android APK/AAB |
 
-Mobile **release** builds are a thin shell today: offline editing requires the desktop app. Use `tauri ios dev` / `tauri android dev` during development, or the desktop app for full local authoring.
+Mobile **release** builds connect to your sync server for remote authoring. The app queues failed saves when offline and syncs when you reconnect (desktop and browser). Use `tauri ios dev` / `tauri android dev` during development against a machine running `npm run dev`.
 
 ## Scripts
 

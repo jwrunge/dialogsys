@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { validateProject } from '../../../../lib/compile/validate';
 import { validateFlow } from '../../../../lib/flow/validateFlow';
+import { runPluginValidators } from '../../../../lib/server/plugins/validators';
 import {
 	getCharacters,
 	getDialog,
@@ -25,7 +26,12 @@ export const POST: APIRoute = async ({ params }) => {
 				return validateFlow(graph, dialogIds, seq.id);
 			}),
 		);
-		const issues = [...validateProject(graphs, characters), ...sequenceIssues.flat()];
+		const pluginIssues = await runPluginValidators(slug, graphs, characters.characters);
+		const issues = [
+			...validateProject(graphs, characters),
+			...sequenceIssues.flat(),
+			...pluginIssues,
+		];
 		return jsonResponse({ issues });
 	} catch (e) {
 		return toErrorResponse(e, 500);

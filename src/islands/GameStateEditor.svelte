@@ -4,6 +4,8 @@ import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import { api } from '../lib/api';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
+import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { isProjectReadOnly } from '../lib/client/project-access';
 import { defaultValidValues } from '../lib/flow/branchState';
 import {
 	defaultUseValidValues,
@@ -84,6 +86,8 @@ function slugifyLabel(label: string): string {
 const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
 
 function scheduleSave() {
+	if (isProjectReadOnly()) return;
+	markDirty();
 	saveTask.schedule();
 }
 
@@ -96,10 +100,12 @@ async function save() {
 		});
 		properties = res.properties;
 		saveStatus = 'Saved';
+		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'Saved') saveStatus = '';
 		}, 1500);
 	} catch (e) {
+		notifySaveConflict(e);
 		saveStatus = (e as Error).message;
 	}
 }
@@ -266,6 +272,7 @@ function metaLabel(prop: GameStateProperty): string {
 onMount(load);
 </script>
 
+<div data-transmut="include">
 <div class="toolbar">
 	<input
 		class="search"
@@ -493,6 +500,7 @@ onMount(load);
 		</form>
 	{/if}
 </dialog>
+</div>
 
 <style>
 	.toolbar {

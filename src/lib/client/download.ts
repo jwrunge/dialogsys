@@ -8,7 +8,7 @@ export type ExportDownloadMeta = {
 
 export async function downloadExport(
 	slug: string,
-	format: 'godot' | 'generic',
+	format: 'godot' | 'generic' | 'unity' | 'unreal',
 ): Promise<ExportDownloadMeta> {
 	const res = await fetch(`/api/projects/${slug}/export?format=${format}`, {
 		method: 'POST',

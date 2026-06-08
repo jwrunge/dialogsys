@@ -5,8 +5,12 @@ import {
 	getOriginLabel,
 	setActiveOriginId,
 } from '../../../../../lib/server/client';
+import {
+	assertWritable,
+	resolveSyncAccessRole,
+} from '../../../../../lib/server/collaboration/access';
 import { jsonResponse, parseJsonBody, toErrorResponse } from '../../../../../lib/server/projects';
-import { getAppSettingsInfo } from '../../../../../lib/server/settings';
+import { getAppSettingsInfo, getDeviceDisplayName } from '../../../../../lib/server/settings';
 import { switchOrigin } from '../../../../../lib/server/storage';
 import { getSyncCredentials } from '../../../../../lib/server/sync-credentials';
 import { listSyncOrigins } from '../../../../../lib/sync/client';
@@ -23,10 +27,13 @@ export const GET: APIRoute = async ({ params }) => {
 		const activeOriginId = getActiveOriginId(slug);
 		const origins = await listSyncOrigins(getSyncCredentials(), slug);
 
+		const selfLabel = getDeviceDisplayName();
 		return jsonResponse({
 			origins: origins.map((origin) => ({
 				...origin,
-				label: getOriginLabel(origin.originId) ?? origin.label,
+				label:
+					getOriginLabel(origin.originId) ??
+					(origin.originId === clientId && selfLabel ? selfLabel : origin.label),
 				isSelf: origin.originId === clientId,
 				isActive: origin.originId === activeOriginId,
 			})),
@@ -40,6 +47,7 @@ export const GET: APIRoute = async ({ params }) => {
 
 export const POST: APIRoute = async ({ params, request }) => {
 	try {
+		assertWritable(await resolveSyncAccessRole());
 		const slug = params.slug!;
 		const info = getAppSettingsInfo();
 		if (info.storageMode !== 'remote' || !info.syncServerUrl) {

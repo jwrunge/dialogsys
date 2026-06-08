@@ -3,7 +3,10 @@ import { buildExportZip, type ExportFormat } from '../../../../lib/compile/expor
 import { toErrorResponse } from '../../../../lib/server/projects';
 
 function parseFormat(value: string | null): ExportFormat {
-	return value === 'generic' ? 'generic' : 'godot';
+	if (value === 'generic') return 'generic';
+	if (value === 'unity') return 'unity';
+	if (value === 'unreal') return 'unreal';
+	return 'godot';
 }
 
 export const POST: APIRoute = async ({ params, url }) => {

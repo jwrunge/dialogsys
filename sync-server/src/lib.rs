@@ -15,8 +15,8 @@ use axum::{
     http::{header::AUTHORIZATION, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
-    Json, Router,
+    routing::{get, post, put},
+    Extension, Json, Router,
 };
 use subtle::ConstantTimeEq;
 use chrono::{DateTime, Utc};
@@ -34,23 +34,55 @@ const DEFAULT_BIND: &str = "127.0.0.1:3210";
 const HOOK_TIMEOUT_SECONDS: u64 = 30;
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthRole {
+    Read,
+    Write,
+}
+
+#[derive(Clone)]
+struct AuthEntry {
+    token: Arc<str>,
+    role: AuthRole,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RequestAuth(AuthRole);
+
 #[derive(Clone)]
 pub struct AppState {
     root: Arc<PathBuf>,
     hooks: Arc<HookConfig>,
-    auth_token: Option<Arc<str>>,
+    auth_entries: Arc<Vec<AuthEntry>>,
 }
 
 impl AppState {
     pub fn new(root: PathBuf, hooks: HookConfig, auth_token: Option<String>) -> Self {
-        let auth_token = auth_token
-            .map(|token| token.trim().to_string())
-            .filter(|token| !token.is_empty())
-            .map(|token| Arc::<str>::from(token));
+        Self::with_auth_config(root, hooks, &AuthConfig::from_write_token(auth_token))
+    }
+
+    pub fn with_auth_config(root: PathBuf, hooks: HookConfig, auth: &AuthConfig) -> Self {
+        let mut auth_entries = Vec::new();
+        if let Some(token) = auth.write_token.as_ref().filter(|t| !t.trim().is_empty()) {
+            auth_entries.push(AuthEntry {
+                token: Arc::<str>::from(token.trim()),
+                role: AuthRole::Write,
+            });
+        }
+        for token in &auth.read_tokens {
+            let trimmed = token.trim();
+            if !trimmed.is_empty() {
+                auth_entries.push(AuthEntry {
+                    token: Arc::<str>::from(trimmed),
+                    role: AuthRole::Read,
+                });
+            }
+        }
         Self {
             root: Arc::new(root),
             hooks: Arc::new(hooks),
-            auth_token,
+            auth_entries: Arc::new(auth_entries),
         }
     }
 
@@ -58,8 +90,54 @@ impl AppState {
         &self.root
     }
 
+    pub fn has_auth(&self) -> bool {
+        !self.auth_entries.is_empty()
+    }
+
     pub fn auth_token(&self) -> Option<&str> {
-        self.auth_token.as_deref()
+        self.auth_entries
+            .iter()
+            .find(|entry| entry.role == AuthRole::Write)
+            .map(|entry| entry.token.as_ref())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AuthConfig {
+    pub write_token: Option<String>,
+    pub read_tokens: Vec<String>,
+}
+
+impl AuthConfig {
+    pub fn from_write_token(token: Option<String>) -> Self {
+        Self {
+            write_token: token,
+            read_tokens: Vec::new(),
+        }
+    }
+
+    pub fn from_server_config(config: &ServerConfig) -> Self {
+        let mut read_tokens = config.read_auth_tokens.clone().unwrap_or_default();
+        if let Some(token) = config.read_auth_token.as_ref() {
+            let trimmed = token.trim();
+            if !trimmed.is_empty() {
+                read_tokens.push(trimmed.to_string());
+            }
+        }
+        Self {
+            write_token: config.auth_token.clone(),
+            read_tokens,
+        }
+    }
+
+    pub fn has_any_token(&self) -> bool {
+        self.write_token
+            .as_ref()
+            .is_some_and(|token| !token.trim().is_empty())
+            || self
+                .read_tokens
+                .iter()
+                .any(|token| !token.trim().is_empty())
     }
 }
 
@@ -69,6 +147,10 @@ pub struct ServerConfig {
     pub root: Option<PathBuf>,
     pub bind: Option<String>,
     pub auth_token: Option<String>,
+    #[serde(default)]
+    pub read_auth_token: Option<String>,
+    #[serde(default)]
+    pub read_auth_tokens: Option<Vec<String>>,
     #[serde(default)]
     pub hooks: HookConfig,
 }
@@ -219,6 +301,12 @@ pub struct HealthResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AuthCapabilitiesResponse {
+    pub role: AuthRole,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HookPayload {
     pub event: HookEvent,
     pub project: String,
@@ -336,37 +424,79 @@ fn verify_auth_token(expected: &str, provided: &str) -> bool {
     expected.as_bytes().ct_eq(provided.as_bytes()).into()
 }
 
+fn resolve_auth_role(entries: &[AuthEntry], provided: &str) -> Option<AuthRole> {
+    for entry in entries {
+        if verify_auth_token(entry.token.as_ref(), provided) {
+            return Some(entry.role);
+        }
+    }
+    None
+}
+
 async fn require_auth(
     State(state): State<AppState>,
+    mut request: Request<Body>,
+    next: Next,
+) -> Result<Response, AppError> {
+    if state.auth_entries.is_empty() {
+        request.extensions_mut().insert(RequestAuth(AuthRole::Write));
+        return Ok(next.run(request).await);
+    }
+
+    let role = match bearer_token(request.headers()) {
+        Some(provided) => resolve_auth_role(state.auth_entries.as_ref(), provided)
+            .ok_or_else(|| AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized"))?,
+        None => return Err(AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized")),
+    };
+
+    request.extensions_mut().insert(RequestAuth(role));
+    Ok(next.run(request).await)
+}
+
+async fn require_write(
+    Extension(auth): Extension<RequestAuth>,
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, AppError> {
-    let Some(expected) = state.auth_token() else {
+    if auth.0 == AuthRole::Write {
         return Ok(next.run(request).await);
-    };
-
-    match bearer_token(request.headers()) {
-        Some(provided) if verify_auth_token(expected, provided) => Ok(next.run(request).await),
-        _ => Err(AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized")),
     }
+    Err(AppError::new(
+        StatusCode::FORBIDDEN,
+        "Read-only token cannot modify data",
+    ))
+}
+
+async fn auth_capabilities(Extension(auth): Extension<RequestAuth>) -> Json<AuthCapabilitiesResponse> {
+    Json(AuthCapabilitiesResponse { role: auth.0 })
 }
 
 pub fn build_router(state: AppState) -> Router {
-    let protected = Router::new()
-        .route("/projects", get(list_projects).post(create_project))
+    let read_routes = Router::new()
+        .route("/auth/capabilities", get(auth_capabilities))
+        .route("/projects", get(list_projects))
         .route("/projects/{slug}", get(get_project))
         .route("/projects/{slug}/origins", get(list_origins))
-        .route("/projects/{slug}/origins/{origin_id}", post(ensure_origin))
         .route(
             "/projects/{slug}/origins/{origin_id}/files",
             get(list_origin_files),
         )
         .route(
             "/projects/{slug}/origins/{origin_id}/files/{*file_path}",
-            get(read_origin_file)
-                .put(write_origin_file)
-                .delete(delete_origin_file),
+            get(read_origin_file),
+        );
+
+    let write_routes = Router::new()
+        .route("/projects", post(create_project))
+        .route("/projects/{slug}/origins/{origin_id}", post(ensure_origin))
+        .route(
+            "/projects/{slug}/origins/{origin_id}/files/{*file_path}",
+            put(write_origin_file).delete(delete_origin_file),
         )
+        .route_layer(middleware::from_fn(require_write));
+
+    let protected = read_routes
+        .merge(write_routes)
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()
@@ -376,17 +506,12 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-pub fn validate_bind_and_auth(addr: &SocketAddr, auth_token: &Option<String>) -> Result<(), AppError> {
-    let has_token = auth_token
-        .as_ref()
-        .map(|token| !token.trim().is_empty())
-        .unwrap_or(false);
-
+pub fn validate_bind_and_auth(addr: &SocketAddr, auth: &AuthConfig) -> Result<(), AppError> {
     if addr.ip().is_loopback() {
         return Ok(());
     }
 
-    if has_token {
+    if auth.has_any_token() {
         return Ok(());
     }
 
@@ -1128,10 +1253,21 @@ mod tests {
     }
 
     fn test_state_with_auth(root: &Path, token: &str) -> AppState {
-        AppState::new(
+        AppState::with_auth_config(
             root.to_path_buf(),
             HookConfig::default(),
-            Some(token.to_string()),
+            &AuthConfig::from_write_token(Some(token.to_string())),
+        )
+    }
+
+    fn test_state_with_read_auth(root: &Path, write: &str, read: &str) -> AppState {
+        AppState::with_auth_config(
+            root.to_path_buf(),
+            HookConfig::default(),
+            &AuthConfig {
+                write_token: Some(write.to_string()),
+                read_tokens: vec![read.to_string()],
+            },
         )
     }
 
@@ -1245,11 +1381,13 @@ mod tests {
     #[test]
     fn validate_bind_and_auth_requires_token_for_public_bind() {
         let addr: SocketAddr = "0.0.0.0:3210".parse().unwrap();
-        assert!(validate_bind_and_auth(&addr, &None).is_err());
-        assert!(validate_bind_and_auth(&addr, &Some("secret".to_string())).is_ok());
+        let no_auth = AuthConfig::default();
+        let with_write = AuthConfig::from_write_token(Some("secret".to_string()));
+        assert!(validate_bind_and_auth(&addr, &no_auth).is_err());
+        assert!(validate_bind_and_auth(&addr, &with_write).is_ok());
 
         let loopback: SocketAddr = "127.0.0.1:3210".parse().unwrap();
-        assert!(validate_bind_and_auth(&loopback, &None).is_ok());
+        assert!(validate_bind_and_auth(&loopback, &no_auth).is_ok());
     }
 
     #[test]
@@ -1259,6 +1397,68 @@ mod tests {
         assert!(safe_relative_path("/secret").is_err());
         assert!(safe_relative_path(".git/config").is_ok());
         assert!(safe_relative_path(".dialogsys/origins.json").is_err());
+    }
+
+    #[tokio::test]
+    async fn read_only_token_can_read_but_not_write() {
+        let temp = TestDir::new();
+        let router = build_router(test_state_with_read_auth(
+            temp.path(),
+            "write-secret",
+            "read-secret",
+        ));
+        let origin_id = "33333333-3333-3333-3333-333333333333";
+
+        let (status, _) = json_request_with_auth(
+            router.clone(),
+            "POST",
+            "/projects",
+            serde_json::json!({ "slug": "demo", "displayName": "Demo" }),
+            Some("write-secret"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+
+        let (status, _) = json_request_with_auth(
+            router.clone(),
+            "POST",
+            &format!("/projects/demo/origins/{origin_id}"),
+            serde_json::json!({}),
+            Some("write-secret"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, caps) = json_request_with_auth(
+            router.clone(),
+            "GET",
+            "/auth/capabilities",
+            serde_json::json!({}),
+            Some("read-secret"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(caps["role"], "read");
+
+        let (status, _) = json_request_with_auth(
+            router.clone(),
+            "GET",
+            "/projects",
+            serde_json::json!({}),
+            Some("read-secret"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, _) = json_request_with_auth(
+            router,
+            "PUT",
+            &format!("/projects/demo/origins/{origin_id}/files/notes/read.md"),
+            serde_json::json!({ "content": "blocked" }),
+            Some("read-secret"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

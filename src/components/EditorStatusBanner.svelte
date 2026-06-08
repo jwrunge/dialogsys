@@ -7,11 +7,13 @@ interface Props {
 let { loadError = '', saveStatus = '' }: Props = $props();
 </script>
 
+<div data-transmut="include">
 {#if loadError}
-	<p class="banner banner-error" role="alert">{loadError}</p>
+	<p class="banner banner-error" role="alert" data-transmut-skip>{loadError}</p>
 {:else if saveStatus}
-	<p class="banner banner-status">{saveStatus}</p>
+	<p class="banner banner-status" data-transmut-skip>{saveStatus}</p>
 {/if}
+</div>
 
 <style>
 	.banner {

@@ -1,12 +1,16 @@
 import type { APIRoute } from 'astro';
 import { appSettingsSchema } from '../../lib/schema/settings';
 import { jsonResponse, parseJsonBody, toErrorResponse } from '../../lib/server/projects';
-import { getAppSettingsInfo, getConfigFilePath, saveSettings } from '../../lib/server/settings';
+import {
+	getAppSettingsInfoAsync,
+	getConfigFilePath,
+	saveSettings,
+} from '../../lib/server/settings';
 import { testSyncServerFromServer } from '../../lib/server/sync';
 
 export const GET: APIRoute = async () => {
 	try {
-		const info = getAppSettingsInfo();
+		const info = await getAppSettingsInfoAsync();
 		return jsonResponse({
 			projectsRoot: info.projectsRoot,
 			resolvedPath: info.resolvedPath,
@@ -17,6 +21,8 @@ export const GET: APIRoute = async () => {
 			hasSyncServerToken: info.hasSyncServerToken,
 			clientId: info.clientId,
 			locale: info.locale,
+			syncAccessRole: info.syncAccessRole,
+			deviceDisplayName: info.deviceDisplayName,
 			configFile: info.envOverride ? null : getConfigFilePath(),
 		});
 	} catch (e) {
@@ -34,20 +40,24 @@ export const PUT: APIRoute = async ({ request }) => {
 				syncServerUrl: true,
 				syncServerToken: true,
 				locale: true,
+				deviceDisplayName: true,
 			})
 			.partial()
 			.parse(body);
-		const info = await saveSettings(parsed);
+		const saved = await saveSettings(parsed);
+		const refreshed = await getAppSettingsInfoAsync();
 		return jsonResponse({
-			projectsRoot: info.projectsRoot,
-			resolvedPath: info.resolvedPath,
-			source: info.source,
-			envOverride: info.envOverride,
-			storageMode: info.storageMode,
-			syncServerUrl: info.syncServerUrl,
-			hasSyncServerToken: info.hasSyncServerToken,
-			clientId: info.clientId,
-			locale: info.locale,
+			projectsRoot: saved.projectsRoot,
+			resolvedPath: saved.resolvedPath,
+			source: saved.source,
+			envOverride: saved.envOverride,
+			storageMode: saved.storageMode,
+			syncServerUrl: saved.syncServerUrl,
+			hasSyncServerToken: saved.hasSyncServerToken,
+			clientId: saved.clientId,
+			locale: refreshed.locale,
+			syncAccessRole: refreshed.syncAccessRole,
+			deviceDisplayName: refreshed.deviceDisplayName,
 			configFile: getConfigFilePath(),
 		});
 	} catch (e) {

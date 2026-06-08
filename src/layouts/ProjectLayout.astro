@@ -1,7 +1,9 @@
 ---
 import ProjectNav from '../components/ProjectNav.astro';
-import OriginSwitcher from '../islands/OriginSwitcher.svelte';
+import CollaborationPanel from '../islands/CollaborationPanel.svelte';
+import OfflineSyncBanner from '../islands/OfflineSyncBanner.svelte';
 import ProjectTitle from '../islands/ProjectTitle.svelte';
+import ReadOnlyBanner from '../islands/ReadOnlyBanner.svelte';
 import type { ProjectMeta } from '../lib/schema/project';
 import { getProject } from '../lib/server/projects';
 import BaseLayout from './BaseLayout.astro';
@@ -38,7 +40,9 @@ const pageTitle = title ? `${title} · ${project.displayName}` : project.display
 				/>
 			</div>
 			<ProjectNav slug={slug} current={current} />
-			<OriginSwitcher client:load slug={slug} />
+			<ReadOnlyBanner client:load />
+			<OfflineSyncBanner client:load />
+			<CollaborationPanel client:load slug={slug} />
 			{variant !== 'flow' && <slot />}
 		</div>
 		{variant === 'flow' && (

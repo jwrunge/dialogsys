@@ -14,6 +14,7 @@ import {
 	syncTestResponseSchema,
 } from '../lib/schema/api-responses';
 import { testSyncConnection } from '../lib/sync/client';
+import PairingCard from './PairingCard.svelte';
 
 let projectsRoot = $state('./projects');
 let clientId = $state('');
@@ -35,6 +36,8 @@ let connectionStatus = $state<'idle' | 'ok' | 'error'>('idle');
 let connectionMessage = $state('');
 let connectionProjectCount = $state(0);
 let locale = $state('en');
+let deviceDisplayName = $state('');
+let syncAccessRole = $state<'read' | 'write'>('write');
 
 const sourceLabel = $derived.by(() => {
 	switch (source) {
@@ -64,6 +67,8 @@ async function load() {
 		envOverride = res.envOverride;
 		configFile = res.configFile;
 		locale = res.locale ?? 'en';
+		deviceDisplayName = res.deviceDisplayName ?? '';
+		syncAccessRole = res.syncAccessRole ?? 'write';
 		ready = true;
 	} catch (e) {
 		error = (e as Error).message;
@@ -127,6 +132,7 @@ async function save(e: Event) {
 			storageMode,
 			syncServerUrl: syncServerUrl.trim(),
 			locale,
+			deviceDisplayName: deviceDisplayName.trim(),
 		};
 
 		const tauri = await isTauriRuntime();
@@ -156,6 +162,8 @@ async function save(e: Event) {
 		source = res.source;
 		configFile = res.configFile;
 		locale = res.locale ?? locale;
+		deviceDisplayName = res.deviceDisplayName ?? deviceDisplayName;
+		syncAccessRole = res.syncAccessRole ?? syncAccessRole;
 		dispatchLocaleChange(locale);
 		saved = true;
 	} catch (e) {
@@ -266,6 +274,22 @@ onMount(load);
 				</div>
 			{/if}
 		{:else}
+			{#if syncAccessRole === 'read'}
+				<p class="warning">Connected with a read-only token. Saving is disabled.</p>
+			{/if}
+
+			<div class="field">
+				<label for="device-display-name">This device name</label>
+				<input
+					id="device-display-name"
+					bind:value={deviceDisplayName}
+					maxlength="64"
+					placeholder="Jake's MacBook"
+					disabled={envOverride}
+				/>
+				<p class="hint">Shown in Working thread for you and teammates.</p>
+			</div>
+
 			<div class="field">
 				<label for="sync-server-url">Sync server URL</label>
 				<input
@@ -345,6 +369,10 @@ onMount(load);
 					<strong>This device ID:</strong> <code data-transmut-skip>{clientId}</code>
 				</p>
 			</div>
+		{/if}
+
+		{#if storageMode === 'remote'}
+			<PairingCard {syncServerUrl} hasToken={hasSyncServerToken} {clientId} />
 		{/if}
 
 		<div class="actions">

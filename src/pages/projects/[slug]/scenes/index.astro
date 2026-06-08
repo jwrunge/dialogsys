@@ -1,10 +1,12 @@
 ---
 import DialogListManager from '../../../../islands/DialogListManager.svelte';
+import WriterLinesPanel from '../../../../islands/WriterLinesPanel.svelte';
 import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
 
 const { slug } = Astro.params;
 ---
 
 <ProjectLayout slug={slug!} current="scenes" title="Scenes">
+	<WriterLinesPanel client:load slug={slug!} />
 	<DialogListManager client:load slug={slug!} />
 </ProjectLayout>

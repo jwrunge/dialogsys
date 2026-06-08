@@ -4,6 +4,8 @@ import { onMount, tick } from 'svelte';
 import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
 import { api } from '../lib/api';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
+import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { isProjectReadOnly } from '../lib/client/project-access';
 import { analyzeFlowBranches, applyFirstMeetings } from '../lib/flow/branchAnalyzer';
 import { createSceneNode } from '../lib/flow/flowFactory';
 import {
@@ -77,7 +79,8 @@ const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
 let analyzeTimer: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleSave() {
-	if (loading || !ready) return;
+	if (loading || !ready || isProjectReadOnly()) return;
+	markDirty();
 	flowNodes = fromCanvas().nodes;
 	flowEdges = fromCanvas().edges;
 	saveTask.schedule();
@@ -101,10 +104,12 @@ async function save() {
 		flowNodes = res.graph.nodes;
 		flowEdges = res.graph.edges;
 		saveStatus = 'Saved';
+		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'Saved') saveStatus = '';
 		}, 1500);
 	} catch (e) {
+		notifySaveConflict(e);
 		saveStatus = (e as Error).message;
 	}
 }
@@ -382,7 +387,7 @@ onMount(() => {
 });
 </script>
 
-<div class="flow-editor">
+<div class="flow-editor" data-transmut="include">
 	<EditorStatusBanner {loadError} />
 	{#if !loadError && ready}
 		<div class="editor-layout flow-layout">
