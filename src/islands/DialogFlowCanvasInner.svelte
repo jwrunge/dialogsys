@@ -1,104 +1,104 @@
 <script lang="ts">
-	import {
-		SvelteFlow,
-		Background,
-		BackgroundVariant,
-		useSvelteFlow,
-		type Node,
-		type Edge,
-		type Connection,
-		type OnConnectEnd,
-	} from '@xyflow/svelte';
-	import { setContext } from 'svelte';
-	import '@xyflow/svelte/dist/style.css';
-	import type { Character } from '../lib/schema/characters';
-	import { DIALOG_CHARACTERS_KEY, type DialogCharactersContext } from '../lib/graph/dialogContext';
-	import DialogNode from './DialogNode.svelte';
+import {
+	Background,
+	BackgroundVariant,
+	type Connection,
+	type Edge,
+	type Node,
+	type OnConnectEnd,
+	SvelteFlow,
+	useSvelteFlow,
+} from '@xyflow/svelte';
+import { setContext } from 'svelte';
+import '@xyflow/svelte/dist/style.css';
+import { DIALOG_CHARACTERS_KEY, type DialogCharactersContext } from '../lib/graph/dialogContext';
+import type { Character } from '../lib/schema/characters';
+import DialogNode from './DialogNode.svelte';
 
-	interface Props {
-		characters?: Character[];
-		nodes: Node[];
-		edges: Edge[];
-		syncKey: string;
-		setNodes: (nodes: Node[]) => void;
-		setEdges: (edges: Edge[]) => void;
-		onNodeSelect: (nodeId: string) => void;
-		onConnect: (connection: Connection) => void;
-		onDragStop: () => void;
-		onEdgeClick: (edge: Edge) => void;
-		onConnectEndToPane: (params: {
-			sourceNodeId: string;
-			sourceHandle: string | null;
-			position: { x: number; y: number };
-		}) => void;
-	}
+interface Props {
+	characters?: Character[];
+	nodes: Node[];
+	edges: Edge[];
+	syncKey: string;
+	setNodes: (nodes: Node[]) => void;
+	setEdges: (edges: Edge[]) => void;
+	onNodeSelect: (nodeId: string) => void;
+	onConnect: (connection: Connection) => void;
+	onDragStop: () => void;
+	onEdgeClick: (edge: Edge) => void;
+	onConnectEndToPane: (params: {
+		sourceNodeId: string;
+		sourceHandle: string | null;
+		position: { x: number; y: number };
+	}) => void;
+}
 
-	let {
-		characters = [],
-		nodes: propNodes,
-		edges: propEdges,
-		syncKey,
-		setNodes,
-		setEdges,
-		onNodeSelect,
-		onConnect,
-		onDragStop,
-		onEdgeClick,
-		onConnectEndToPane,
-	}: Props = $props();
+let {
+	characters = [],
+	nodes: propNodes,
+	edges: propEdges,
+	syncKey,
+	setNodes,
+	setEdges,
+	onNodeSelect,
+	onConnect,
+	onDragStop,
+	onEdgeClick,
+	onConnectEndToPane,
+}: Props = $props();
 
-	const { screenToFlowPosition } = useSvelteFlow();
+const { screenToFlowPosition } = useSvelteFlow();
 
-	setContext<DialogCharactersContext>(DIALOG_CHARACTERS_KEY, () => characters);
+setContext<DialogCharactersContext>(DIALOG_CHARACTERS_KEY, () => characters);
 
-	let flowNodes = $state.raw<Node[]>([]);
-	let flowEdges = $state.raw<Edge[]>([]);
+let flowNodes = $state.raw<Node[]>([]);
+let flowEdges = $state.raw<Edge[]>([]);
 
-	function copyFromProps() {
-		flowNodes = Array.isArray(propNodes) ? [...propNodes] : [];
-		flowEdges = Array.isArray(propEdges) ? [...propEdges] : [];
-	}
+function copyFromProps() {
+	flowNodes = Array.isArray(propNodes) ? [...propNodes] : [];
+	flowEdges = Array.isArray(propEdges) ? [...propEdges] : [];
+}
 
-	function pushToParent() {
-		setNodes([...flowNodes]);
-		setEdges([...flowEdges]);
-	}
+function pushToParent() {
+	setNodes([...flowNodes]);
+	setEdges([...flowEdges]);
+}
 
-	let lastSyncKey = '';
+let lastSyncKey = '';
 
-	$effect.pre(() => {
-		if (syncKey === lastSyncKey) return;
-		lastSyncKey = syncKey;
-		copyFromProps();
+$effect.pre(() => {
+	if (syncKey === lastSyncKey) return;
+	lastSyncKey = syncKey;
+	copyFromProps();
+});
+
+const nodeTypes = {
+	entry: DialogNode,
+	blank: DialogNode,
+	line: DialogNode,
+	choice: DialogNode,
+	condition: DialogNode,
+	set_var: DialogNode,
+	jump: DialogNode,
+	direction: DialogNode,
+	end: DialogNode,
+};
+
+const proOptions = { hideAttribution: true };
+
+const handleConnectEnd: OnConnectEnd = (event, connectionState) => {
+	if (connectionState.isValid || !connectionState.fromNode) return;
+
+	const clientX = 'clientX' in event ? event.clientX : event.changedTouches[0]?.clientX;
+	const clientY = 'clientY' in event ? event.clientY : event.changedTouches[0]?.clientY;
+	if (clientX == null || clientY == null) return;
+
+	onConnectEndToPane({
+		sourceNodeId: connectionState.fromNode.id,
+		sourceHandle: connectionState.fromHandle?.id ?? null,
+		position: screenToFlowPosition({ x: clientX, y: clientY }),
 	});
-
-	const nodeTypes = {
-		entry: DialogNode,
-		blank: DialogNode,
-		line: DialogNode,
-		choice: DialogNode,
-		condition: DialogNode,
-		set_var: DialogNode,
-		jump: DialogNode,
-		direction: DialogNode,
-		end: DialogNode,
-	};
-
-	const proOptions = { hideAttribution: true };
-
-	const handleConnectEnd: OnConnectEnd = (event, connectionState) => {
-		if (connectionState.isValid || !connectionState.fromNode) return;
-
-		const clientX = 'clientX' in event ? event.clientX : event.changedTouches[0]?.clientX;
-		const clientY = 'clientY' in event ? event.clientY : event.changedTouches[0]?.clientY;
-		if (clientX == null || clientY == null) return;
-
-		onConnectEndToPane({
-			sourceNodeId: connectionState.fromNode.id,
-			sourceHandle: connectionState.fromHandle?.id ?? null,
-			position: screenToFlowPosition({ x: clientX, y: clientY }),
-		});
-	};
+};
 </script>
 
 <div class="editor-canvas">

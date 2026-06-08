@@ -1,6 +1,6 @@
 ---
-import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
 import DialogGraphEditor from '../../../../islands/DialogGraphEditor.svelte';
+import ProjectLayout from '../../../../layouts/ProjectLayout.astro';
 import { getDialog, getSceneUsageStats } from '../../../../lib/server/projects';
 
 const { slug, id } = Astro.params;
@@ -9,6 +9,7 @@ let sceneTitle = id!;
 let sceneDescription = '';
 let nodeCount = 0;
 let sequenceCount = 0;
+
 try {
 	const graph = await getDialog(slug!, id!);
 	sceneTitle = graph.displayName || id!;
@@ -18,7 +19,7 @@ try {
 	nodeCount = stats?.nodeCount ?? 0;
 	sequenceCount = stats?.sequenceCount ?? 0;
 } catch {
-	/* use id as fallback */
+	return Astro.redirect('/404');
 }
 ---
 

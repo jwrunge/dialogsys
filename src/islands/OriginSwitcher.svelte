@@ -1,61 +1,61 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { api } from '../lib/api';
-	import type { OriginMeta } from '../lib/schema/origin';
+import { onMount } from 'svelte';
+import { api } from '../lib/api';
+import type { OriginMeta } from '../lib/schema/origin';
 
-	type OriginsResponse = {
-		origins: OriginMeta[];
-		clientId: string;
-		activeOriginId: string;
-	};
+type OriginsResponse = {
+	origins: OriginMeta[];
+	clientId: string;
+	activeOriginId: string;
+};
 
-	let { slug }: { slug: string } = $props();
+let { slug }: { slug: string } = $props();
 
-	let origins = $state<OriginMeta[]>([]);
-	let clientId = $state('');
-	let activeOriginId = $state('');
-	let ready = $state(false);
-	let switching = $state(false);
-	let error = $state('');
-	let hidden = $state(true);
+let origins = $state<OriginMeta[]>([]);
+let clientId = $state('');
+let activeOriginId = $state('');
+let ready = $state(false);
+let switching = $state(false);
+let error = $state('');
+let hidden = $state(true);
 
-	async function load() {
-		try {
-			const res = await api<OriginsResponse>(`/api/projects/${slug}/origins`);
-			origins = res.origins;
-			clientId = res.clientId;
-			activeOriginId = res.activeOriginId;
-			hidden = false;
-			ready = true;
-		} catch (e) {
-			hidden = true;
-			error = (e as Error).message;
-		}
+async function load() {
+	try {
+		const res = await api<OriginsResponse>(`/api/projects/${slug}/origins`);
+		origins = res.origins;
+		clientId = res.clientId;
+		activeOriginId = res.activeOriginId;
+		hidden = false;
+		ready = true;
+	} catch (e) {
+		hidden = true;
+		error = (e as Error).message;
 	}
+}
 
-	async function switchTo(originId: string) {
-		if (originId === activeOriginId || switching) return;
-		switching = true;
-		error = '';
-		try {
-			await api(`/api/projects/${slug}/origins`, {
-				method: 'POST',
-				body: JSON.stringify({ originId }),
-			});
-			window.location.reload();
-		} catch (e) {
-			error = (e as Error).message;
-			switching = false;
-		}
+async function switchTo(originId: string) {
+	if (originId === activeOriginId || switching) return;
+	switching = true;
+	error = '';
+	try {
+		await api(`/api/projects/${slug}/origins`, {
+			method: 'POST',
+			body: JSON.stringify({ originId }),
+		});
+		window.location.reload();
+	} catch (e) {
+		error = (e as Error).message;
+		switching = false;
 	}
+}
 
-	function labelFor(origin: OriginMeta): string {
-		if (origin.label) return origin.label;
-		if (origin.isSelf) return 'This device';
-		return `${origin.originId.slice(0, 8)}…`;
-	}
+function labelFor(origin: OriginMeta): string {
+	if (origin.label) return origin.label;
+	if (origin.isSelf) return 'This device';
+	return `${origin.originId.slice(0, 8)}…`;
+}
 
-	onMount(load);
+onMount(load);
 </script>
 
 {#if !hidden}

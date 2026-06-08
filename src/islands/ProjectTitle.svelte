@@ -1,58 +1,58 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { api } from '../lib/api';
-	import type { ProjectMeta } from '../lib/schema/project';
+import { tick } from 'svelte';
+import { api } from '../lib/api';
+import type { ProjectMeta } from '../lib/schema/project';
 
-	interface Props {
-		slug: string;
-		displayName: string;
-		description?: string;
+interface Props {
+	slug: string;
+	displayName: string;
+	description?: string;
+}
+
+let { slug, displayName: initialName, description: initialDescription = '' }: Props = $props();
+
+let displayName = $state(initialName);
+let description = $state(initialDescription);
+let dialogEl = $state<HTMLDialogElement | null>(null);
+let draftName = $state('');
+let draftDescription = $state('');
+let error = $state('');
+let saving = $state(false);
+
+async function openModal() {
+	draftName = displayName;
+	draftDescription = description;
+	error = '';
+	await tick();
+	dialogEl?.showModal();
+}
+
+function closeModal() {
+	dialogEl?.close();
+	error = '';
+}
+
+async function submit(e: Event) {
+	e.preventDefault();
+	if (saving) return;
+	error = '';
+	saving = true;
+	const name = draftName.trim();
+	const desc = draftDescription.trim();
+	try {
+		const res = await api<{ project: ProjectMeta }>(`/api/projects/${slug}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ displayName: name, description: desc }),
+		});
+		displayName = res.project.displayName;
+		description = res.project.description;
+		closeModal();
+	} catch (err) {
+		error = (err as Error).message;
+	} finally {
+		saving = false;
 	}
-
-	let { slug, displayName: initialName, description: initialDescription = '' }: Props = $props();
-
-	let displayName = $state(initialName);
-	let description = $state(initialDescription);
-	let dialogEl = $state<HTMLDialogElement | null>(null);
-	let draftName = $state('');
-	let draftDescription = $state('');
-	let error = $state('');
-	let saving = $state(false);
-
-	async function openModal() {
-		draftName = displayName;
-		draftDescription = description;
-		error = '';
-		await tick();
-		dialogEl?.showModal();
-	}
-
-	function closeModal() {
-		dialogEl?.close();
-		error = '';
-	}
-
-	async function submit(e: Event) {
-		e.preventDefault();
-		if (saving) return;
-		error = '';
-		saving = true;
-		const name = draftName.trim();
-		const desc = draftDescription.trim();
-		try {
-			const res = await api<{ project: ProjectMeta }>(`/api/projects/${slug}`, {
-				method: 'PATCH',
-				body: JSON.stringify({ displayName: name, description: desc }),
-			});
-			displayName = res.project.displayName;
-			description = res.project.description;
-			closeModal();
-		} catch (err) {
-			error = (err as Error).message;
-		} finally {
-			saving = false;
-		}
-	}
+}
 </script>
 
 <div class="title-row">

@@ -1,44 +1,35 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { api } from '../lib/api';
-	import { listSyncProjects } from '../lib/sync/client';
-	import type { ProjectMeta } from '../lib/schema/project';
-	import type { StorageMode } from '../lib/schema/settings';
-	import CreateProjectForm from './CreateProjectForm.svelte';
+import { onMount } from 'svelte';
+import { apiValidated } from '../lib/api';
+import { projectsListResponseSchema, settingsResponseSchema } from '../lib/schema/api-responses';
+import type { ProjectMeta } from '../lib/schema/project';
+import type { StorageMode } from '../lib/schema/settings';
+import CreateProjectForm from './CreateProjectForm.svelte';
 
-	type SettingsResponse = {
-		storageMode: StorageMode;
-		syncServerUrl: string;
-	};
+let storageMode = $state<StorageMode>('local');
+let syncServerUrl = $state('');
+let projects = $state<ProjectMeta[]>([]);
+let ready = $state(false);
+let loadError = $state('');
 
-	let storageMode = $state<StorageMode>('local');
-	let syncServerUrl = $state('');
-	let projects = $state<ProjectMeta[]>([]);
-	let ready = $state(false);
-	let loadError = $state('');
+async function load() {
+	ready = false;
+	loadError = '';
+	try {
+		const settings = await apiValidated('/api/settings', settingsResponseSchema);
+		storageMode = settings.storageMode ?? 'local';
+		syncServerUrl = settings.syncServerUrl ?? '';
 
-	async function load() {
-		ready = false;
-		loadError = '';
-		try {
-			const settings = await api<SettingsResponse>('/api/settings');
-			storageMode = settings.storageMode ?? 'local';
-			syncServerUrl = settings.syncServerUrl ?? '';
-
-			if (storageMode === 'remote' && syncServerUrl) {
-				projects = await listSyncProjects(syncServerUrl);
-			} else {
-				const res = await api<{ projects: ProjectMeta[] }>('/api/projects');
-				projects = res.projects;
-			}
-			ready = true;
-		} catch (e) {
-			loadError = (e as Error).message;
-			projects = [];
-		}
+		const res = await apiValidated('/api/projects', projectsListResponseSchema);
+		projects = res.projects;
+		ready = true;
+	} catch (e) {
+		loadError = (e as Error).message;
+		projects = [];
 	}
+}
 
-	onMount(load);
+onMount(load);
 </script>
 
 {#if loadError}

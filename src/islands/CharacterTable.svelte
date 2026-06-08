@@ -1,253 +1,279 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import Fuse from 'fuse.js';
-	import { api } from '../lib/api';
-	import type { Character, CharacterState, CharactersFile } from '../lib/schema/characters';
-	import { defaultPortraitPath, portraitPreviewUrl } from '../lib/characters';
-	import { nanoid } from 'nanoid';
+import Fuse from 'fuse.js';
+import { nanoid } from 'nanoid';
+import { onMount, tick } from 'svelte';
+import { api } from '../lib/api';
+import { defaultPortraitPath, portraitPreviewUrl } from '../lib/characters';
+import { uploadPortrait } from '../lib/client/download';
+import type { Character, CharacterState, CharactersFile } from '../lib/schema/characters';
 
-	interface Props {
-		slug: string;
-	}
+interface Props {
+	slug: string;
+}
 
-	let { slug }: Props = $props();
+let { slug }: Props = $props();
 
-	let characters = $state<Character[]>([]);
-	let ready = $state(false);
-	let loadError = $state('');
-	let saveStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
-	let saveMessage = $state('');
-	let searchQuery = $state('');
+let characters = $state<Character[]>([]);
+let ready = $state(false);
+let loadError = $state('');
+let saveStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+let saveMessage = $state('');
+let searchQuery = $state('');
 
-	let characterDialogEl = $state<HTMLDialogElement | null>(null);
+let characterDialogEl = $state<HTMLDialogElement | null>(null);
 
-	let characterDraft = $state<Character | null>(null);
-	let characterEditIndex = $state<number | null>(null);
+let characterDraft = $state<Character | null>(null);
+let characterEditIndex = $state<number | null>(null);
 
-	let stateDraft = $state<CharacterState | null>(null);
-	let stateEditIndex = $state<number | null>(null);
+let stateDraft = $state<CharacterState | null>(null);
+let stateEditIndex = $state<number | null>(null);
+let portraitUploading = $state(false);
+let portraitUploadError = $state('');
 
-	function cloneCharacter(char: Character): Character {
-		return JSON.parse(JSON.stringify(char)) as Character;
-	}
+function cloneCharacter(char: Character): Character {
+	return JSON.parse(JSON.stringify(char)) as Character;
+}
 
-	function cloneState(state: CharacterState): CharacterState {
-		return JSON.parse(JSON.stringify(state)) as CharacterState;
-	}
+function cloneState(state: CharacterState): CharacterState {
+	return JSON.parse(JSON.stringify(state)) as CharacterState;
+}
 
-	function newCharacter(): Character {
-		const id = `char_${nanoid(6).toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-		return {
-			id,
-			displayName: 'New Character',
-			bio: '',
-			portraitPath: '',
-			tags: [],
-			voiceNotes: '',
-			defaultStateId: 'default',
-			states: [
-				{
-					id: 'default',
-					label: 'Default',
-					portraitPath: '',
-				},
-			],
-		};
-	}
+function newCharacter(): Character {
+	const id = `char_${nanoid(6)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '')}`;
+	return {
+		id,
+		displayName: 'New Character',
+		bio: '',
+		portraitPath: '',
+		tags: [],
+		voiceNotes: '',
+		defaultStateId: 'default',
+		states: [
+			{
+				id: 'default',
+				label: 'Default',
+				portraitPath: '',
+			},
+		],
+	};
+}
 
-	function newState(): CharacterState {
-		return {
-			id: `state_${nanoid(4).toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-			label: 'New State',
-			portraitPath: '',
-		};
-	}
+function newState(): CharacterState {
+	return {
+		id: `state_${nanoid(4)
+			.toLowerCase()
+			.replace(/[^a-z0-9]/g, '')}`,
+		label: 'New State',
+		portraitPath: '',
+	};
+}
 
-	function slugifyLabel(label: string): string {
-		return label
+function slugifyLabel(label: string): string {
+	return (
+		label
 			.toLowerCase()
 			.replace(/[^a-z0-9]+/g, '_')
 			.replace(/^_|_$/g, '')
-			.slice(0, 32) || 'state';
+			.slice(0, 32) || 'state'
+	);
+}
+
+function defaultStateLabel(char: Character): string {
+	return char.states.find((s) => s.id === char.defaultStateId)?.label ?? char.defaultStateId;
+}
+
+function bioPreview(bio: string): string {
+	const t = bio.trim();
+	if (!t) return 'No bio';
+	return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+}
+
+type ListedCharacter = { char: Character; index: number };
+
+const listedCharacters = $derived.by((): ListedCharacter[] => {
+	const q = searchQuery.trim();
+	if (!q) {
+		return characters.map((char, index) => ({ char, index }));
 	}
-
-	function defaultStateLabel(char: Character): string {
-		return char.states.find((s) => s.id === char.defaultStateId)?.label ?? char.defaultStateId;
-	}
-
-	function bioPreview(bio: string): string {
-		const t = bio.trim();
-		if (!t) return 'No bio';
-		return t.length > 120 ? `${t.slice(0, 120)}…` : t;
-	}
-
-	type ListedCharacter = { char: Character; index: number };
-
-	const listedCharacters = $derived.by((): ListedCharacter[] => {
-		const q = searchQuery.trim();
-		if (!q) {
-			return characters.map((char, index) => ({ char, index }));
-		}
-		const fuse = new Fuse(characters, {
-			keys: [
-				{ name: 'displayName', weight: 0.5 },
-				{ name: 'id', weight: 0.3 },
-				{ name: 'tags', weight: 0.2 },
-			],
-			threshold: 0.4,
-			ignoreLocation: true,
-		});
-		return fuse.search(q).map((result) => ({
-			char: result.item,
-			index: characters.findIndex((c) => c.id === result.item.id),
-		}));
+	const fuse = new Fuse(characters, {
+		keys: [
+			{ name: 'displayName', weight: 0.5 },
+			{ name: 'id', weight: 0.3 },
+			{ name: 'tags', weight: 0.2 },
+		],
+		threshold: 0.4,
+		ignoreLocation: true,
 	});
+	return fuse.search(q).map((result) => ({
+		char: result.item,
+		index: characters.findIndex((c) => c.id === result.item.id),
+	}));
+});
 
-	async function load() {
-		ready = false;
-		loadError = '';
-		try {
-			const data = await api<CharactersFile>(`/api/projects/${slug}/characters`);
-			characters = Array.isArray(data.characters) ? data.characters : [];
-			ready = true;
-		} catch (e) {
-			loadError = (e as Error).message;
-			characters = [];
-		}
+async function load() {
+	ready = false;
+	loadError = '';
+	try {
+		const data = await api<CharactersFile>(`/api/projects/${slug}/characters`);
+		characters = Array.isArray(data.characters) ? data.characters : [];
+		ready = true;
+	} catch (e) {
+		loadError = (e as Error).message;
+		characters = [];
 	}
+}
 
-	async function persistCharacters() {
-		saveStatus = 'saving';
-		saveMessage = 'Saving…';
-		try {
-			await api(`/api/projects/${slug}/characters`, {
-				method: 'PUT',
-				body: JSON.stringify({ characters }),
-			});
-			saveStatus = 'saved';
-			saveMessage = 'Saved';
-			setTimeout(() => {
-				if (saveStatus === 'saved') {
-					saveStatus = 'idle';
-					saveMessage = '';
-				}
-			}, 2000);
-		} catch (e) {
-			saveStatus = 'error';
-			saveMessage = (e as Error).message;
-		}
+async function persistCharacters() {
+	saveStatus = 'saving';
+	saveMessage = 'Saving…';
+	try {
+		await api(`/api/projects/${slug}/characters`, {
+			method: 'PUT',
+			body: JSON.stringify({ characters }),
+		});
+		saveStatus = 'saved';
+		saveMessage = 'Saved';
+		setTimeout(() => {
+			if (saveStatus === 'saved') {
+				saveStatus = 'idle';
+				saveMessage = '';
+			}
+		}, 2000);
+	} catch (e) {
+		saveStatus = 'error';
+		saveMessage = (e as Error).message;
 	}
+}
 
-	async function openAddCharacter() {
-		characterDraft = newCharacter();
-		characterEditIndex = null;
-		await tick();
-		characterDialogEl?.showModal();
+async function openAddCharacter() {
+	characterDraft = newCharacter();
+	characterEditIndex = null;
+	await tick();
+	characterDialogEl?.showModal();
+}
+
+async function openEditCharacter(index: number) {
+	characterDraft = cloneCharacter(characters[index]);
+	characterEditIndex = index;
+	await tick();
+	characterDialogEl?.showModal();
+}
+
+function closeCharacterModal() {
+	closeStateModal();
+	characterDialogEl?.close();
+	characterDraft = null;
+	characterEditIndex = null;
+}
+
+async function applyCharacterDraft() {
+	if (!characterDraft || saveStatus === 'saving') return;
+	const draft = cloneCharacter(characterDraft);
+	if (characterEditIndex === null) {
+		characters = [...characters, draft];
+	} else {
+		characters = characters.map((c, i) => (i === characterEditIndex ? draft : c));
 	}
+	closeCharacterModal();
+	await persistCharacters();
+}
 
-	async function openEditCharacter(index: number) {
-		characterDraft = cloneCharacter(characters[index]);
-		characterEditIndex = index;
-		await tick();
-		characterDialogEl?.showModal();
-	}
-
-	function closeCharacterModal() {
-		closeStateModal();
-		characterDialogEl?.close();
-		characterDraft = null;
-		characterEditIndex = null;
-	}
-
-	async function applyCharacterDraft() {
-		if (!characterDraft || saveStatus === 'saving') return;
-		const draft = cloneCharacter(characterDraft);
-		if (characterEditIndex === null) {
-			characters = [...characters, draft];
-		} else {
-			characters = characters.map((c, i) => (i === characterEditIndex ? draft : c));
-		}
+async function removeCharacterFromModal() {
+	if (characterEditIndex === null) {
 		closeCharacterModal();
-		await persistCharacters();
+		return;
 	}
+	if (!confirm(`Remove character "${characterDraft?.displayName}"?`)) return;
+	characters = characters.filter((_, i) => i !== characterEditIndex);
+	closeCharacterModal();
+	await persistCharacters();
+}
 
-	async function removeCharacterFromModal() {
-		if (characterEditIndex === null) {
-			closeCharacterModal();
-			return;
-		}
-		if (!confirm(`Remove character "${characterDraft?.displayName}"?`)) return;
-		characters = characters.filter((_, i) => i !== characterEditIndex);
-		closeCharacterModal();
-		await persistCharacters();
+function openAddState() {
+	if (!characterDraft) return;
+	stateDraft = newState();
+	stateEditIndex = null;
+}
+
+function openEditState(index: number) {
+	if (!characterDraft) return;
+	stateDraft = cloneState(characterDraft.states[index]);
+	stateEditIndex = index;
+}
+
+function closeStateModal() {
+	stateDraft = null;
+	stateEditIndex = null;
+	portraitUploadError = '';
+}
+
+async function onPortraitSelected(e: Event) {
+	const input = e.currentTarget as HTMLInputElement;
+	const file = input.files?.[0];
+	input.value = '';
+	if (!file || !characterDraft || !stateDraft || portraitUploading) return;
+
+	portraitUploading = true;
+	portraitUploadError = '';
+	try {
+		const path = await uploadPortrait(slug, characterDraft.id, stateDraft.id, file);
+		stateDraft = { ...stateDraft, portraitPath: path };
+	} catch (err) {
+		portraitUploadError = (err as Error).message;
+	} finally {
+		portraitUploading = false;
 	}
+}
 
-	function openAddState() {
-		if (!characterDraft) return;
-		stateDraft = newState();
-		stateEditIndex = null;
-	}
-
-	function openEditState(index: number) {
-		if (!characterDraft) return;
-		stateDraft = cloneState(characterDraft.states[index]);
-		stateEditIndex = index;
-	}
-
-	function closeStateModal() {
-		stateDraft = null;
-		stateEditIndex = null;
-	}
-
-	function applyStateDraft() {
-		if (!characterDraft || !stateDraft) return;
-		const draft = cloneState(stateDraft);
-		if (stateEditIndex === null) {
-			characterDraft = {
-				...characterDraft,
-				states: [...characterDraft.states, draft],
-			};
-		} else {
-			characterDraft = {
-				...characterDraft,
-				states: characterDraft.states.map((s, i) => (i === stateEditIndex ? draft : s)),
-			};
-		}
-		if (!characterDraft.states.some((s) => s.id === characterDraft!.defaultStateId)) {
-			characterDraft = { ...characterDraft, defaultStateId: characterDraft.states[0]!.id };
-		}
-		closeStateModal();
-	}
-
-	function removeStateFromModal() {
-		if (!characterDraft || stateEditIndex === null || !stateDraft) return;
-		if (stateDraft.id === characterDraft.defaultStateId) return;
+function applyStateDraft() {
+	if (!characterDraft || !stateDraft) return;
+	const draft = cloneState(stateDraft);
+	if (stateEditIndex === null) {
 		characterDraft = {
 			...characterDraft,
-			states: characterDraft.states.filter((_, i) => i !== stateEditIndex),
+			states: [...characterDraft.states, draft],
 		};
-		closeStateModal();
+	} else {
+		characterDraft = {
+			...characterDraft,
+			states: characterDraft.states.map((s, i) => (i === stateEditIndex ? draft : s)),
+		};
 	}
+	if (!characterDraft.states.some((s) => s.id === characterDraft!.defaultStateId)) {
+		characterDraft = { ...characterDraft, defaultStateId: characterDraft.states[0]!.id };
+	}
+	closeStateModal();
+}
 
-	function onStateLabelBlur() {
-		if (!stateDraft) return;
-		if (stateDraft.id === 'default' || stateDraft.id.startsWith('state_')) {
-			const next = slugifyLabel(stateDraft.label);
-			if (!next) return;
-			const taken = characterDraft?.states.some(
-				(s, i) => s.id === next && i !== stateEditIndex,
-			);
-			if (!taken) {
-				const wasDefault = characterDraft?.defaultStateId === stateDraft.id;
-				stateDraft = { ...stateDraft, id: next };
-				if (wasDefault && characterDraft) {
-					characterDraft = { ...characterDraft, defaultStateId: next };
-				}
+function removeStateFromModal() {
+	if (!characterDraft || stateEditIndex === null || !stateDraft) return;
+	if (stateDraft.id === characterDraft.defaultStateId) return;
+	characterDraft = {
+		...characterDraft,
+		states: characterDraft.states.filter((_, i) => i !== stateEditIndex),
+	};
+	closeStateModal();
+}
+
+function onStateLabelBlur() {
+	if (!stateDraft) return;
+	if (stateDraft.id === 'default' || stateDraft.id.startsWith('state_')) {
+		const next = slugifyLabel(stateDraft.label);
+		if (!next) return;
+		const taken = characterDraft?.states.some((s, i) => s.id === next && i !== stateEditIndex);
+		if (!taken) {
+			const wasDefault = characterDraft?.defaultStateId === stateDraft.id;
+			stateDraft = { ...stateDraft, id: next };
+			if (wasDefault && characterDraft) {
+				characterDraft = { ...characterDraft, defaultStateId: next };
 			}
 		}
 	}
+}
 
-	onMount(load);
+onMount(load);
 </script>
 
 <div class="toolbar">
@@ -284,7 +310,7 @@
 {:else}
 	<div class="summary-list">
 		{#each listedCharacters as { char, index } (char.id)}
-			{@const portrait = portraitPreviewUrl(defaultPortraitPath(char))}
+			{@const portrait = portraitPreviewUrl(slug, defaultPortraitPath(char))}
 			<article class="summary-card">
 				<div class="portrait" title={defaultPortraitPath(char) || 'No portrait'}>
 					{#if portrait}
@@ -390,7 +416,7 @@
 					</div>
 					<div class="state-summary-list">
 						{#each characterDraft.states as state, si (state.id)}
-							{@const statePortrait = portraitPreviewUrl(state.portraitPath)}
+							{@const statePortrait = portraitPreviewUrl(slug, state.portraitPath)}
 							<article class="state-summary-card">
 								<div class="portrait portrait-sm" title={state.portraitPath || 'No portrait'}>
 									{#if statePortrait}
@@ -472,12 +498,41 @@
 									}}
 								/>
 							</div>
-							<div class="field">
-								<label for="state-portrait">Portrait (Godot res://)</label>
+							<div class="field portrait-field">
+								<label for="state-portrait-file">Portrait</label>
+								<div class="portrait-upload-row">
+									<div class="portrait portrait-sm" title={stateDraft.portraitPath || 'No portrait'}>
+										{#if portraitPreviewUrl(slug, stateDraft.portraitPath)}
+											<img src={portraitPreviewUrl(slug, stateDraft.portraitPath)!} alt="" />
+										{:else}
+											<span class="portrait-fallback">{stateDraft.label.charAt(0).toUpperCase()}</span>
+										{/if}
+									</div>
+									<div class="portrait-upload-controls">
+										<input
+											id="state-portrait-file"
+											type="file"
+											accept="image/png,image/jpeg,image/webp,image/gif"
+											disabled={portraitUploading}
+											onchange={onPortraitSelected}
+										/>
+										{#if portraitUploading}
+											<p class="portrait-hint">Uploading…</p>
+										{:else if stateDraft.portraitPath}
+											<p class="portrait-hint"><code>{stateDraft.portraitPath}</code></p>
+										{:else}
+											<p class="portrait-hint">Upload PNG, JPEG, WebP, or GIF (max 5 MB)</p>
+										{/if}
+										{#if portraitUploadError}
+											<p class="error">{portraitUploadError}</p>
+										{/if}
+									</div>
+								</div>
+								<label class="sr-only" for="state-portrait-url">Portrait URL override</label>
 								<input
-									id="state-portrait"
+									id="state-portrait-url"
 									bind:value={stateDraft.portraitPath}
-									placeholder="res://portraits/{characterDraft.id}_{stateDraft.id}.png"
+									placeholder="Or paste https://… URL"
 								/>
 							</div>
 						</div>
@@ -785,6 +840,32 @@
 		background: var(--accent-dim);
 		color: #fff;
 		vertical-align: middle;
+	}
+
+	.portrait-upload-row {
+		display: flex;
+		gap: 0.75rem;
+		align-items: flex-start;
+	}
+
+	.portrait-upload-controls {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.portrait-field input[type='file'] {
+		font-size: 0.85rem;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
 	}
 
 	.portrait-hint {

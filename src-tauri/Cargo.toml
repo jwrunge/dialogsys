@@ -3,7 +3,7 @@ name = "dialogsys"
 version = "0.0.1"
 description = "Dialogsys desktop and mobile shell"
 authors = ["Dialogsys"]
-license = ""
+license = "MIT"
 repository = ""
 edition = "2021"
 rust-version = "1.88.0"
@@ -24,3 +24,4 @@ log = "0.4"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

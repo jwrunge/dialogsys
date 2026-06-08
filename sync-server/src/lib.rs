@@ -12,11 +12,13 @@ use std::{
 use axum::{
     body::Body,
     extract::{Path as AxumPath, State},
-    http::StatusCode,
+    http::{header::AUTHORIZATION, Request, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{get, post},
     Json, Router,
 };
+use subtle::ConstantTimeEq;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -26,7 +28,7 @@ use tokio::{
     process::Command,
     time::{timeout, Duration},
 };
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{Any, CorsLayer};
 
 const DEFAULT_BIND: &str = "127.0.0.1:3210";
 const HOOK_TIMEOUT_SECONDS: u64 = 30;
@@ -36,18 +38,28 @@ static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub struct AppState {
     root: Arc<PathBuf>,
     hooks: Arc<HookConfig>,
+    auth_token: Option<Arc<str>>,
 }
 
 impl AppState {
-    pub fn new(root: PathBuf, hooks: HookConfig) -> Self {
+    pub fn new(root: PathBuf, hooks: HookConfig, auth_token: Option<String>) -> Self {
+        let auth_token = auth_token
+            .map(|token| token.trim().to_string())
+            .filter(|token| !token.is_empty())
+            .map(|token| Arc::<str>::from(token));
         Self {
             root: Arc::new(root),
             hooks: Arc::new(hooks),
+            auth_token,
         }
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub fn auth_token(&self) -> Option<&str> {
+        self.auth_token.as_deref()
     }
 }
 
@@ -56,6 +68,7 @@ impl AppState {
 pub struct ServerConfig {
     pub root: Option<PathBuf>,
     pub bind: Option<String>,
+    pub auth_token: Option<String>,
     #[serde(default)]
     pub hooks: HookConfig,
 }
@@ -300,9 +313,46 @@ pub async fn load_config(path: Option<&Path>) -> Result<ServerConfig, AppError> 
         .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, format!("Config parse failed: {e}")))
 }
 
+fn cors_layer() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers([AUTHORIZATION, axum::http::header::CONTENT_TYPE])
+}
+
+fn bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
+    headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn verify_auth_token(expected: &str, provided: &str) -> bool {
+    if expected.len() != provided.len() {
+        return false;
+    }
+    expected.as_bytes().ct_eq(provided.as_bytes()).into()
+}
+
+async fn require_auth(
+    State(state): State<AppState>,
+    request: Request<Body>,
+    next: Next,
+) -> Result<Response, AppError> {
+    let Some(expected) = state.auth_token() else {
+        return Ok(next.run(request).await);
+    };
+
+    match bearer_token(request.headers()) {
+        Some(provided) if verify_auth_token(expected, provided) => Ok(next.run(request).await),
+        _ => Err(AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized")),
+    }
+}
+
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .route("/health", get(health))
+    let protected = Router::new()
         .route("/projects", get(list_projects).post(create_project))
         .route("/projects/{slug}", get(get_project))
         .route("/projects/{slug}/origins", get(list_origins))
@@ -317,8 +367,36 @@ pub fn build_router(state: AppState) -> Router {
                 .put(write_origin_file)
                 .delete(delete_origin_file),
         )
-        .layer(CorsLayer::permissive())
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    Router::new()
+        .route("/health", get(health))
+        .merge(protected)
+        .layer(cors_layer())
         .with_state(state)
+}
+
+pub fn validate_bind_and_auth(addr: &SocketAddr, auth_token: &Option<String>) -> Result<(), AppError> {
+    let has_token = auth_token
+        .as_ref()
+        .map(|token| !token.trim().is_empty())
+        .unwrap_or(false);
+
+    if addr.ip().is_loopback() {
+        return Ok(());
+    }
+
+    if has_token {
+        return Ok(());
+    }
+
+    Err(AppError::new(
+        StatusCode::BAD_REQUEST,
+        format!(
+            "Binding to {addr} requires authToken in config (or --auth-token). \
+             Use 127.0.0.1 for local-only access without authentication."
+        ),
+    ))
 }
 
 pub async fn serve(state: AppState, addr: SocketAddr) -> Result<(), AppError> {
@@ -1046,7 +1124,15 @@ mod tests {
     }
 
     fn test_state(root: &Path) -> AppState {
-        AppState::new(root.to_path_buf(), HookConfig::default())
+        AppState::new(root.to_path_buf(), HookConfig::default(), None)
+    }
+
+    fn test_state_with_auth(root: &Path, token: &str) -> AppState {
+        AppState::new(
+            root.to_path_buf(),
+            HookConfig::default(),
+            Some(token.to_string()),
+        )
     }
 
     async fn json_request(
@@ -1055,12 +1141,24 @@ mod tests {
         uri: &str,
         body: Value,
     ) -> (StatusCode, Value) {
-        let request = Request::builder()
+        json_request_with_auth(router, method, uri, body, None).await
+    }
+
+    async fn json_request_with_auth(
+        router: Router,
+        method: &str,
+        uri: &str,
+        body: Value,
+        auth_token: Option<&str>,
+    ) -> (StatusCode, Value) {
+        let mut builder = Request::builder()
             .method(method)
             .uri(uri)
-            .header("content-type", "application/json")
-            .body(Body::from(body.to_string()))
-            .unwrap();
+            .header("content-type", "application/json");
+        if let Some(token) = auth_token {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        let request = builder.body(Body::from(body.to_string())).unwrap();
         let response = router.oneshot(request).await.unwrap();
         let status = response.status();
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
@@ -1119,6 +1217,41 @@ mod tests {
         assert_eq!(read["content"], "# Updated\n");
     }
 
+    #[tokio::test]
+    async fn protected_routes_require_bearer_token_when_configured() {
+        let temp = TestDir::new();
+        let router = build_router(test_state_with_auth(temp.path(), "test-secret"));
+
+        let (status, _) = json_request(
+            router.clone(),
+            "GET",
+            "/projects",
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let (status, _) = json_request_with_auth(
+            router,
+            "GET",
+            "/projects",
+            serde_json::json!({}),
+            Some("test-secret"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[test]
+    fn validate_bind_and_auth_requires_token_for_public_bind() {
+        let addr: SocketAddr = "0.0.0.0:3210".parse().unwrap();
+        assert!(validate_bind_and_auth(&addr, &None).is_err());
+        assert!(validate_bind_and_auth(&addr, &Some("secret".to_string())).is_ok());
+
+        let loopback: SocketAddr = "127.0.0.1:3210".parse().unwrap();
+        assert!(validate_bind_and_auth(&loopback, &None).is_ok());
+    }
+
     #[test]
     fn rejects_unsafe_paths() {
         assert!(safe_relative_path("notes/overview.md").is_ok());
@@ -1147,6 +1280,7 @@ mod tests {
                 ]),
                 ..HookConfig::default()
             },
+            None,
         );
         let router = build_router(state);
         let origin_id = "22222222-2222-2222-2222-222222222222";

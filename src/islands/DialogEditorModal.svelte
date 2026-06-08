@@ -1,42 +1,42 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+import { onMount, tick } from 'svelte';
 
-	interface Props {
-		slug: string;
-		dialogId: string | null;
-		sequenceId?: string;
-		title?: string;
-		onclose: () => void;
+interface Props {
+	slug: string;
+	dialogId: string | null;
+	sequenceId?: string;
+	title?: string;
+	onclose: () => void;
+}
+
+let { slug, dialogId, sequenceId, title = 'Edit scene', onclose }: Props = $props();
+
+type EditorComponent = typeof import('./DialogGraphEditor.svelte').default;
+
+let dialogEl = $state<HTMLDialogElement | null>(null);
+let Editor = $state<EditorComponent | null>(null);
+let loadError = $state('');
+
+onMount(async () => {
+	try {
+		const mod = await import('./DialogGraphEditor.svelte');
+		Editor = mod.default;
+	} catch (e) {
+		loadError = (e as Error).message;
 	}
+});
 
-	let { slug, dialogId, sequenceId, title = 'Edit scene', onclose }: Props = $props();
-
-	type EditorComponent = typeof import('./DialogGraphEditor.svelte').default;
-
-	let dialogEl = $state<HTMLDialogElement | null>(null);
-	let Editor = $state<EditorComponent | null>(null);
-	let loadError = $state('');
-
-	onMount(async () => {
-		try {
-			const mod = await import('./DialogGraphEditor.svelte');
-			Editor = mod.default;
-		} catch (e) {
-			loadError = (e as Error).message;
-		}
-	});
-
-	$effect(() => {
-		if (dialogId) {
-			tick().then(() => dialogEl?.showModal());
-		} else {
-			dialogEl?.close();
-		}
-	});
-
-	function handleClose() {
-		onclose();
+$effect(() => {
+	if (dialogId) {
+		tick().then(() => dialogEl?.showModal());
+	} else {
+		dialogEl?.close();
 	}
+});
+
+function handleClose() {
+	onclose();
+}
 </script>
 
 <dialog

@@ -1,132 +1,126 @@
 <script lang="ts">
-	import type { Character } from '../lib/schema/characters';
-	import type { ConditionGroup } from '../lib/schema/conditions';
-	import type { GraphNode, GraphNodeData, GraphEdge, ChoiceOption } from '../lib/schema/graph';
-	import type { GameStateProperty } from '../lib/schema/gameState';
-	import { resolvePortraitPath } from '../lib/characters';
-	import { LEGACY_NODE_TYPE_LABELS, NODE_TYPE_OPTIONS } from '../lib/graph/nodeFactory';
-	import { nanoid } from 'nanoid';
-	import ConditionEditor from './ConditionEditor.svelte';
-	import SpeakerPicker from './SpeakerPicker.svelte';
+import { nanoid } from 'nanoid';
+import { resolvePortraitPath } from '../lib/characters';
+import { LEGACY_NODE_TYPE_LABELS, NODE_TYPE_OPTIONS } from '../lib/graph/nodeFactory';
+import type { Character } from '../lib/schema/characters';
+import type { ConditionGroup } from '../lib/schema/conditions';
+import type { GameStateProperty } from '../lib/schema/gameState';
+import type { ChoiceOption, GraphEdge, GraphNode, GraphNodeData } from '../lib/schema/graph';
+import ConditionEditor from './ConditionEditor.svelte';
+import SpeakerPicker from './SpeakerPicker.svelte';
 
-	interface Props {
-		slug: string;
-		node: GraphNode | null;
-		edges: GraphEdge[];
-		nodes: GraphNode[];
-		characters: Character[];
-		gameStateProperties: GameStateProperty[];
-		dialogIds: string[];
-		onchange: (node: GraphNode) => void;
-		onedgechange: (edge: GraphEdge) => void;
-		onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
-		onRemoveChoiceOption: (optionId: string) => void;
-		oncharacterschange: (characters: Character[]) => void;
-		ondelete: () => void;
-	}
+interface Props {
+	slug: string;
+	node: GraphNode | null;
+	edges: GraphEdge[];
+	nodes: GraphNode[];
+	characters: Character[];
+	gameStateProperties: GameStateProperty[];
+	dialogIds: string[];
+	onchange: (node: GraphNode) => void;
+	onedgechange: (edge: GraphEdge) => void;
+	onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
+	onRemoveChoiceOption: (optionId: string) => void;
+	oncharacterschange: (characters: Character[]) => void;
+	ondelete: () => void;
+}
 
-	let {
-		slug,
-		node,
-		edges,
-		nodes,
-		characters,
-		gameStateProperties,
-		dialogIds,
-		onchange,
-		onedgechange,
-		onSetBranchTarget,
-		onRemoveChoiceOption,
-		oncharacterschange,
-		ondelete,
-	}: Props = $props();
+let {
+	slug,
+	node,
+	edges,
+	nodes,
+	characters,
+	gameStateProperties,
+	dialogIds,
+	onchange,
+	onedgechange,
+	onSetBranchTarget,
+	onRemoveChoiceOption,
+	oncharacterschange,
+	ondelete,
+}: Props = $props();
 
-	const optionCount = $derived(node?.type === 'choice' ? (node.data.options?.length ?? 0) : 0);
+const optionCount = $derived(node?.type === 'choice' ? (node.data.options?.length ?? 0) : 0);
 
-	const branchTargets = $derived(
-		nodes.filter((n) => n.id !== node?.id && n.type !== 'entry').map((n) => n.id),
+const branchTargets = $derived(
+	nodes.filter((n) => n.id !== node?.id && n.type !== 'entry').map((n) => n.id),
+);
+
+function branchTarget(handle: string): string {
+	if (!node) return '';
+	return (
+		edges.find(
+			(e) => e.source === node.id && (e.sourceHandle === handle || e.data?.branch === handle),
+		)?.target ?? ''
 	);
+}
 
-	function branchTarget(handle: string): string {
-		if (!node) return '';
-		return (
-			edges.find(
-				(e) =>
-					e.source === node.id &&
-					(e.sourceHandle === handle || e.data?.branch === handle),
-			)?.target ?? ''
-		);
-	}
+const speakerChar = $derived(characters.find((c) => c.id === node?.data.speaker));
 
-	const speakerChar = $derived(
-		characters.find((c) => c.id === node?.data.speaker),
-	);
+const stateOptions = $derived(speakerChar?.states ?? []);
 
-	const stateOptions = $derived(speakerChar?.states ?? []);
+const portraitPreview = $derived(
+	resolvePortraitPath(
+		speakerChar,
+		node?.data.characterState || speakerChar?.defaultStateId,
+		node?.data.portraitPath,
+	),
+);
 
-	const portraitPreview = $derived(
-		resolvePortraitPath(
-			speakerChar,
-			node?.data.characterState || speakerChar?.defaultStateId,
-			node?.data.portraitPath,
-		),
-	);
+const nodeEdges = $derived(node ? edges.filter((e) => e.source === node.id) : []);
 
-	const nodeEdges = $derived(
-		node ? edges.filter((e) => e.source === node.id) : [],
-	);
+function updateData(patch: Partial<GraphNodeData>) {
+	if (!node) return;
+	onchange({
+		...node,
+		data: { ...node.data, ...patch },
+	});
+}
 
-	function updateData(patch: Partial<GraphNodeData>) {
-		if (!node) return;
-		onchange({
-			...node,
-			data: { ...node.data, ...patch },
-		});
-	}
+function setType(type: string) {
+	if (!node) return;
+	onchange({ ...node, type: type as GraphNode['type'] });
+}
 
-	function setType(type: string) {
-		if (!node) return;
-		onchange({ ...node, type: type as GraphNode['type'] });
-	}
+function updateEdge(edgeId: string, patch: Partial<GraphEdge['data']>) {
+	const edge = edges.find((e) => e.id === edgeId);
+	if (!edge) return;
+	onedgechange({
+		...edge,
+		data: { ...edge.data, ...patch },
+	});
+}
 
-	function updateEdge(edgeId: string, patch: Partial<GraphEdge['data']>) {
-		const edge = edges.find((e) => e.id === edgeId);
-		if (!edge) return;
-		onedgechange({
-			...edge,
-			data: { ...edge.data, ...patch },
-		});
-	}
+function addOption() {
+	if (!node) return;
+	const options: ChoiceOption[] = [
+		...(node.data.options ?? []),
+		{ id: nanoid(8), text: '', conditions: [] },
+	];
+	updateData({ options });
+}
 
-	function addOption() {
-		if (!node) return;
-		const options: ChoiceOption[] = [
-			...(node.data.options ?? []),
-			{ id: nanoid(8), text: '', conditions: [] },
-		];
-		updateData({ options });
-	}
+function removeOption(optionId: string) {
+	if (!node || node.type !== 'choice' || optionCount <= 1) return;
+	onRemoveChoiceOption(optionId);
+}
 
-	function removeOption(optionId: string) {
-		if (!node || node.type !== 'choice' || optionCount <= 1) return;
-		onRemoveChoiceOption(optionId);
-	}
+function updateOptionConditions(index: number, conditions: ConditionGroup[]) {
+	if (!node || node.type !== 'choice') return;
+	const options = [...(node.data.options ?? [])];
+	const opt = options[index];
+	if (!opt) return;
+	options[index] = { ...opt, conditions };
+	updateData({ options });
+}
 
-	function updateOptionConditions(index: number, conditions: ConditionGroup[]) {
-		if (!node || node.type !== 'choice') return;
-		const options = [...(node.data.options ?? [])];
-		const opt = options[index];
-		if (!opt) return;
-		options[index] = { ...opt, conditions };
-		updateData({ options });
-	}
-
-	function branchLabel(edge: GraphEdge): string {
-		if (edge.sourceHandle === 'true' || edge.data?.branch === 'true') return 'True branch';
-		if (edge.sourceHandle === 'false' || edge.data?.branch === 'false') return 'False branch';
-		const opt = node?.data.options?.find((o) => o.id === edge.sourceHandle);
-		return opt ? `Path: ${opt.text || opt.id}` : `Branch (${edge.sourceHandle ?? 'default'})`;
-	}
+function branchLabel(edge: GraphEdge): string {
+	if (edge.sourceHandle === 'true' || edge.data?.branch === 'true') return 'True branch';
+	if (edge.sourceHandle === 'false' || edge.data?.branch === 'false') return 'False branch';
+	const opt = node?.data.options?.find((o) => o.id === edge.sourceHandle);
+	return opt ? `Path: ${opt.text || opt.id}` : `Branch (${edge.sourceHandle ?? 'default'})`;
+}
 </script>
 
 {#if !node}

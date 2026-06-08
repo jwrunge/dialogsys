@@ -23,11 +23,11 @@ Each project is a folder:
 - `characters.json` — character definitions
 - `notes/` — markdown project overview
 - `dialogs/*.graph.json` — scene source graphs (editor format); use **Condition** and **Set var** nodes for branching state
-- `export/godot/` — generated Godot runtime files
+- `portraits/` — character portrait images (uploaded in the character editor)
 
 ## Character display states
 
-Each character can have multiple **display states** (e.g. `curious`, `panicked`), each with its own portrait path. One state is the **default**. Line nodes pick a `characterState` id; export resolves the portrait from the character definition.
+Each character can have multiple **display states** (e.g. `curious`, `panicked`), each with its own portrait. Upload images in the character editor (stored as `portraits/<characterId>_<stateId>.png`) or paste an `https://` URL. One state is the **default**. Line nodes pick a `characterState` id; export resolves the portrait from the character definition and bundles image files in the download zip.
 
 Open **Issues** (`/projects/<slug>/issues`) to see warnings such as:
 
@@ -50,12 +50,27 @@ cd sync-server
 cargo run -- --root ./projects --bind 127.0.0.1:3210
 ```
 
-The server intentionally serves HTTP only; put HTTPS behind nginx, Caddy, Traefik, or another reverse proxy. See `sync-server/README.md` for the API and hook contract.
+For access from other devices, bind to your LAN or VPN interface and set a shared token:
+
+```bash
+cargo run -- --bind 0.0.0.0:3210 --auth-token "$(openssl rand -hex 32)"
+```
+
+Enter that token in Dialogsys **Settings** alongside the sync server URL.
+
+The server intentionally serves HTTP only; put HTTPS behind nginx, Caddy, Traefik, or another reverse proxy. See `sync-server/README.md` for the API, authentication, and hook contract.
+
+## Export
+
+Open **Export** in a project to validate and download a zip bundle.
+
+- **Godot** — `godot/` folder with `DialogueRunner.gd`, dialog JSON (`res://dialogue/portraits/…` paths), and bundled portraits. Unzip and copy into your game as `res://dialogue/`.
+- **Generic** — portable `generic/` folder with dialog JSON (relative `portraits/…` paths), `characters.json`, `manifest.json`, and portrait images for custom engines.
 
 ## Godot integration
 
-1. In Dialogsys, open **Export** and click **Export to Godot**.
-2. Copy `projects/<slug>/export/godot/` into your game as `res://dialogue/`.
+1. In Dialogsys, open **Export** and click **Export Godot (.zip)**.
+2. Unzip and copy the `godot/` folder into your game as `res://dialogue/`.
 3. Autoload `DialogueRunner.gd`.
 4. Call `start("tavern_intro")` and wire UI to `line_shown`, `choices_shown`, `dialogue_ended`, and `run_command`.
 

@@ -1,5 +1,12 @@
 import type { APIRoute } from 'astro';
-import { getSequence, saveSequence, jsonResponse, errorResponse } from '../../../../lib/server/projects';
+import { flowGraphSchema } from '../../../../lib/schema/flow';
+import {
+	getSequence,
+	jsonResponse,
+	parseJsonBody,
+	saveSequence,
+	toErrorResponse,
+} from '../../../../lib/server/projects';
 
 /** @deprecated Use /api/projects/{slug}/sequences/main instead */
 export const GET: APIRoute = async ({ params }) => {
@@ -7,18 +14,20 @@ export const GET: APIRoute = async ({ params }) => {
 		const graph = await getSequence(params.slug!, 'main');
 		return jsonResponse({ graph });
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };
 
 /** @deprecated Use /api/projects/{slug}/sequences/main instead */
 export const PUT: APIRoute = async ({ params, request }) => {
 	try {
-		const body = await request.json();
-		const graph = body.graph ?? body;
-		const saved = await saveSequence(params.slug!, { ...graph, id: graph.id ?? 'main' });
+		const slug = params.slug!;
+		const body = await parseJsonBody(request);
+		const raw = (body as { graph?: unknown }).graph ?? body;
+		const graph = flowGraphSchema.parse({ ...(raw as object), id: 'main' });
+		const saved = await saveSequence(slug, 'main', graph);
 		return jsonResponse({ graph: saved });
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };

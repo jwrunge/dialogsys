@@ -1,9 +1,10 @@
 ---
-import BaseLayout from './BaseLayout.astro';
 import ProjectNav from '../components/ProjectNav.astro';
-import ProjectTitle from '../islands/ProjectTitle.svelte';
 import OriginSwitcher from '../islands/OriginSwitcher.svelte';
+import ProjectTitle from '../islands/ProjectTitle.svelte';
+import type { ProjectMeta } from '../lib/schema/project';
 import { getProject } from '../lib/server/projects';
+import BaseLayout from './BaseLayout.astro';
 
 interface Props {
 	slug: string;
@@ -13,7 +14,14 @@ interface Props {
 }
 
 const { slug, current, title, variant = 'default' } = Astro.props;
-const project = await getProject(slug);
+
+let project: ProjectMeta;
+try {
+	project = await getProject(slug);
+} catch {
+	return Astro.redirect('/404');
+}
+
 const pageTitle = title ? `${title} · ${project.displayName}` : project.displayName;
 ---
 

@@ -1,0 +1,59 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": [
+			"**",
+			"!dist",
+			"!node_modules",
+			"!.astro",
+			"!src-tauri/target",
+			"!src-tauri/gen",
+			"!src-tauri/resources",
+			"!sync-server/target"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"lineWidth": 100
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"suspicious": {
+				"noExplicitAny": "warn"
+			},
+			"correctness": {
+				"noUnusedVariables": "warn"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single",
+			"semicolons": "always"
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["src/lib/**", "src/pages/api/**"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noUnusedImports": "error",
+						"noUnusedVariables": "error"
+					},
+					"suspicious": {
+						"noExplicitAny": "error"
+					}
+				}
+			}
+		}
+	]
+}

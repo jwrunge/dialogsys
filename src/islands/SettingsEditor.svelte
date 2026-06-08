@@ -1,136 +1,164 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { api } from '../lib/api';
-	import { testSyncConnection } from '../lib/sync/client';
-	import type { StorageMode } from '../lib/schema/settings';
+import { onMount } from 'svelte';
+import { api, apiValidated } from '../lib/api';
+import {
+	clearSyncTokenFromKeychain,
+	isTauriRuntime,
+	saveSyncTokenToKeychain,
+} from '../lib/client/tauri-secrets';
+import {
+	type SettingsResponse,
+	settingsResponseSchema,
+	syncTestResponseSchema,
+} from '../lib/schema/api-responses';
+import { testSyncConnection } from '../lib/sync/client';
 
-	type SettingsResponse = {
-		projectsRoot: string;
-		resolvedPath: string;
-		source: 'env' | 'config' | 'default';
-		envOverride: boolean;
-		storageMode: StorageMode;
-		syncServerUrl: string;
-		clientId: string;
-		configFile: string | null;
-	};
+let projectsRoot = $state('./projects');
+let clientId = $state('');
+let storageMode = $state<StorageMode>('local');
+let syncServerUrl = $state('');
+let hasSyncServerToken = $state(false);
+let syncServerTokenInput = $state('');
+let clearSyncServerToken = $state(false);
+let resolvedPath = $state('');
+let source = $state<SettingsResponse['source']>('default');
+let envOverride = $state(false);
+let configFile = $state<string | null>(null);
+let ready = $state(false);
+let saving = $state(false);
+let testing = $state(false);
+let error = $state('');
+let saved = $state(false);
+let connectionStatus = $state<'idle' | 'ok' | 'error'>('idle');
+let connectionMessage = $state('');
+let connectionProjectCount = $state(0);
 
-	let projectsRoot = $state('./projects');
-	let clientId = $state('');
-	let storageMode = $state<StorageMode>('local');
-	let syncServerUrl = $state('');
-	let resolvedPath = $state('');
-	let source = $state<SettingsResponse['source']>('default');
-	let envOverride = $state(false);
-	let configFile = $state<string | null>(null);
-	let ready = $state(false);
-	let saving = $state(false);
-	let testing = $state(false);
-	let error = $state('');
-	let saved = $state(false);
-	let connectionStatus = $state<'idle' | 'ok' | 'error'>('idle');
-	let connectionMessage = $state('');
-	let connectionProjectCount = $state(0);
-
-	const sourceLabel = $derived.by(() => {
-		switch (source) {
-			case 'env':
-				return 'Environment variable (DIALOGSYS_PROJECTS_ROOT)';
-			case 'config':
-				return 'Settings file';
-			default:
-				return 'Default';
-		}
-	});
-
-	async function load() {
-		ready = false;
-		error = '';
-		try {
-			const res = await api<SettingsResponse>('/api/settings');
-			projectsRoot = res.projectsRoot;
-			storageMode = res.storageMode ?? 'local';
-			syncServerUrl = res.syncServerUrl ?? '';
-			clientId = res.clientId ?? '';
-			resolvedPath = res.resolvedPath;
-			source = res.source;
-			envOverride = res.envOverride;
-			configFile = res.configFile;
-			ready = true;
-		} catch (e) {
-			error = (e as Error).message;
-		}
+const sourceLabel = $derived.by(() => {
+	switch (source) {
+		case 'env':
+			return 'Environment variable (DIALOGSYS_PROJECTS_ROOT)';
+		case 'config':
+			return 'Settings file';
+		default:
+			return 'Default';
 	}
+});
 
-	async function testConnection() {
-		if (!syncServerUrl.trim()) {
-			connectionStatus = 'error';
-			connectionMessage = 'Enter a sync server URL first.';
+async function load() {
+	ready = false;
+	error = '';
+	try {
+		const res = await apiValidated('/api/settings', settingsResponseSchema);
+		projectsRoot = res.projectsRoot;
+		storageMode = res.storageMode ?? 'local';
+		syncServerUrl = res.syncServerUrl ?? '';
+		hasSyncServerToken = res.hasSyncServerToken ?? false;
+		syncServerTokenInput = '';
+		clearSyncServerToken = false;
+		clientId = res.clientId ?? '';
+		resolvedPath = res.resolvedPath;
+		source = res.source;
+		envOverride = res.envOverride;
+		configFile = res.configFile;
+		ready = true;
+	} catch (e) {
+		error = (e as Error).message;
+	}
+}
+
+async function testConnection() {
+	if (!syncServerUrl.trim()) {
+		connectionStatus = 'error';
+		connectionMessage = 'Enter a sync server URL first.';
+		return;
+	}
+	testing = true;
+	connectionStatus = 'idle';
+	connectionMessage = '';
+	try {
+		const tokenForTest = syncServerTokenInput.trim() || undefined;
+		const browserResult = await testSyncConnection({
+			baseUrl: syncServerUrl.trim(),
+			token: tokenForTest,
+		});
+		if (browserResult.ok) {
+			connectionStatus = 'ok';
+			connectionProjectCount = browserResult.projectCount;
+			connectionMessage = `Connected — ${browserResult.projectCount} project${browserResult.projectCount === 1 ? '' : 's'} found.`;
 			return;
 		}
-		testing = true;
-		connectionStatus = 'idle';
-		connectionMessage = '';
-		try {
-			const browserResult = await testSyncConnection(syncServerUrl.trim());
-			if (browserResult.ok) {
-				connectionStatus = 'ok';
-				connectionProjectCount = browserResult.projectCount;
-				connectionMessage = `Connected — ${browserResult.projectCount} project${browserResult.projectCount === 1 ? '' : 's'} found.`;
-				return;
-			}
 
-			const serverResult = await api<{ ok: boolean; projectCount: number }>('/api/settings', {
-				method: 'POST',
-				body: JSON.stringify({ syncServerUrl: syncServerUrl.trim() }),
-			});
-			if (serverResult.ok) {
-				connectionStatus = 'ok';
-				connectionProjectCount = serverResult.projectCount;
-				connectionMessage = `Connected via app server — ${serverResult.projectCount} project${serverResult.projectCount === 1 ? '' : 's'} found.`;
-			} else {
-				connectionStatus = 'error';
-				connectionMessage = browserResult.error ?? 'Connection failed';
-			}
-		} catch (e) {
+		const serverResult = await apiValidated('/api/settings', syncTestResponseSchema, {
+			method: 'POST',
+			body: JSON.stringify({
+				syncServerUrl: syncServerUrl.trim(),
+				syncServerToken: tokenForTest,
+			}),
+		});
+		if (serverResult.ok) {
+			connectionStatus = 'ok';
+			connectionProjectCount = serverResult.projectCount;
+			connectionMessage = `Connected via app server — ${serverResult.projectCount} project${serverResult.projectCount === 1 ? '' : 's'} found.`;
+		} else {
 			connectionStatus = 'error';
-			connectionMessage = (e as Error).message;
-		} finally {
-			testing = false;
+			connectionMessage = browserResult.error ?? 'Connection failed';
 		}
+	} catch (e) {
+		connectionStatus = 'error';
+		connectionMessage = (e as Error).message;
+	} finally {
+		testing = false;
 	}
+}
 
-	async function save(e: Event) {
-		e.preventDefault();
-		if (saving || envOverride) return;
-		error = '';
-		saved = false;
-		saving = true;
-		try {
-			const res = await api<SettingsResponse>('/api/settings', {
-				method: 'PUT',
-				body: JSON.stringify({
-					projectsRoot: projectsRoot.trim(),
-					storageMode,
-					syncServerUrl: syncServerUrl.trim(),
-				}),
-			});
-			projectsRoot = res.projectsRoot;
-			storageMode = res.storageMode ?? 'local';
-			syncServerUrl = res.syncServerUrl ?? '';
-			clientId = res.clientId ?? '';
-			resolvedPath = res.resolvedPath;
-			source = res.source;
-			configFile = res.configFile;
-			saved = true;
-		} catch (e) {
-			error = (e as Error).message;
-		} finally {
-			saving = false;
+async function save(e: Event) {
+	e.preventDefault();
+	if (saving || envOverride) return;
+	error = '';
+	saved = false;
+	saving = true;
+	try {
+		const payload: Record<string, string> = {
+			projectsRoot: projectsRoot.trim(),
+			storageMode,
+			syncServerUrl: syncServerUrl.trim(),
+		};
+
+		const tauri = await isTauriRuntime();
+		if (tauri) {
+			if (clearSyncServerToken) await clearSyncTokenFromKeychain();
+			else if (syncServerTokenInput.trim()) {
+				await saveSyncTokenToKeychain(syncServerTokenInput.trim());
+			}
+		} else if (clearSyncServerToken) {
+			payload.syncServerToken = '';
+		} else if (syncServerTokenInput.trim()) {
+			payload.syncServerToken = syncServerTokenInput.trim();
 		}
-	}
 
-	onMount(load);
+		const res = await apiValidated('/api/settings', settingsResponseSchema, {
+			method: 'PUT',
+			body: JSON.stringify(payload),
+		});
+		projectsRoot = res.projectsRoot;
+		storageMode = res.storageMode ?? 'local';
+		syncServerUrl = res.syncServerUrl ?? '';
+		hasSyncServerToken = res.hasSyncServerToken ?? false;
+		syncServerTokenInput = '';
+		clearSyncServerToken = false;
+		clientId = res.clientId ?? '';
+		resolvedPath = res.resolvedPath;
+		source = res.source;
+		configFile = res.configFile;
+		saved = true;
+	} catch (e) {
+		error = (e as Error).message;
+	} finally {
+		saving = false;
+	}
+}
+
+onMount(load);
 </script>
 
 {#if !ready && !error}
@@ -224,6 +252,28 @@
 				</p>
 			</div>
 
+			<div class="field">
+				<label for="sync-server-token">Access token</label>
+				<input
+					id="sync-server-token"
+					type="password"
+					bind:value={syncServerTokenInput}
+					autocomplete="off"
+					placeholder={hasSyncServerToken ? 'Saved — enter to replace' : 'Bearer token from server config'}
+					disabled={envOverride}
+				/>
+				<p class="hint">
+					Must match <code>authToken</code> in the server config. Leave blank to keep the saved token.
+					Generate one with <code>openssl rand -hex 32</code>.
+				</p>
+				{#if hasSyncServerToken}
+					<label class="clear-token">
+						<input type="checkbox" bind:checked={clearSyncServerToken} disabled={envOverride} />
+						Remove saved access token
+					</label>
+				{/if}
+			</div>
+
 			<div class="test-row">
 				<button
 					type="button"
@@ -242,8 +292,12 @@
 
 			<div class="info-card">
 				<p class="hint">
-					Start the server with
+					Local dev:
 					<code>cd sync-server && cargo run -- --root ./projects --bind 127.0.0.1:3210</code>
+				</p>
+				<p class="hint">
+					Remote/LAN access requires a token, e.g.
+					<code>cargo run -- --bind 0.0.0.0:3210 --auth-token "$(openssl rand -hex 32)"</code>
 				</p>
 			</div>
 		{/if}
@@ -355,6 +409,19 @@
 
 	.info-card p:last-child {
 		margin-bottom: 0;
+	}
+
+	.clear-token {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		margin-top: 0.5rem;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+
+	.clear-token input {
+		width: auto;
 	}
 
 	.test-row {

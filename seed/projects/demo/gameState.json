@@ -1,12 +1,12 @@
 {
-  "properties": [
-    {
-      "id": "met_bartender",
-      "label": "Met bartender",
-      "type": "boolean",
-      "useValidValues": true,
-      "validValues": [false, true],
-      "description": "Set true after the tavern intro dialog."
-    }
-  ]
+	"properties": [
+		{
+			"id": "met_bartender",
+			"label": "Met bartender",
+			"type": "boolean",
+			"useValidValues": true,
+			"validValues": [false, true],
+			"description": "Set true after the tavern intro dialog."
+		}
+	]
 }

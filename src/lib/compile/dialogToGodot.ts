@@ -1,7 +1,7 @@
 import { characterById, resolvePortraitPath } from '../characters';
 import type { Character } from '../schema/characters';
-import type { DialogGraph, GraphNode, GraphEdge } from '../schema/graph';
 import type { ConditionGroup } from '../schema/conditions';
+import type { DialogGraph, GraphEdge, GraphNode } from '../schema/graph';
 
 export type GodotDialogNode =
 	| {
@@ -72,6 +72,7 @@ function resolveEnd(nodes: GraphNode[], nextId: string): string {
 export function compileDialogToGodot(
 	graph: DialogGraph,
 	characters: Character[] = [],
+	mapPortraitPath: (path: string) => string = (p) => p,
 ): GodotDialogExport {
 	const exportableTypes = new Set([
 		'entry',
@@ -108,14 +109,13 @@ export function compileDialogToGodot(
 			const nextRaw = singleNext(graph.edges, node.id);
 			const speaker = node.data.speaker ?? '';
 			const char = characterById(characters, speaker);
-			const stateId =
-				node.data.characterState?.trim() || char?.defaultStateId || undefined;
+			const stateId = node.data.characterState?.trim() || char?.defaultStateId || undefined;
+			const resolvedPortrait = resolvePortraitPath(char, stateId, node.data.portraitPath);
 			nodes[node.id] = {
 				type: 'line',
 				speaker,
 				text: node.data.text ?? '',
-				portraitPath:
-					resolvePortraitPath(char, stateId, node.data.portraitPath) || undefined,
+				portraitPath: resolvedPortrait ? mapPortraitPath(resolvedPortrait) || undefined : undefined,
 				characterState: stateId,
 				emotion: node.data.emotion || stateId || undefined,
 				next: resolveEnd(graph.nodes, nextRaw),
@@ -126,8 +126,7 @@ export function compileDialogToGodot(
 		if (node.type === 'choice') {
 			const outEdges = getOutgoing(graph.edges, node.id);
 			const options = (node.data.options ?? []).map((opt, i) => {
-				const edge =
-					outEdges.find((e) => e.sourceHandle === opt.id) ?? outEdges[i];
+				const edge = outEdges.find((e) => e.sourceHandle === opt.id) ?? outEdges[i];
 				const next = edge?.target ?? 'end';
 				return {
 					text: opt.text,
@@ -152,12 +151,8 @@ export function compileDialogToGodot(
 		if (node.type === 'condition') {
 			const out = getOutgoing(graph.edges, node.id);
 			const forcedEdge = out.find((e) => e.data?.forceUse);
-			const trueEdge = out.find(
-				(e) => e.data?.branch === 'true' || e.sourceHandle === 'true',
-			);
-			const falseEdge = out.find(
-				(e) => e.data?.branch === 'false' || e.sourceHandle === 'false',
-			);
+			const trueEdge = out.find((e) => e.data?.branch === 'true' || e.sourceHandle === 'true');
+			const falseEdge = out.find((e) => e.data?.branch === 'false' || e.sourceHandle === 'false');
 
 			let trueTarget = trueEdge?.target ?? 'end';
 			let falseTarget = falseEdge?.target ?? 'end';

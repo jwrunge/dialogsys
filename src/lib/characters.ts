@@ -1,10 +1,14 @@
+import { portraitPathForPreview } from './portraits';
 import type { Character, CharacterState } from './schema/characters';
 
 export function getStateIds(character: Character): Set<string> {
 	return new Set(character.states.map((s) => s.id));
 }
 
-export function getState(character: Character, stateId: string | undefined): CharacterState | undefined {
+export function getState(
+	character: Character,
+	stateId: string | undefined,
+): CharacterState | undefined {
 	if (!stateId) {
 		return character.states.find((s) => s.id === character.defaultStateId);
 	}
@@ -22,13 +26,9 @@ export function resolvePortraitPath(
 	return state?.portraitPath ?? character.portraitPath ?? '';
 }
 
-/** Browser-loadable portrait URL, or null for Godot res:// paths (show placeholder). */
-export function portraitPreviewUrl(path: string | undefined): string | null {
-	const p = path?.trim() ?? '';
-	if (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('/')) {
-		return p;
-	}
-	return null;
+/** Browser-loadable portrait URL, or null when no preview is available. */
+export function portraitPreviewUrl(slug: string, path: string | undefined): string | null {
+	return portraitPathForPreview(slug, path);
 }
 
 export function defaultPortraitPath(character: Character): string {

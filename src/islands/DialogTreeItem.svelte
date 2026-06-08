@@ -1,161 +1,161 @@
 <script lang="ts">
-	import type { Character } from '../lib/schema/characters';
-	import type { GraphEdge, GraphNode } from '../lib/schema/graph';
-	import type { PathTreeItem } from '../lib/graph/pathTree';
-	import Self from './DialogTreeItem.svelte';
+import type { PathTreeItem } from '../lib/graph/pathTree';
+import type { Character } from '../lib/schema/characters';
+import type { GraphEdge, GraphNode } from '../lib/schema/graph';
+import Self from './DialogTreeItem.svelte';
 
-	interface Props {
-		item: PathTreeItem;
-		nodes: GraphNode[];
-		edges: GraphEdge[];
-		characters: Character[];
-		dialogIds: string[];
-		expandedIds: Set<string>;
-		selectedNodeId: string | null;
-		activeBranches: Record<string, string>;
-		openMenuId: string | null;
-		dragNodeId: string | null;
-		dragSiblings: string[];
-		canDrag: boolean;
-		onToggle: (id: string) => void;
-		onSelect: (id: string) => void;
-		onBranchChange: (nodeId: string, branchId: string) => void;
-		onInsertBefore: (id: string) => void;
-		onInsertAfter: (id: string) => void;
-		onDelete: (id: string) => void;
-		onMenuToggle: (id: string | null) => void;
-		onDragStart: (id: string) => void;
-		onDragEnd: () => void;
-		onDropBefore: (dragId: string, beforeId: string) => void;
-		onNodeChange: (node: GraphNode) => void;
-		onEdgeChange: (edge: GraphEdge) => void;
-		onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
-	}
+interface Props {
+	item: PathTreeItem;
+	nodes: GraphNode[];
+	edges: GraphEdge[];
+	characters: Character[];
+	dialogIds: string[];
+	expandedIds: Set<string>;
+	selectedNodeId: string | null;
+	activeBranches: Record<string, string>;
+	openMenuId: string | null;
+	dragNodeId: string | null;
+	dragSiblings: string[];
+	canDrag: boolean;
+	onToggle: (id: string) => void;
+	onSelect: (id: string) => void;
+	onBranchChange: (nodeId: string, branchId: string) => void;
+	onInsertBefore: (id: string) => void;
+	onInsertAfter: (id: string) => void;
+	onDelete: (id: string) => void;
+	onMenuToggle: (id: string | null) => void;
+	onDragStart: (id: string) => void;
+	onDragEnd: () => void;
+	onDropBefore: (dragId: string, beforeId: string) => void;
+	onNodeChange: (node: GraphNode) => void;
+	onEdgeChange: (edge: GraphEdge) => void;
+	onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
+}
 
-	let {
-		item,
-		nodes,
-		edges,
-		characters,
-		dialogIds,
-		expandedIds,
-		selectedNodeId,
-		activeBranches,
-		openMenuId,
-		dragNodeId,
-		dragSiblings,
-		canDrag,
-		onToggle,
-		onSelect,
-		onBranchChange,
-		onInsertBefore,
-		onInsertAfter,
-		onDelete,
-		onMenuToggle,
-		onDragStart,
-		onDragEnd,
-		onDropBefore,
-		onNodeChange,
-		onEdgeChange,
-		onSetBranchTarget,
-	}: Props = $props();
+let {
+	item,
+	nodes,
+	edges,
+	characters,
+	dialogIds,
+	expandedIds,
+	selectedNodeId,
+	activeBranches,
+	openMenuId,
+	dragNodeId,
+	dragSiblings,
+	canDrag,
+	onToggle,
+	onSelect,
+	onBranchChange,
+	onInsertBefore,
+	onInsertAfter,
+	onDelete,
+	onMenuToggle,
+	onDragStart,
+	onDragEnd,
+	onDropBefore,
+	onNodeChange,
+	onEdgeChange,
+	onSetBranchTarget,
+}: Props = $props();
 
-	const node = $derived(nodes.find((n) => n.id === item.node.id) ?? item.node);
-	const expanded = $derived(expandedIds.has(node.id));
-	const selected = $derived(selectedNodeId === node.id);
-	const isEntry = $derived(node.type === 'entry');
-	const menuOpen = $derived(openMenuId === node.id);
-	const isDragging = $derived(dragNodeId === node.id);
-	const isDraggable = $derived(
-		canDrag &&
-			!isEntry &&
-			!item.isMerge &&
-			!['choice', 'condition', 'end', 'jump', 'blank'].includes(node.type),
-	);
-	const isDropTarget = $derived(
-		dragNodeId != null &&
-			dragNodeId !== node.id &&
-			dragSiblings.includes(node.id) &&
-			!item.isMerge &&
-			!isEntry,
-	);
-	const isInDragBlock = $derived(
-		dragNodeId != null &&
-			item.depth > 0 &&
-			dragSiblings.length > 0 &&
-			!dragSiblings.includes(node.id) &&
-			dragNodeId !== node.id,
-	);
+const node = $derived(nodes.find((n) => n.id === item.node.id) ?? item.node);
+const expanded = $derived(expandedIds.has(node.id));
+const selected = $derived(selectedNodeId === node.id);
+const isEntry = $derived(node.type === 'entry');
+const menuOpen = $derived(openMenuId === node.id);
+const isDragging = $derived(dragNodeId === node.id);
+const isDraggable = $derived(
+	canDrag &&
+		!isEntry &&
+		!item.isMerge &&
+		!['choice', 'condition', 'end', 'jump', 'blank'].includes(node.type),
+);
+const isDropTarget = $derived(
+	dragNodeId != null &&
+		dragNodeId !== node.id &&
+		dragSiblings.includes(node.id) &&
+		!item.isMerge &&
+		!isEntry,
+);
+const isInDragBlock = $derived(
+	dragNodeId != null &&
+		item.depth > 0 &&
+		dragSiblings.length > 0 &&
+		!dragSiblings.includes(node.id) &&
+		dragNodeId !== node.id,
+);
 
-	const speakerName = $derived.by(() => {
-		if (node.type !== 'line') return '';
-		const char = characters.find((c) => c.id === node.data.speaker);
-		return char?.displayName ?? node.data.speaker ?? '—';
-	});
+const speakerName = $derived.by(() => {
+	if (node.type !== 'line') return '';
+	const char = characters.find((c) => c.id === node.data.speaker);
+	return char?.displayName ?? node.data.speaker ?? '—';
+});
 
-	function summary(): string {
-		switch (node.type) {
-			case 'blank':
-				return 'Choose type…';
-			case 'line':
-				return node.data.text?.trim() || '(empty line)';
-			case 'choice':
-				return `${node.data.options?.length ?? 0} option(s)`;
-			case 'condition':
-				return node.data.branchVar ? `If ${node.data.branchVar}` : '(no variable)';
-			case 'set_var': {
-				const op = node.data.setOps?.[0];
-				return op ? `Set ${op.var}` : 'Set variable';
-			}
-			case 'jump':
-				return `→ ${node.data.targetDialogId || '?'}`;
-			case 'direction':
-				return node.data.directionText?.trim() || '(direction)';
-			case 'end':
-				return 'End of scene';
-			case 'entry':
-				return 'Start';
-			default:
-				return node.type;
+function summary(): string {
+	switch (node.type) {
+		case 'blank':
+			return 'Choose type…';
+		case 'line':
+			return node.data.text?.trim() || '(empty line)';
+		case 'choice':
+			return `${node.data.options?.length ?? 0} option(s)`;
+		case 'condition':
+			return node.data.branchVar ? `If ${node.data.branchVar}` : '(no variable)';
+		case 'set_var': {
+			const op = node.data.setOps?.[0];
+			return op ? `Set ${op.var}` : 'Set variable';
 		}
+		case 'jump':
+			return `→ ${node.data.targetDialogId || '?'}`;
+		case 'direction':
+			return node.data.directionText?.trim() || '(direction)';
+		case 'end':
+			return 'End of scene';
+		case 'entry':
+			return 'Start';
+		default:
+			return node.type;
 	}
+}
 
-	function typeLabel(): string {
-		const labels: Record<string, string> = {
-			blank: 'New',
-			line: 'Line',
-			choice: 'Choice',
-			condition: 'Condition',
-			set_var: 'Set var',
-			jump: 'Jump',
-			direction: 'Direction',
-			end: 'End',
-			entry: 'Start',
-		};
-		return labels[node.type] ?? node.type;
-	}
+function typeLabel(): string {
+	const labels: Record<string, string> = {
+		blank: 'New',
+		line: 'Line',
+		choice: 'Choice',
+		condition: 'Condition',
+		set_var: 'Set var',
+		jump: 'Jump',
+		direction: 'Direction',
+		end: 'End',
+		entry: 'Start',
+	};
+	return labels[node.type] ?? node.type;
+}
 
-	function handleRowClick() {
-		onSelect(node.id);
-		if (!expanded) onToggle(node.id);
-	}
+function handleRowClick() {
+	onSelect(node.id);
+	if (!expanded) onToggle(node.id);
+}
 
-	function handleDragOver(e: DragEvent) {
-		if (!isDropTarget) return;
-		e.preventDefault();
-	}
+function handleDragOver(e: DragEvent) {
+	if (!isDropTarget) return;
+	e.preventDefault();
+}
 
-	function handleDrop(e: DragEvent) {
-		e.preventDefault();
-		if (item.isMerge || isEntry) {
-			onDragEnd();
-			return;
-		}
-		if (dragNodeId && dragNodeId !== node.id) {
-			onDropBefore(dragNodeId, node.id);
-		}
+function handleDrop(e: DragEvent) {
+	e.preventDefault();
+	if (item.isMerge || isEntry) {
 		onDragEnd();
+		return;
 	}
+	if (dragNodeId && dragNodeId !== node.id) {
+		onDropBefore(dragNodeId, node.id);
+	}
+	onDragEnd();
+}
 </script>
 
 <div

@@ -1,54 +1,54 @@
 <script lang="ts">
-	import type { Character } from '../lib/schema/characters';
-	import CharacterEditorModal from './CharacterEditorModal.svelte';
+import type { Character } from '../lib/schema/characters';
+import type CharacterEditorModal from './CharacterEditorModal.svelte';
 
-	interface Props {
-		slug: string;
-		characters: Character[];
-		value: string;
-		onchange: (speakerId: string, character?: Character) => void;
-		oncharacterschange: (characters: Character[]) => void;
+interface Props {
+	slug: string;
+	characters: Character[];
+	value: string;
+	onchange: (speakerId: string, character?: Character) => void;
+	oncharacterschange: (characters: Character[]) => void;
+}
+
+let { slug, characters, value, onchange, oncharacterschange }: Props = $props();
+
+let menuOpen = $state(false);
+let rootEl = $state<HTMLDivElement | null>(null);
+let characterModal = $state<CharacterEditorModal | null>(null);
+
+const selectedLabel = $derived.by(() => {
+	if (!value) return '—';
+	return characters.find((c) => c.id === value)?.displayName ?? value;
+});
+
+function toggleMenu() {
+	menuOpen = !menuOpen;
+}
+
+function selectSpeaker(speakerId: string) {
+	menuOpen = false;
+	const char = characters.find((c) => c.id === speakerId);
+	onchange(speakerId, char);
+}
+
+function openAddCharacter() {
+	menuOpen = false;
+	characterModal?.openAdd();
+}
+
+function handleCharactersSaved(next: Character[], saved: Character) {
+	oncharacterschange(next);
+	onchange(saved.id, saved);
+}
+
+$effect(() => {
+	if (!menuOpen) return;
+	function onDocClick(e: MouseEvent) {
+		if (!rootEl?.contains(e.target as Node)) menuOpen = false;
 	}
-
-	let { slug, characters, value, onchange, oncharacterschange }: Props = $props();
-
-	let menuOpen = $state(false);
-	let rootEl = $state<HTMLDivElement | null>(null);
-	let characterModal = $state<CharacterEditorModal | null>(null);
-
-	const selectedLabel = $derived.by(() => {
-		if (!value) return '—';
-		return characters.find((c) => c.id === value)?.displayName ?? value;
-	});
-
-	function toggleMenu() {
-		menuOpen = !menuOpen;
-	}
-
-	function selectSpeaker(speakerId: string) {
-		menuOpen = false;
-		const char = characters.find((c) => c.id === speakerId);
-		onchange(speakerId, char);
-	}
-
-	function openAddCharacter() {
-		menuOpen = false;
-		characterModal?.openAdd();
-	}
-
-	function handleCharactersSaved(next: Character[], saved: Character) {
-		oncharacterschange(next);
-		onchange(saved.id, saved);
-	}
-
-	$effect(() => {
-		if (!menuOpen) return;
-		function onDocClick(e: MouseEvent) {
-			if (!rootEl?.contains(e.target as Node)) menuOpen = false;
-		}
-		document.addEventListener('mousedown', onDocClick);
-		return () => document.removeEventListener('mousedown', onDocClick);
-	});
+	document.addEventListener('mousedown', onDocClick);
+	return () => document.removeEventListener('mousedown', onDocClick);
+});
 </script>
 
 <div class="speaker-picker" bind:this={rootEl}>

@@ -1,109 +1,109 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import Fuse from 'fuse.js';
-	import { api } from '../lib/api';
-	import type { DialogListItem } from '../lib/server/projects';
-	import SceneUsageTrigger from './SceneUsageTrigger.svelte';
+import Fuse from 'fuse.js';
+import { onMount, tick } from 'svelte';
+import { api } from '../lib/api';
+import type { DialogListItem } from '../lib/server/projects';
+import SceneUsageTrigger from './SceneUsageTrigger.svelte';
 
-	interface Props {
-		slug: string;
+interface Props {
+	slug: string;
+}
+
+let { slug }: Props = $props();
+
+let dialogs = $state<DialogListItem[]>([]);
+let ready = $state(false);
+let loadError = $state('');
+let searchQuery = $state('');
+
+let createDialogEl = $state<HTMLDialogElement | null>(null);
+let draftId = $state('');
+let draftName = $state('');
+let modalError = $state('');
+let creating = $state(false);
+
+type ListedDialog = { dialog: DialogListItem; index: number };
+
+const listedDialogs = $derived.by((): ListedDialog[] => {
+	const q = searchQuery.trim();
+	if (!q) {
+		return dialogs.map((dialog, index) => ({ dialog, index }));
 	}
-
-	let { slug }: Props = $props();
-
-	let dialogs = $state<DialogListItem[]>([]);
-	let ready = $state(false);
-	let loadError = $state('');
-	let searchQuery = $state('');
-
-	let createDialogEl = $state<HTMLDialogElement | null>(null);
-	let draftId = $state('');
-	let draftName = $state('');
-	let modalError = $state('');
-	let creating = $state(false);
-
-	type ListedDialog = { dialog: DialogListItem; index: number };
-
-	const listedDialogs = $derived.by((): ListedDialog[] => {
-		const q = searchQuery.trim();
-		if (!q) {
-			return dialogs.map((dialog, index) => ({ dialog, index }));
-		}
-		const fuse = new Fuse(dialogs, {
-			keys: [
-				{ name: 'displayName', weight: 0.5 },
-				{ name: 'id', weight: 0.35 },
-				{ name: 'description', weight: 0.15 },
-			],
-			threshold: 0.4,
-			ignoreLocation: true,
-		});
-		return fuse.search(q).map((result) => ({
-			dialog: result.item,
-			index: dialogs.findIndex((d) => d.id === result.item.id),
-		}));
+	const fuse = new Fuse(dialogs, {
+		keys: [
+			{ name: 'displayName', weight: 0.5 },
+			{ name: 'id', weight: 0.35 },
+			{ name: 'description', weight: 0.15 },
+		],
+		threshold: 0.4,
+		ignoreLocation: true,
 	});
+	return fuse.search(q).map((result) => ({
+		dialog: result.item,
+		index: dialogs.findIndex((d) => d.id === result.item.id),
+	}));
+});
 
-	function descriptionPreview(description: string): string {
-		const t = description.trim();
-		if (!t) return 'No description';
-		return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+function descriptionPreview(description: string): string {
+	const t = description.trim();
+	if (!t) return 'No description';
+	return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+}
+
+function stepLabel(count: number): string {
+	return `${count} step${count === 1 ? '' : 's'}`;
+}
+
+async function load() {
+	ready = false;
+	loadError = '';
+	try {
+		const res = await api<{ dialogs: DialogListItem[] }>(`/api/projects/${slug}/dialogs`);
+		dialogs = res.dialogs;
+		ready = true;
+	} catch (e) {
+		loadError = (e as Error).message;
+		dialogs = [];
 	}
+}
 
-	function stepLabel(count: number): string {
-		return `${count} step${count === 1 ? '' : 's'}`;
-	}
+async function openCreateModal() {
+	draftId = '';
+	draftName = '';
+	modalError = '';
+	await tick();
+	createDialogEl?.showModal();
+}
 
-	async function load() {
-		ready = false;
-		loadError = '';
-		try {
-			const res = await api<{ dialogs: DialogListItem[] }>(`/api/projects/${slug}/dialogs`);
-			dialogs = res.dialogs;
-			ready = true;
-		} catch (e) {
-			loadError = (e as Error).message;
-			dialogs = [];
-		}
-	}
+function closeCreateModal() {
+	createDialogEl?.close();
+	draftId = '';
+	draftName = '';
+	modalError = '';
+}
 
-	async function openCreateModal() {
-		draftId = '';
-		draftName = '';
-		modalError = '';
-		await tick();
-		createDialogEl?.showModal();
-	}
-
-	function closeCreateModal() {
+async function submitCreate(e: Event) {
+	e.preventDefault();
+	if (creating) return;
+	modalError = '';
+	creating = true;
+	const id = draftId.trim();
+	const displayName = draftName.trim();
+	try {
+		await api(`/api/projects/${slug}/dialogs`, {
+			method: 'POST',
+			body: JSON.stringify({ id, displayName }),
+		});
 		createDialogEl?.close();
-		draftId = '';
-		draftName = '';
-		modalError = '';
+		window.location.assign(`/projects/${slug}/scenes/${id}`);
+	} catch (err) {
+		modalError = (err as Error).message;
+	} finally {
+		creating = false;
 	}
+}
 
-	async function submitCreate(e: Event) {
-		e.preventDefault();
-		if (creating) return;
-		modalError = '';
-		creating = true;
-		const id = draftId.trim();
-		const displayName = draftName.trim();
-		try {
-			await api(`/api/projects/${slug}/dialogs`, {
-				method: 'POST',
-				body: JSON.stringify({ id, displayName }),
-			});
-			createDialogEl?.close();
-			window.location.assign(`/projects/${slug}/scenes/${id}`);
-		} catch (err) {
-			modalError = (err as Error).message;
-		} finally {
-			creating = false;
-		}
-	}
-
-	onMount(load);
+onMount(load);
 </script>
 
 <div class="toolbar">

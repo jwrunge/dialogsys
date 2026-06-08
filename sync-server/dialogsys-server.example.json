@@ -1,8 +1,9 @@
 {
-  "root": "./projects",
-  "bind": "127.0.0.1:3210",
-  "hooks": {
-    "beforeWrite": ["node", "./hooks/before-write.js"],
-    "afterWrite": ["node", "./hooks/after-write.js"]
-  }
+	"root": "./projects",
+	"bind": "127.0.0.1:3210",
+	"authToken": "replace-with-openssl-rand-hex-32",
+	"hooks": {
+		"beforeWrite": ["node", "./hooks/before-write.js"],
+		"afterWrite": ["node", "./hooks/after-write.js"]
+	}
 }

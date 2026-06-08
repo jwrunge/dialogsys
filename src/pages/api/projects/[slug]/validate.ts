@@ -2,13 +2,13 @@ import type { APIRoute } from 'astro';
 import { validateProject } from '../../../../lib/compile/validate';
 import { validateFlow } from '../../../../lib/flow/validateFlow';
 import {
-	listDialogs,
-	getDialog,
 	getCharacters,
-	listSequences,
+	getDialog,
 	getSequence,
 	jsonResponse,
-	errorResponse,
+	listDialogs,
+	listSequences,
+	toErrorResponse,
 } from '../../../../lib/server/projects';
 
 export const POST: APIRoute = async ({ params }) => {
@@ -16,9 +16,7 @@ export const POST: APIRoute = async ({ params }) => {
 		const slug = params.slug!;
 		const dialogList = await listDialogs(slug);
 		const characters = await getCharacters(slug);
-		const graphs = await Promise.all(
-			dialogList.map((d) => getDialog(slug, d.id)),
-		);
+		const graphs = await Promise.all(dialogList.map((d) => getDialog(slug, d.id)));
 		const sequences = await listSequences(slug);
 		const dialogIds = dialogList.map((d) => d.id);
 		const sequenceIssues = await Promise.all(
@@ -27,12 +25,9 @@ export const POST: APIRoute = async ({ params }) => {
 				return validateFlow(graph, dialogIds, seq.id);
 			}),
 		);
-		const issues = [
-			...validateProject(graphs, characters),
-			...sequenceIssues.flat(),
-		];
+		const issues = [...validateProject(graphs, characters), ...sequenceIssues.flat()];
 		return jsonResponse({ issues });
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };

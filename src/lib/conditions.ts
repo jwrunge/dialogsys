@@ -13,8 +13,7 @@ export function atomsToConditions(atoms: ConditionAtom[]): ConditionGroup[] {
 }
 
 export function formatConditionAtom(atom: ConditionAtom): string {
-	const value =
-		typeof atom.value === 'string' ? `"${atom.value}"` : String(atom.value);
+	const value = typeof atom.value === 'string' ? `"${atom.value}"` : String(atom.value);
 	return `${atom.var} ${atom.op} ${value}`;
 }
 

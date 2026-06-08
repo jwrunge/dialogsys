@@ -1,60 +1,60 @@
 <script lang="ts">
-	import { SvelteFlowProvider } from '@xyflow/svelte';
-	import type { Character } from '../lib/schema/characters';
-	import DialogFlowCanvasInner from './DialogFlowCanvasInner.svelte';
+import { SvelteFlowProvider } from '@xyflow/svelte';
+import type { Character } from '../lib/schema/characters';
+import DialogFlowCanvasInner from './DialogFlowCanvasInner.svelte';
 
-	type FlowNode = {
-		id: string;
-		type?: string;
+type FlowNode = {
+	id: string;
+	type?: string;
+	position: { x: number; y: number };
+	data?: Record<string, unknown>;
+};
+type FlowEdge = {
+	id: string;
+	source: string;
+	target: string;
+	sourceHandle?: string | null;
+	targetHandle?: string | null;
+	data?: Record<string, unknown>;
+};
+type FlowConnection = {
+	source: string | null;
+	target: string | null;
+	sourceHandle?: string | null;
+	targetHandle?: string | null;
+};
+
+interface Props {
+	characters?: Character[];
+	nodes: FlowNode[];
+	edges: FlowEdge[];
+	syncKey: string;
+	setNodes: (nodes: FlowNode[]) => void;
+	setEdges: (edges: FlowEdge[]) => void;
+	onNodeSelect: (nodeId: string) => void;
+	onConnect: (connection: FlowConnection) => void;
+	onDragStop: () => void;
+	onEdgeClick: (edge: FlowEdge) => void;
+	onConnectEndToPane: (params: {
+		sourceNodeId: string;
+		sourceHandle: string | null;
 		position: { x: number; y: number };
-		data?: Record<string, unknown>;
-	};
-	type FlowEdge = {
-		id: string;
-		source: string;
-		target: string;
-		sourceHandle?: string | null;
-		targetHandle?: string | null;
-		data?: Record<string, unknown>;
-	};
-	type FlowConnection = {
-		source: string | null;
-		target: string | null;
-		sourceHandle?: string | null;
-		targetHandle?: string | null;
-	};
+	}) => void;
+}
 
-	interface Props {
-		characters?: Character[];
-		nodes: FlowNode[];
-		edges: FlowEdge[];
-		syncKey: string;
-		setNodes: (nodes: FlowNode[]) => void;
-		setEdges: (edges: FlowEdge[]) => void;
-		onNodeSelect: (nodeId: string) => void;
-		onConnect: (connection: FlowConnection) => void;
-		onDragStop: () => void;
-		onEdgeClick: (edge: FlowEdge) => void;
-		onConnectEndToPane: (params: {
-			sourceNodeId: string;
-			sourceHandle: string | null;
-			position: { x: number; y: number };
-		}) => void;
-	}
-
-	let {
-		characters = [],
-		nodes,
-		edges,
-		syncKey,
-		setNodes,
-		setEdges,
-		onNodeSelect,
-		onConnect,
-		onDragStop,
-		onEdgeClick,
-		onConnectEndToPane,
-	}: Props = $props();
+let {
+	characters = [],
+	nodes,
+	edges,
+	syncKey,
+	setNodes,
+	setEdges,
+	onNodeSelect,
+	onConnect,
+	onDragStop,
+	onEdgeClick,
+	onConnectEndToPane,
+}: Props = $props();
 </script>
 
 <div class="editor-canvas-wrap">

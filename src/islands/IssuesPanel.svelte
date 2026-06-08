@@ -1,77 +1,74 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { api } from '../lib/api';
-	import type { ValidationIssue } from '../lib/compile/validate';
+import { onMount } from 'svelte';
+import { api } from '../lib/api';
+import type { ValidationIssue } from '../lib/compile/validate';
 
-	interface Props {
-		slug: string;
+interface Props {
+	slug: string;
+}
+
+let { slug }: Props = $props();
+
+let issues = $state<ValidationIssue[]>([]);
+let loading = $state(true);
+let filter = $state<'all' | 'error' | 'warning'>('all');
+
+const CODE_LABELS: Record<string, string> = {
+	undefined_character_state: 'Undefined character state',
+	unused_character_state: 'Unused character state',
+	unused_branch: 'Unused scene branch',
+	unused_choice_branch: 'Unused choice branch',
+	unreachable_dialog: 'Unreachable scene node',
+	unused_dialog: 'Unused scene',
+	unknown_speaker: 'Unknown speaker',
+	empty_line: 'Empty line',
+	empty_choice: 'Empty choice',
+	empty_option: 'Empty option',
+	invalid_jump: 'Invalid jump',
+	dangling_edge: 'Dangling edge',
+	missing_entry: 'Missing entry',
+	unassigned_scene: 'Unassigned scene',
+	missing_scene: 'Missing scene',
+	dead_end_branch: 'Dead-end branch',
+	dangling_flow_edge: 'Dangling sequence connection',
+};
+
+let filtered = $derived(issues.filter((i) => filter === 'all' || i.level === filter));
+
+let grouped = $derived.by(() => {
+	const map = new Map<string, ValidationIssue[]>();
+	for (const issue of filtered) {
+		const key = issue.code;
+		if (!map.has(key)) map.set(key, []);
+		map.get(key)!.push(issue);
 	}
+	return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+});
 
-	let { slug }: Props = $props();
-
-	let issues = $state<ValidationIssue[]>([]);
-	let loading = $state(true);
-	let filter = $state<'all' | 'error' | 'warning'>('all');
-
-	const CODE_LABELS: Record<string, string> = {
-		undefined_character_state: 'Undefined character state',
-		unused_character_state: 'Unused character state',
-		unused_branch: 'Unused scene branch',
-		unused_choice_branch: 'Unused choice branch',
-		unreachable_dialog: 'Unreachable scene node',
-		unused_dialog: 'Unused scene',
-		unknown_speaker: 'Unknown speaker',
-		empty_line: 'Empty line',
-		empty_choice: 'Empty choice',
-		empty_option: 'Empty option',
-		invalid_jump: 'Invalid jump',
-		dangling_edge: 'Dangling edge',
-		missing_entry: 'Missing entry',
-		unassigned_scene: 'Unassigned scene',
-		missing_scene: 'Missing scene',
-		dead_end_branch: 'Dead-end branch',
-		dangling_flow_edge: 'Dangling sequence connection',
-	};
-
-	let filtered = $derived(
-		issues.filter((i) => filter === 'all' || i.level === filter),
-	);
-
-	let grouped = $derived.by(() => {
-		const map = new Map<string, ValidationIssue[]>();
-		for (const issue of filtered) {
-			const key = issue.code;
-			if (!map.has(key)) map.set(key, []);
-			map.get(key)!.push(issue);
-		}
-		return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-	});
-
-	async function refresh() {
-		loading = true;
-		try {
-			const res = await api<{ issues: ValidationIssue[] }>(
-				`/api/projects/${slug}/validate`,
-				{ method: 'POST' },
-			);
-			issues = res.issues;
-		} finally {
-			loading = false;
-		}
+async function refresh() {
+	loading = true;
+	try {
+		const res = await api<{ issues: ValidationIssue[] }>(`/api/projects/${slug}/validate`, {
+			method: 'POST',
+		});
+		issues = res.issues;
+	} finally {
+		loading = false;
 	}
+}
 
-	function issueLink(issue: ValidationIssue): string | null {
-		if (issue.flowNodeId) {
-			const seq = issue.sequenceId ?? 'main';
-			return `/projects/${slug}/sequences/${seq}#${issue.flowNodeId}`;
-		}
-		if (issue.dialogId && issue.nodeId) {
-			return `/projects/${slug}/scenes/${issue.dialogId}#${issue.nodeId}`;
-		}
-		return null;
+function issueLink(issue: ValidationIssue): string | null {
+	if (issue.flowNodeId) {
+		const seq = issue.sequenceId ?? 'main';
+		return `/projects/${slug}/sequences/${seq}#${issue.flowNodeId}`;
 	}
+	if (issue.dialogId && issue.nodeId) {
+		return `/projects/${slug}/scenes/${issue.dialogId}#${issue.nodeId}`;
+	}
+	return null;
+}
 
-	onMount(refresh);
+onMount(refresh);
 </script>
 
 <div class="toolbar">

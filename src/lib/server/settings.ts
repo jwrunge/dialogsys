@@ -1,13 +1,10 @@
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
-import {
-	appSettingsSchema,
-	type AppSettings,
-	type StorageMode,
-} from '../schema/settings';
+import { type AppSettings, appSettingsSchema, type StorageMode } from '../schema/settings';
 import { isValidSyncServerUrl } from '../sync/client';
 import { getClientId } from './client';
+import { validateConfiguredProjectsRoot } from './projectsRoot';
 
 const DEFAULT_ROOT = './projects';
 const CONFIG_FILENAME = 'dialogsys.config.json';
@@ -28,6 +25,7 @@ export type AppSettingsInfo = {
 	envOverride: boolean;
 	storageMode: StorageMode;
 	syncServerUrl: string;
+	hasSyncServerToken: boolean;
 	clientId: string;
 };
 
@@ -49,9 +47,13 @@ function readConfigSync(): AppSettings {
 export function resolveProjectsRoot(settings?: AppSettings): ProjectsRootInfo {
 	const envRoot = process.env.DIALOGSYS_PROJECTS_ROOT?.trim();
 	if (envRoot) {
+		const safeRoot = validateConfiguredProjectsRoot(envRoot, { allowAbsolute: true });
+		const resolvedPath = path.isAbsolute(safeRoot)
+			? safeRoot
+			: path.resolve(process.cwd(), safeRoot);
 		return {
-			configuredPath: envRoot,
-			resolvedPath: path.resolve(process.cwd(), envRoot),
+			configuredPath: safeRoot,
+			resolvedPath,
 			source: 'env',
 			envOverride: true,
 		};
@@ -75,6 +77,47 @@ export function getProjectsRootInfo(): ProjectsRootInfo {
 	return resolveProjectsRoot();
 }
 
+function syncTokenFilePath(): string | undefined {
+	const file = process.env.DIALOGSYS_SYNC_TOKEN_FILE?.trim();
+	return file || undefined;
+}
+
+function readSyncTokenFile(): string | undefined {
+	const file = syncTokenFilePath();
+	if (!file) return undefined;
+	try {
+		const token = fs.readFileSync(file, 'utf-8').trim();
+		return token || undefined;
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+		throw e;
+	}
+}
+
+async function writeSyncTokenFile(token: string | undefined): Promise<void> {
+	const file = syncTokenFilePath();
+	if (!file) return;
+	if (!token) {
+		await fsPromises.unlink(file).catch((e) => {
+			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+		});
+		return;
+	}
+	await fsPromises.mkdir(path.dirname(file), { recursive: true });
+	await fsPromises.writeFile(file, token, { mode: 0o600 });
+}
+
+export function getStoredSyncServerToken(): string | undefined {
+	const fromFile = readSyncTokenFile();
+	if (fromFile) return fromFile;
+
+	const envToken = process.env.DIALOGSYS_SYNC_SERVER_TOKEN?.trim();
+	if (envToken) return envToken;
+
+	const token = readConfigSync().syncServerToken?.trim();
+	return token || undefined;
+}
+
 export function getAppSettingsInfo(): AppSettingsInfo {
 	const config = readConfigSync();
 	const root = resolveProjectsRoot(config);
@@ -85,6 +128,7 @@ export function getAppSettingsInfo(): AppSettingsInfo {
 		envOverride: root.envOverride,
 		storageMode: config.storageMode ?? 'local',
 		syncServerUrl: config.syncServerUrl?.trim() ?? '',
+		hasSyncServerToken: Boolean(getStoredSyncServerToken()),
 		clientId: getClientId(),
 	};
 }
@@ -100,7 +144,10 @@ export async function loadSettings(): Promise<AppSettings> {
 	}
 }
 
-function normalizeSettingsInput(input: AppSettings): AppSettings {
+function normalizeSettingsInput(
+	input: AppSettings,
+	current: AppSettings,
+): { settings: AppSettings; externalTokenUpdate?: string } {
 	const storageMode = input.storageMode ?? 'local';
 	const projectsRoot = input.projectsRoot?.trim() || DEFAULT_ROOT;
 	const syncServerUrl = input.syncServerUrl?.trim().replace(/\/+$/, '') ?? '';
@@ -114,21 +161,38 @@ function normalizeSettingsInput(input: AppSettings): AppSettings {
 		}
 	}
 
-	if (projectsRoot.includes('\0')) {
-		throw new Error('Invalid projects path');
+	const safeRoot = validateConfiguredProjectsRoot(projectsRoot);
+
+	let syncServerToken = current.syncServerToken;
+	let externalTokenUpdate: string | undefined;
+	if (input.syncServerToken !== undefined) {
+		const trimmed = input.syncServerToken.trim();
+		if (syncTokenFilePath()) {
+			externalTokenUpdate = trimmed || undefined;
+			syncServerToken = current.syncServerToken;
+		} else {
+			syncServerToken = trimmed || undefined;
+		}
 	}
 
-	return {
-		projectsRoot,
+	const settings: AppSettings = {
+		projectsRoot: safeRoot,
 		storageMode,
 		syncServerUrl: syncServerUrl || undefined,
+		syncServerToken,
 	};
+
+	return { settings, externalTokenUpdate };
 }
 
 export async function saveSettings(input: AppSettings): Promise<AppSettingsInfo> {
 	const current = readConfigSync();
 	const parsed = appSettingsSchema.parse({ ...current, ...input });
-	const data = normalizeSettingsInput(parsed);
+	const { settings: data, externalTokenUpdate } = normalizeSettingsInput(parsed, current);
+
+	if (externalTokenUpdate !== undefined) {
+		await writeSyncTokenFile(externalTokenUpdate);
+	}
 
 	const file = getConfigFilePath();
 	const tmp = `${file}.${Date.now()}.tmp`;

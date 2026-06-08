@@ -1,49 +1,44 @@
 <script lang="ts">
-	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import { formatBranchPathSummary } from '../lib/flow/branchState';
-	import type { FlowBranchOption, FlowFirstMeeting } from '../lib/schema/flow';
+import { Handle, type NodeProps, Position } from '@xyflow/svelte';
+import { formatBranchPathSummary } from '../lib/flow/branchState';
+import type { FlowBranchOption, FlowFirstMeeting } from '../lib/schema/flow';
 
-	let { data, type }: NodeProps = $props();
+let { data, type }: NodeProps = $props();
 
-	const nodeType = $derived((type as string) ?? 'scene');
+const nodeType = $derived((type as string) ?? 'scene');
 
-	const labels: Record<string, string> = {
-		start: 'Start',
-		scene: 'Scene',
-		branch: 'Branch',
-		end: 'End',
-	};
+const labels: Record<string, string> = {
+	start: 'Start',
+	scene: 'Scene',
+	branch: 'Branch',
+	end: 'End',
+};
 
-	const colors: Record<string, string> = {
-		start: '#5fd49a',
-		scene: '#6c9eff',
-		branch: '#e8b84a',
-		end: '#f07178',
-	};
+const colors: Record<string, string> = {
+	start: '#5fd49a',
+	scene: '#6c9eff',
+	branch: '#e8b84a',
+	end: '#f07178',
+};
 
-	const title = $derived(
-		(data?.label as string) ||
-			(data?.dialogId as string) ||
-			labels[nodeType] ||
-			nodeType,
-	);
+const title = $derived(
+	(data?.label as string) || (data?.dialogId as string) || labels[nodeType] || nodeType,
+);
 
-	const subtitle = $derived.by(() => {
-		if (nodeType === 'scene') {
-			const id = data?.dialogId as string | undefined;
-			return id ? `Scene: ${id}` : 'No scene assigned';
-		}
-		if (nodeType === 'branch') {
-			const stateId = data?.branchStateId as string | undefined;
-			const opts = (data?.options as FlowBranchOption[]) ?? [];
-			if (!stateId) return 'No state selected';
-			const labeled = opts
-				.map((o) => `${o.label}: ${formatBranchPathSummary(o)}`)
-				.join(' · ');
-			return labeled ? `${stateId} — ${labeled}` : stateId;
-		}
-		return '';
-	});
+const subtitle = $derived.by(() => {
+	if (nodeType === 'scene') {
+		const id = data?.dialogId as string | undefined;
+		return id ? `Scene: ${id}` : 'No scene assigned';
+	}
+	if (nodeType === 'branch') {
+		const stateId = data?.branchStateId as string | undefined;
+		const opts = (data?.options as FlowBranchOption[]) ?? [];
+		if (!stateId) return 'No state selected';
+		const labeled = opts.map((o) => `${o.label}: ${formatBranchPathSummary(o)}`).join(' · ');
+		return labeled ? `${stateId} — ${labeled}` : stateId;
+	}
+	return '';
+});
 </script>
 
 <div

@@ -1,281 +1,273 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import Fuse from 'fuse.js';
-	import { api } from '../lib/api';
-	import type { DialogListItem } from '../lib/server/projects';
-	import {
-		createCompareBranch,
-		formatBranchPathSummary,
-		resolvedValidValues,
-		syncEnumBranchOptions,
-		usesEnumValues,
-	} from '../lib/flow/branchState';
-	import type { ConditionOp } from '../lib/schema/conditions';
-	import type { FlowBranchOption, FlowNode, FlowNodeData } from '../lib/schema/flow';
-	import type { GameStateProperty } from '../lib/schema/gameState';
+import Fuse from 'fuse.js';
+import { tick } from 'svelte';
+import { api } from '../lib/api';
+import {
+	createCompareBranch,
+	formatBranchPathSummary,
+	resolvedValidValues,
+	syncEnumBranchOptions,
+	usesEnumValues,
+} from '../lib/flow/branchState';
+import type { ConditionOp } from '../lib/schema/conditions';
+import type { FlowBranchOption, FlowNode, FlowNodeData } from '../lib/schema/flow';
+import type { GameStateProperty } from '../lib/schema/gameState';
+import type { DialogListItem } from '../lib/server/projects';
 
-	interface Props {
-		slug: string;
-		node: FlowNode | null;
-		dialogs: DialogListItem[];
-		gameStateProperties: GameStateProperty[];
-		onchange: (node: FlowNode) => void;
-		onTypeChange: (type: 'scene' | 'branch') => void;
-		ondelete: () => void;
-		onEditDialog: (dialogId: string, title?: string) => void;
-		onDialogsRefresh: () => Promise<void>;
-	}
+interface Props {
+	slug: string;
+	node: FlowNode | null;
+	dialogs: DialogListItem[];
+	gameStateProperties: GameStateProperty[];
+	onchange: (node: FlowNode) => void;
+	onTypeChange: (type: 'scene' | 'branch') => void;
+	ondelete: () => void;
+	onEditDialog: (dialogId: string, title?: string) => void;
+	onDialogsRefresh: () => Promise<void>;
+}
 
-	let {
-		slug,
-		node,
-		dialogs,
-		gameStateProperties,
-		onchange,
-		onTypeChange,
-		ondelete,
-		onEditDialog,
-		onDialogsRefresh,
-	}: Props = $props();
+let {
+	slug,
+	node,
+	dialogs,
+	gameStateProperties,
+	onchange,
+	onTypeChange,
+	ondelete,
+	onEditDialog,
+	onDialogsRefresh,
+}: Props = $props();
 
-	let searchQuery = $state('');
-	let stateSearchQuery = $state('');
+let searchQuery = $state('');
+let stateSearchQuery = $state('');
 
-	const OP_OPTIONS: { value: ConditionOp; label: string }[] = [
-		{ value: 'eq', label: '=' },
-		{ value: 'neq', label: '≠' },
-		{ value: 'gt', label: '>' },
-		{ value: 'gte', label: '≥' },
-		{ value: 'lt', label: '<' },
-		{ value: 'lte', label: '≤' },
-	];
-	let selectSceneDialogEl = $state<HTMLDialogElement | null>(null);
-	let selectStateDialogEl = $state<HTMLDialogElement | null>(null);
-	let createDialogEl = $state<HTMLDialogElement | null>(null);
-	let draftId = $state('');
-	let draftName = $state('');
-	let modalError = $state('');
-	let creating = $state(false);
+const OP_OPTIONS: { value: ConditionOp; label: string }[] = [
+	{ value: 'eq', label: '=' },
+	{ value: 'neq', label: '≠' },
+	{ value: 'gt', label: '>' },
+	{ value: 'gte', label: '≥' },
+	{ value: 'lt', label: '<' },
+	{ value: 'lte', label: '≤' },
+];
+let selectSceneDialogEl = $state<HTMLDialogElement | null>(null);
+let selectStateDialogEl = $state<HTMLDialogElement | null>(null);
+let createDialogEl = $state<HTMLDialogElement | null>(null);
+let draftId = $state('');
+let draftName = $state('');
+let modalError = $state('');
+let creating = $state(false);
 
-	const assignedDialog = $derived(
-		node?.type === 'scene' && node.data.dialogId
-			? dialogs.find((d) => d.id === node.data.dialogId)
-			: null,
-	);
+const assignedDialog = $derived(
+	node?.type === 'scene' && node.data.dialogId
+		? dialogs.find((d) => d.id === node.data.dialogId)
+		: null,
+);
 
-	const assignedState = $derived(
-		node?.type === 'branch' && node.data.branchStateId
-			? gameStateProperties.find((p) => p.id === node.data.branchStateId)
-			: null,
-	);
+const assignedState = $derived(
+	node?.type === 'branch' && node.data.branchStateId
+		? gameStateProperties.find((p) => p.id === node.data.branchStateId)
+		: null,
+);
 
-	const listedStates = $derived.by(() => {
-		const q = stateSearchQuery.trim();
-		if (!q) return gameStateProperties;
-		const fuse = new Fuse(gameStateProperties, {
-			keys: [
-				{ name: 'label', weight: 0.55 },
-				{ name: 'id', weight: 0.45 },
-			],
-			threshold: 0.4,
-			ignoreLocation: true,
-		});
-		return fuse.search(q).map((r) => r.item);
+const listedStates = $derived.by(() => {
+	const q = stateSearchQuery.trim();
+	if (!q) return gameStateProperties;
+	const fuse = new Fuse(gameStateProperties, {
+		keys: [
+			{ name: 'label', weight: 0.55 },
+			{ name: 'id', weight: 0.45 },
+		],
+		threshold: 0.4,
+		ignoreLocation: true,
 	});
+	return fuse.search(q).map((r) => r.item);
+});
 
-	const branchProperty = $derived(
-		node?.type === 'branch' && node.data.branchStateId
-			? gameStateProperties.find((p) => p.id === node.data.branchStateId)
-			: null,
+const branchProperty = $derived(
+	node?.type === 'branch' && node.data.branchStateId
+		? gameStateProperties.find((p) => p.id === node.data.branchStateId)
+		: null,
+);
+
+const isEnumBranch = $derived(branchProperty ? usesEnumValues(branchProperty) : false);
+
+const listedDialogs = $derived.by(() => {
+	const q = searchQuery.trim();
+	if (!q) return dialogs;
+	const fuse = new Fuse(dialogs, {
+		keys: [
+			{ name: 'displayName', weight: 0.5 },
+			{ name: 'id', weight: 0.35 },
+			{ name: 'description', weight: 0.15 },
+		],
+		threshold: 0.4,
+		ignoreLocation: true,
+	});
+	return fuse.search(q).map((r) => r.item);
+});
+
+function updateData(patch: Partial<FlowNodeData>) {
+	if (!node) return;
+	onchange({ ...node, data: { ...node.data, ...patch } });
+}
+
+function slugifyLabel(label: string): string {
+	return (
+		label
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '_')
+			.replace(/^_|_$/g, '')
+			.slice(0, 32) || 'scene'
 	);
+}
 
-	const isEnumBranch = $derived(branchProperty ? usesEnumValues(branchProperty) : false);
+async function openSelectSceneModal() {
+	if (!node || node.type !== 'scene') return;
+	searchQuery = '';
+	modalError = '';
+	await tick();
+	selectSceneDialogEl?.showModal();
+}
 
-	const listedDialogs = $derived.by(() => {
-		const q = searchQuery.trim();
-		if (!q) return dialogs;
-		const fuse = new Fuse(dialogs, {
-			keys: [
-				{ name: 'displayName', weight: 0.5 },
-				{ name: 'id', weight: 0.35 },
-				{ name: 'description', weight: 0.15 },
-			],
-			threshold: 0.4,
-			ignoreLocation: true,
-		});
-		return fuse.search(q).map((r) => r.item);
+function closeSelectSceneModal() {
+	selectSceneDialogEl?.close();
+}
+
+function selectScene(dialog: DialogListItem) {
+	if (!node || node.type !== 'scene') return;
+	updateData({
+		dialogId: dialog.id,
+		label: node.data.label?.trim() ? node.data.label : dialog.displayName,
 	});
+	closeSelectSceneModal();
+}
 
-	function updateData(patch: Partial<FlowNodeData>) {
-		if (!node) return;
-		onchange({ ...node, data: { ...node.data, ...patch } });
-	}
+async function openCreateFromSelect() {
+	closeSelectSceneModal();
+	await openCreateModal();
+}
 
-	function slugifyLabel(label: string): string {
-		return (
-			label
-				.toLowerCase()
-				.replace(/[^a-z0-9]+/g, '_')
-				.replace(/^_|_$/g, '')
-				.slice(0, 32) || 'scene'
-		);
-	}
+async function openCreateModal() {
+	if (!node || node.type !== 'scene') return;
+	draftName = node.data.label?.trim() || 'New scene';
+	draftId = slugifyLabel(draftName);
+	modalError = '';
+	await tick();
+	createDialogEl?.showModal();
+}
 
-	async function openSelectSceneModal() {
-		if (!node || node.type !== 'scene') return;
-		searchQuery = '';
-		modalError = '';
-		await tick();
-		selectSceneDialogEl?.showModal();
-	}
+function closeCreateModal() {
+	createDialogEl?.close();
+	modalError = '';
+}
 
-	function closeSelectSceneModal() {
-		selectSceneDialogEl?.close();
-	}
-
-	function selectScene(dialog: DialogListItem) {
-		if (!node || node.type !== 'scene') return;
-		updateData({
-			dialogId: dialog.id,
-			label: node.data.label?.trim() ? node.data.label : dialog.displayName,
+async function submitCreate(e: Event) {
+	e.preventDefault();
+	if (!node || creating) return;
+	modalError = '';
+	creating = true;
+	const id = draftId.trim();
+	const displayName = draftName.trim();
+	try {
+		await api(`/api/projects/${slug}/dialogs`, {
+			method: 'POST',
+			body: JSON.stringify({ id, displayName }),
 		});
-		closeSelectSceneModal();
+		await onDialogsRefresh();
+		updateData({ dialogId: id, label: displayName });
+		closeCreateModal();
+		onEditDialog(id, displayName);
+	} catch (err) {
+		modalError = (err as Error).message;
+	} finally {
+		creating = false;
 	}
+}
 
-	async function openCreateFromSelect() {
-		closeSelectSceneModal();
-		await openCreateModal();
+function enumOptionsKey(options: FlowBranchOption[]): string {
+	return options.map((o) => `${o.id}:${JSON.stringify(o.matchValue)}:${o.label}`).join('|');
+}
+
+$effect(() => {
+	if (!node || node.type !== 'branch' || !branchProperty || !isEnumBranch) return;
+	const synced = syncEnumBranchOptions(branchProperty, node.data.options ?? []);
+	const current = node.data.options ?? [];
+	if (enumOptionsKey(synced) !== enumOptionsKey(current)) {
+		updateData({ options: synced });
 	}
+});
 
-	async function openCreateModal() {
-		if (!node || node.type !== 'scene') return;
-		draftName = node.data.label?.trim() || 'New scene';
-		draftId = slugifyLabel(draftName);
-		modalError = '';
-		await tick();
-		createDialogEl?.showModal();
-	}
+async function openSelectStateModal() {
+	if (!node || node.type !== 'branch') return;
+	stateSearchQuery = '';
+	await tick();
+	selectStateDialogEl?.showModal();
+}
 
-	function closeCreateModal() {
-		createDialogEl?.close();
-		modalError = '';
-	}
+function closeSelectStateModal() {
+	selectStateDialogEl?.close();
+}
 
-	async function submitCreate(e: Event) {
-		e.preventDefault();
-		if (!node || creating) return;
-		modalError = '';
-		creating = true;
-		const id = draftId.trim();
-		const displayName = draftName.trim();
-		try {
-			await api(`/api/projects/${slug}/dialogs`, {
-				method: 'POST',
-				body: JSON.stringify({ id, displayName }),
-			});
-			await onDialogsRefresh();
-			updateData({ dialogId: id, label: displayName });
-			closeCreateModal();
-			onEditDialog(id, displayName);
-		} catch (err) {
-			modalError = (err as Error).message;
-		} finally {
-			creating = false;
-		}
-	}
-
-	function enumOptionsKey(options: FlowBranchOption[]): string {
-		return options
-			.map((o) => `${o.id}:${JSON.stringify(o.matchValue)}:${o.label}`)
-			.join('|');
-	}
-
-	$effect(() => {
-		if (!node || node.type !== 'branch' || !branchProperty || !isEnumBranch) return;
-		const synced = syncEnumBranchOptions(branchProperty, node.data.options ?? []);
-		const current = node.data.options ?? [];
-		if (enumOptionsKey(synced) !== enumOptionsKey(current)) {
-			updateData({ options: synced });
-		}
-	});
-
-	async function openSelectStateModal() {
-		if (!node || node.type !== 'branch') return;
-		stateSearchQuery = '';
-		await tick();
-		selectStateDialogEl?.showModal();
-	}
-
-	function closeSelectStateModal() {
-		selectStateDialogEl?.close();
-	}
-
-	function selectBranchState(prop: GameStateProperty | null) {
-		if (!node || node.type !== 'branch') return;
-		if (!prop) {
-			updateData({ branchStateId: undefined, options: [] });
-			closeSelectStateModal();
-			return;
-		}
-		const options = usesEnumValues(prop) ? syncEnumBranchOptions(prop) : [];
-		onchange({
-			...node,
-			data: {
-				...node.data,
-				branchStateId: prop.id,
-				label: node.data.label?.trim() ? node.data.label : prop.label,
-				options,
-			},
-		});
+function selectBranchState(prop: GameStateProperty | null) {
+	if (!node || node.type !== 'branch') return;
+	if (!prop) {
+		updateData({ branchStateId: undefined, options: [] });
 		closeSelectStateModal();
+		return;
 	}
+	const options = usesEnumValues(prop) ? syncEnumBranchOptions(prop) : [];
+	onchange({
+		...node,
+		data: {
+			...node.data,
+			branchStateId: prop.id,
+			label: node.data.label?.trim() ? node.data.label : prop.label,
+			options,
+		},
+	});
+	closeSelectStateModal();
+}
 
-	function openAddStatePage() {
-		closeSelectStateModal();
-		window.location.assign(`/projects/${slug}/state`);
-	}
+function openAddStatePage() {
+	closeSelectStateModal();
+	window.location.assign(`/projects/${slug}/state`);
+}
 
-	function setPathDefault(optionId: string) {
-		if (!node || node.type !== 'branch') return;
-		const options = (node.data.options ?? []).map((o) => ({
-			...o,
-			isDefault: o.id === optionId,
-		}));
-		updateData({ options });
-	}
+function setPathDefault(optionId: string) {
+	if (!node || node.type !== 'branch') return;
+	const options = (node.data.options ?? []).map((o) => ({
+		...o,
+		isDefault: o.id === optionId,
+	}));
+	updateData({ options });
+}
 
-	function addCompareBranch() {
-		if (!node || node.type !== 'branch' || !branchProperty) return;
-		const options = [...(node.data.options ?? []), createCompareBranch(branchProperty)];
-		updateData({ options });
-	}
+function addCompareBranch() {
+	if (!node || node.type !== 'branch' || !branchProperty) return;
+	const options = [...(node.data.options ?? []), createCompareBranch(branchProperty)];
+	updateData({ options });
+}
 
-	function removeCompareBranch(optionId: string) {
-		if (!node || node.type !== 'branch') return;
-		updateData({
-			options: (node.data.options ?? []).filter((o) => o.id !== optionId),
-		});
-	}
+function removeCompareBranch(optionId: string) {
+	if (!node || node.type !== 'branch') return;
+	updateData({
+		options: (node.data.options ?? []).filter((o) => o.id !== optionId),
+	});
+}
 
-	function updateCompareOption(
-		optionId: string,
-		patch: Partial<FlowBranchOption>,
-	) {
-		if (!node || node.type !== 'branch') return;
-		const options = (node.data.options ?? []).map((o) =>
-			o.id === optionId ? { ...o, ...patch } : o,
-		);
-		updateData({ options });
-	}
+function updateCompareOption(optionId: string, patch: Partial<FlowBranchOption>) {
+	if (!node || node.type !== 'branch') return;
+	const options = (node.data.options ?? []).map((o) =>
+		o.id === optionId ? { ...o, ...patch } : o,
+	);
+	updateData({ options });
+}
 
-	function parseCompareValue(
-		raw: string,
-		prop: GameStateProperty,
-	): boolean | number | string {
-		if (prop.type === 'boolean') return raw === 'true';
-		if (prop.type === 'number') return Number(raw);
-		return raw;
-	}
+function parseCompareValue(raw: string, prop: GameStateProperty): boolean | number | string {
+	if (prop.type === 'boolean') return raw === 'true';
+	if (prop.type === 'number') return Number(raw);
+	return raw;
+}
 </script>
 
 {#if !node}

@@ -89,7 +89,8 @@ pub fn start_local_server(app: &AppHandle) -> Result<(u16, CommandChild), String
     seed_demo_if_empty(&web_root.join("seed/projects/demo"), &projects_dir)?;
 
     let port = DEFAULT_PORT;
-    let (_, child) = app
+    let token_file = app_data.join("sync.token");
+    let command = app
         .shell()
         .sidecar("dialogsys-node")
         .map_err(|e| format!("Node runtime sidecar missing: {e}"))?
@@ -97,11 +98,18 @@ pub fn start_local_server(app: &AppHandle) -> Result<(u16, CommandChild), String
         .current_dir(&web_root)
         .env("HOST", "127.0.0.1")
         .env("PORT", port.to_string())
+        .env("DIALOGSYS_TAURI", "1")
         .env(
             "DIALOGSYS_PROJECTS_ROOT",
             projects_dir.to_string_lossy().to_string(),
         )
-        .env("ASTRO_NODE_LOGGING", "disabled")
+        .env(
+            "DIALOGSYS_SYNC_TOKEN_FILE",
+            token_file.to_string_lossy().to_string(),
+        )
+        .env("ASTRO_NODE_LOGGING", "disabled");
+
+    let (_, child) = command
         .spawn()
         .map_err(|e| format!("Failed to start local server: {e}"))?;
 
@@ -112,6 +120,21 @@ pub fn start_local_server(app: &AppHandle) -> Result<(u16, CommandChild), String
 
 pub fn load_app_url(app: &AppHandle, port: u16) -> Result<(), String> {
     navigate_first_window(app, &format!("http://127.0.0.1:{port}/"))
+}
+
+pub fn load_error_page(app: &AppHandle, message: &str) -> Result<(), String> {
+    let escaped = message
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    let html = format!(
+        "data:text/html,<html><body style='font-family:system-ui;padding:2rem;max-width:42rem'>\
+         <h1>Dialogsys could not start</h1>\
+         <p>{escaped}</p>\
+         <p>Check the application logs, then reinstall or run <code>npm run tauri:dev</code> from source.</p>\
+         </body></html>"
+    );
+    navigate_first_window(app, &html)
 }
 
 #[cfg(mobile)]

@@ -99,9 +99,9 @@ export function buildPathTree(
 		const activeBranchId = activeBranches[node.id] ?? branches[0]?.id ?? '';
 		const active = branches.find((b) => b.id === activeBranchId) ?? branches[0];
 		const children = active?.targetId
-			? [buildPathTree(nodes, edges, activeBranches, active.targetId, nextVisited, depth + 1)].filter(
-					Boolean,
-				)
+			? [
+					buildPathTree(nodes, edges, activeBranches, active.targetId, nextVisited, depth + 1),
+				].filter(Boolean)
 			: [];
 		return {
 			node,
@@ -114,13 +114,12 @@ export function buildPathTree(
 	if (node.type === 'condition') {
 		const forced = node.data.forceBranch;
 		const branches = getConditionBranches(node, edges);
-		const activeBranchId =
-			forced ?? activeBranches[node.id] ?? branches[0]?.id ?? 'true';
+		const activeBranchId = forced ?? activeBranches[node.id] ?? branches[0]?.id ?? 'true';
 		const active = branches.find((b) => b.id === activeBranchId) ?? branches[0];
 		const children = active?.targetId
-			? [buildPathTree(nodes, edges, activeBranches, active.targetId, nextVisited, depth + 1)].filter(
-					Boolean,
-				)
+			? [
+					buildPathTree(nodes, edges, activeBranches, active.targetId, nextVisited, depth + 1),
+				].filter(Boolean)
 			: [];
 		return {
 			node,

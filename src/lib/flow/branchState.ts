@@ -3,9 +3,9 @@ import type { ConditionOp } from '../schema/conditions';
 import type { FlowBranchOption } from '../schema/flow';
 import {
 	defaultUseValidValues,
-	initialValueForProperty,
 	type GameStateProperty,
 	type GameStatePropertyType,
+	initialValueForProperty,
 } from '../schema/gameState';
 
 export function defaultValidValues(type: GameStatePropertyType): Array<boolean | number | string> {
@@ -21,9 +21,7 @@ export function usesEnumValues(prop: GameStateProperty): boolean {
 	return values.length > 0;
 }
 
-export function resolvedValidValues(
-	prop: GameStateProperty,
-): Array<boolean | number | string> {
+export function resolvedValidValues(prop: GameStateProperty): Array<boolean | number | string> {
 	if (prop.type === 'boolean') return [false, true];
 	const useValidValues = prop.useValidValues ?? defaultUseValidValues(prop.type);
 	if (!useValidValues) return [];

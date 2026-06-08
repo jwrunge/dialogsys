@@ -1,9 +1,11 @@
 import type { APIRoute } from 'astro';
+import { gameStateFileSchema } from '../../../../lib/schema/gameState';
 import {
 	getGameState,
-	saveGameState,
 	jsonResponse,
-	errorResponse,
+	parseJsonBody,
+	saveGameState,
+	toErrorResponse,
 } from '../../../../lib/server/projects';
 
 export const GET: APIRoute = async ({ params }) => {
@@ -11,16 +13,16 @@ export const GET: APIRoute = async ({ params }) => {
 		const data = await getGameState(params.slug!);
 		return jsonResponse(data);
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };
 
 export const PUT: APIRoute = async ({ params, request }) => {
 	try {
-		const body = await request.json();
-		const data = await saveGameState(params.slug!, body);
+		const body = await parseJsonBody(request);
+		const data = await saveGameState(params.slug!, gameStateFileSchema.parse(body));
 		return jsonResponse(data);
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };

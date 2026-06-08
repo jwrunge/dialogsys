@@ -1,26 +1,27 @@
 import type { APIRoute } from 'astro';
-import { getAppSettingsInfo } from '../../../../../lib/server/settings';
 import {
-	getClientId,
 	getActiveOriginId,
+	getClientId,
 	getOriginLabel,
 	setActiveOriginId,
 } from '../../../../../lib/server/client';
-import { listSyncOrigins } from '../../../../../lib/sync/client';
+import { jsonResponse, parseJsonBody, toErrorResponse } from '../../../../../lib/server/projects';
+import { getAppSettingsInfo } from '../../../../../lib/server/settings';
 import { switchOrigin } from '../../../../../lib/server/storage';
-import { jsonResponse, errorResponse } from '../../../../../lib/server/projects';
+import { getSyncCredentials } from '../../../../../lib/server/sync-credentials';
+import { listSyncOrigins } from '../../../../../lib/sync/client';
 
 export const GET: APIRoute = async ({ params }) => {
 	try {
 		const slug = params.slug!;
 		const info = getAppSettingsInfo();
 		if (info.storageMode !== 'remote' || !info.syncServerUrl) {
-			return errorResponse('Origin threads require remote storage', 400);
+			return toErrorResponse(new Error('Origin threads require remote storage'));
 		}
 
 		const clientId = getClientId();
 		const activeOriginId = getActiveOriginId(slug);
-		const origins = await listSyncOrigins(info.syncServerUrl, slug);
+		const origins = await listSyncOrigins(getSyncCredentials(), slug);
 
 		return jsonResponse({
 			origins: origins.map((origin) => ({
@@ -33,7 +34,7 @@ export const GET: APIRoute = async ({ params }) => {
 			activeOriginId,
 		});
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };
 
@@ -42,13 +43,16 @@ export const POST: APIRoute = async ({ params, request }) => {
 		const slug = params.slug!;
 		const info = getAppSettingsInfo();
 		if (info.storageMode !== 'remote' || !info.syncServerUrl) {
-			return errorResponse('Origin threads require remote storage', 400);
+			return toErrorResponse(new Error('Origin threads require remote storage'));
 		}
 
-		const body = await request.json();
-		const originId = (body.originId as string | undefined)?.trim();
+		const body = await parseJsonBody(request);
+		const originId =
+			typeof (body as { originId?: unknown }).originId === 'string'
+				? (body as { originId: string }).originId.trim()
+				: '';
 		if (!originId) {
-			return errorResponse('originId is required', 400);
+			return toErrorResponse(new Error('originId is required'));
 		}
 
 		await setActiveOriginId(slug, originId);
@@ -56,6 +60,6 @@ export const POST: APIRoute = async ({ params, request }) => {
 
 		return jsonResponse({ ok: true, activeOriginId: originId });
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };

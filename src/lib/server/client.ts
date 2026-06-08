@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
-import { appSettingsSchema, type AppSettings } from '../schema/settings';
+import { type AppSettings, appSettingsSchema } from '../schema/settings';
 import { getConfigFilePath } from './settings';
 
 function readConfig(): AppSettings {

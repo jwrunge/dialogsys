@@ -1,13 +1,7 @@
 import { z } from 'zod';
 
-export const conditionOpSchema = z.enum([
-	'eq',
-	'neq',
-	'gt',
-	'gte',
-	'lt',
-	'lte',
-]);
+export const conditionOpSchema = z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte']);
+export type ConditionOp = z.infer<typeof conditionOpSchema>;
 
 export const conditionAtomSchema = z.object({
 	scope: z.enum(['global', 'character']),

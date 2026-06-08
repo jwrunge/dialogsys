@@ -48,8 +48,8 @@ export const graphNodeDataSchema = z.object({
 });
 
 export const graphNodeSchema = z.object({
-	id: z.string(),
-	type: z.string(),
+	id: z.string().min(1).max(128),
+	type: nodeTypeSchema,
 	position: z.object({ x: z.number(), y: z.number() }),
 	data: graphNodeDataSchema.default({}),
 });
@@ -71,11 +71,15 @@ export const graphEdgeSchema = z.object({
 });
 
 export const dialogGraphSchema = z.object({
-	id: z.string(),
-	displayName: z.string(),
-	description: z.string().default(''),
-	nodes: z.array(graphNodeSchema),
-	edges: z.array(graphEdgeSchema),
+	id: z
+		.string()
+		.min(1)
+		.max(64)
+		.regex(/^[a-z][a-z0-9_]*$/),
+	displayName: z.string().min(1).max(128),
+	description: z.string().max(2000).default(''),
+	nodes: z.array(graphNodeSchema).max(5000),
+	edges: z.array(graphEdgeSchema).max(10000),
 	updatedAt: z.string().optional(),
 });
 

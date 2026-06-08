@@ -1,28 +1,28 @@
 <script lang="ts">
-	import { api } from '../lib/api';
+import { api } from '../lib/api';
 
-	let slug = $state('');
-	let displayName = $state('');
-	let description = $state('');
-	let error = $state('');
-	let loading = $state(false);
+let slug = $state('');
+let displayName = $state('');
+let description = $state('');
+let error = $state('');
+let loading = $state(false);
 
-	async function create() {
-		error = '';
-		loading = true;
-		try {
-			const { project } = await api<{ project: { slug: string } }>('/api/projects', {
-				method: 'POST',
-				body: JSON.stringify({ slug, displayName, description }),
-			});
-			localStorage.setItem('dialogsys:lastProject', project.slug);
-			window.location.href = `/projects/${project.slug}/characters`;
-		} catch (e) {
-			error = (e as Error).message;
-		} finally {
-			loading = false;
-		}
+async function create() {
+	error = '';
+	loading = true;
+	try {
+		const { project } = await api<{ project: { slug: string } }>('/api/projects', {
+			method: 'POST',
+			body: JSON.stringify({ slug, displayName, description }),
+		});
+		localStorage.setItem('dialogsys:lastProject', project.slug);
+		window.location.href = `/projects/${project.slug}/characters`;
+	} catch (e) {
+		error = (e as Error).message;
+	} finally {
+		loading = false;
 	}
+}
 </script>
 
 <form

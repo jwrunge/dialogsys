@@ -105,12 +105,8 @@ function validateConditionBranches(
 	reachable: Set<string>,
 ): void {
 	const out = outgoing(edges, node.id);
-	const trueEdge = out.find(
-		(e) => e.sourceHandle === 'true' || e.data?.branch === 'true',
-	);
-	const falseEdge = out.find(
-		(e) => e.sourceHandle === 'false' || e.data?.branch === 'false',
-	);
+	const trueEdge = out.find((e) => e.sourceHandle === 'true' || e.data?.branch === 'true');
+	const falseEdge = out.find((e) => e.sourceHandle === 'false' || e.data?.branch === 'false');
 
 	if (node.data.forceBranch === 'true' && falseEdge && !falseEdge.data?.ignoreUnusedWarning) {
 		return;
@@ -211,7 +207,6 @@ function validateChoiceNode(
 			});
 		}
 	}
-
 }
 
 export function validateDialog(
@@ -221,7 +216,6 @@ export function validateDialog(
 ): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
 	const charList = characters.characters;
-	const charIds = new Set(charList.map((c) => c.id));
 	const nodeIds = new Set(graph.nodes.map((n) => n.id));
 	const stateUsage = new Map<string, Set<string>>();
 	const entryNodes = graph.nodes.filter((n) => n.type === 'entry');
@@ -289,8 +283,7 @@ export function validateDialog(
 		}
 
 		if (!reachable.has(node.id) && node.type !== 'direction') {
-			const skipped =
-				node.type === 'condition' && hasForcedBranch(node, graph.edges);
+			const skipped = node.type === 'condition' && hasForcedBranch(node, graph.edges);
 			if (!skipped) {
 				issues.push({
 					level: 'warning',

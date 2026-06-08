@@ -1,80 +1,86 @@
 <script lang="ts">
-	import type { Character } from '../lib/schema/characters';
-	import type { GraphNode, GraphNodeData, GraphEdge, ChoiceOption } from '../lib/schema/graph';
-	import { resolvePortraitPath } from '../lib/characters';
-	import { NODE_TYPE_OPTIONS } from '../lib/graph/nodeFactory';
-	import { nanoid } from 'nanoid';
+import { nanoid } from 'nanoid';
+import { resolvePortraitPath } from '../lib/characters';
+import { NODE_TYPE_OPTIONS } from '../lib/graph/nodeFactory';
+import type { Character } from '../lib/schema/characters';
+import type { ChoiceOption, GraphEdge, GraphNode, GraphNodeData } from '../lib/schema/graph';
 
-	interface Props {
-		node: GraphNode;
-		edges: GraphEdge[];
-		nodes: GraphNode[];
-		characters: Character[];
-		dialogIds: string[];
-		onchange: (node: GraphNode) => void;
-		onedgechange: (edge: GraphEdge) => void;
-		onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
-	}
+interface Props {
+	node: GraphNode;
+	edges: GraphEdge[];
+	nodes: GraphNode[];
+	characters: Character[];
+	dialogIds: string[];
+	onchange: (node: GraphNode) => void;
+	onedgechange: (edge: GraphEdge) => void;
+	onSetBranchTarget: (sourceId: string, handle: string, targetId: string) => void;
+}
 
-	let { node, edges, nodes, characters, dialogIds, onchange, onedgechange, onSetBranchTarget }: Props =
-		$props();
+let {
+	node,
+	edges,
+	nodes,
+	characters,
+	dialogIds,
+	onchange,
+	onedgechange,
+	onSetBranchTarget,
+}: Props = $props();
 
-	const branchTargets = $derived(
-		nodes.filter((n) => n.id !== node.id && n.type !== 'entry').map((n) => n.id),
+const branchTargets = $derived(
+	nodes.filter((n) => n.id !== node.id && n.type !== 'entry').map((n) => n.id),
+);
+
+const speakerChar = $derived(characters.find((c) => c.id === node.data.speaker));
+
+const stateOptions = $derived(speakerChar?.states ?? []);
+
+const portraitPreview = $derived(
+	resolvePortraitPath(
+		speakerChar,
+		node.data.characterState || speakerChar?.defaultStateId,
+		node.data.portraitPath,
+	),
+);
+
+const nodeEdges = $derived(edges.filter((e) => e.source === node.id));
+
+function branchTarget(handle: string): string {
+	return (
+		edges.find(
+			(e) => e.source === node.id && (e.sourceHandle === handle || e.data?.branch === handle),
+		)?.target ?? ''
 	);
+}
 
-	const speakerChar = $derived(characters.find((c) => c.id === node.data.speaker));
+function updateData(patch: Partial<GraphNodeData>) {
+	onchange({ ...node, data: { ...node.data, ...patch } });
+}
 
-	const stateOptions = $derived(speakerChar?.states ?? []);
+function setType(type: string) {
+	onchange({ ...node, type });
+}
 
-	const portraitPreview = $derived(
-		resolvePortraitPath(
-			speakerChar,
-			node.data.characterState || speakerChar?.defaultStateId,
-			node.data.portraitPath,
-		),
-	);
+function updateEdge(edgeId: string, patch: Partial<GraphEdge['data']>) {
+	const edge = edges.find((e) => e.id === edgeId);
+	if (!edge) return;
+	onedgechange({ ...edge, data: { ...edge.data, ...patch } });
+}
 
-	const nodeEdges = $derived(edges.filter((e) => e.source === node.id));
+function addOption() {
+	const options: ChoiceOption[] = [
+		...(node.data.options ?? []),
+		{ id: nanoid(8), text: 'New option', conditions: [] },
+	];
+	updateData({ options });
+}
 
-	function branchTarget(handle: string): string {
-		return (
-			edges.find(
-				(e) =>
-					e.source === node.id &&
-					(e.sourceHandle === handle || e.data?.branch === handle),
-			)?.target ?? ''
-		);
-	}
-
-	function updateData(patch: Partial<GraphNodeData>) {
-		onchange({ ...node, data: { ...node.data, ...patch } });
-	}
-
-	function setType(type: string) {
-		onchange({ ...node, type });
-	}
-
-	function updateEdge(edgeId: string, patch: Partial<GraphEdge['data']>) {
-		const edge = edges.find((e) => e.id === edgeId);
-		if (!edge) return;
-		onedgechange({ ...edge, data: { ...edge.data, ...patch } });
-	}
-
-	function addOption() {
-		const options: ChoiceOption[] = [
-			...(node.data.options ?? []),
-			{ id: nanoid(8), text: 'New option', conditions: [] },
-		];
-		updateData({ options });
-	}
-
-	function branchLabel(edge: GraphEdge): string {
-		if (edge.sourceHandle === 'true' || edge.data?.branch === 'true') return 'True branch';
-		if (edge.sourceHandle === 'false' || edge.data?.branch === 'false') return 'False branch';
-		const opt = node.data.options?.find((o) => o.id === edge.sourceHandle);
-		return opt ? `Option: ${opt.text}` : `Branch (${edge.sourceHandle ?? 'default'})`;
-	}
+function branchLabel(edge: GraphEdge): string {
+	if (edge.sourceHandle === 'true' || edge.data?.branch === 'true') return 'True branch';
+	if (edge.sourceHandle === 'false' || edge.data?.branch === 'false') return 'False branch';
+	const opt = node.data.options?.find((o) => o.id === edge.sourceHandle);
+	return opt ? `Option: ${opt.text}` : `Branch (${edge.sourceHandle ?? 'default'})`;
+}
 </script>
 
 <div class="node-editor">

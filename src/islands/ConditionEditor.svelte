@@ -1,53 +1,52 @@
 <script lang="ts">
-	import type { ConditionAtom, ConditionGroup } from '../lib/schema/conditions';
-	import { initialValueForProperty, type GameStateProperty } from '../lib/schema/gameState';
-	import { conditionAtoms, atomsToConditions } from '../lib/conditions';
+import { atomsToConditions, conditionAtoms } from '../lib/conditions';
+import type { ConditionAtom, ConditionGroup } from '../lib/schema/conditions';
+import { type GameStateProperty, initialValueForProperty } from '../lib/schema/gameState';
 
-	interface Props {
-		conditions: ConditionGroup[];
-		properties: GameStateProperty[];
-		onchange: (conditions: ConditionGroup[]) => void;
-	}
+interface Props {
+	conditions: ConditionGroup[];
+	properties: GameStateProperty[];
+	onchange: (conditions: ConditionGroup[]) => void;
+}
 
-	let { conditions, properties, onchange }: Props = $props();
+let { conditions, properties, onchange }: Props = $props();
 
-	const atoms = $derived(conditionAtoms(conditions));
+const atoms = $derived(conditionAtoms(conditions));
 
-	function emit(next: ConditionAtom[]) {
-		onchange(atomsToConditions(next));
-	}
+function emit(next: ConditionAtom[]) {
+	onchange(atomsToConditions(next));
+}
 
-	function addAtom() {
-		const prop = properties[0];
-		if (!prop) return;
-		emit([
-			...atoms,
-			{
-				scope: 'global',
-				var: prop.id,
-				op: 'eq',
-				value: initialValueForProperty(prop),
-			},
-		]);
-	}
+function addAtom() {
+	const prop = properties[0];
+	if (!prop) return;
+	emit([
+		...atoms,
+		{
+			scope: 'global',
+			var: prop.id,
+			op: 'eq',
+			value: initialValueForProperty(prop),
+		},
+	]);
+}
 
-	function updateAtom(index: number, patch: Partial<ConditionAtom>) {
-		const next = atoms.map((atom, i) => (i === index ? { ...atom, ...patch } : atom));
-		emit(next);
-	}
+function updateAtom(index: number, patch: Partial<ConditionAtom>) {
+	const next = atoms.map((atom, i) => (i === index ? { ...atom, ...patch } : atom));
+	emit(next);
+}
 
-	function removeAtom(index: number) {
-		emit(atoms.filter((_, i) => i !== index));
-	}
+function removeAtom(index: number) {
+	emit(atoms.filter((_, i) => i !== index));
+}
 
-	function onVarChange(index: number, varId: string) {
-		const prop = properties.find((p) => p.id === varId);
-		updateAtom(index, {
-			var: varId,
-			value: prop ? initialValueForProperty(prop) : '',
-		});
-	}
-
+function onVarChange(index: number, varId: string) {
+	const prop = properties.find((p) => p.id === varId);
+	updateAtom(index, {
+		var: varId,
+		value: prop ? initialValueForProperty(prop) : '',
+	});
+}
 </script>
 
 <div class="condition-editor">

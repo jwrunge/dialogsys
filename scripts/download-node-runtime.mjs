@@ -4,12 +4,11 @@
  * and places it at src-tauri/binaries/dialogsys-node-<triple>[.exe]
  */
 import { execSync } from 'node:child_process';
-import fs from 'node:fs';
+import fs, { createWriteStream } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createWriteStream } from 'node:fs';
-import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');

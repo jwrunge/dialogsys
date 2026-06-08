@@ -1,11 +1,8 @@
 import type { APIRoute } from 'astro';
-import {
-	getAppSettingsInfo,
-	getConfigFilePath,
-	saveSettings,
-} from '../../lib/server/settings';
+import { appSettingsSchema } from '../../lib/schema/settings';
+import { jsonResponse, parseJsonBody, toErrorResponse } from '../../lib/server/projects';
+import { getAppSettingsInfo, getConfigFilePath, saveSettings } from '../../lib/server/settings';
 import { testSyncServerFromServer } from '../../lib/server/sync';
-import { jsonResponse, errorResponse } from '../../lib/server/projects';
 
 export const GET: APIRoute = async () => {
 	try {
@@ -17,22 +14,28 @@ export const GET: APIRoute = async () => {
 			envOverride: info.envOverride,
 			storageMode: info.storageMode,
 			syncServerUrl: info.syncServerUrl,
+			hasSyncServerToken: info.hasSyncServerToken,
 			clientId: info.clientId,
 			configFile: info.envOverride ? null : getConfigFilePath(),
 		});
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };
 
 export const PUT: APIRoute = async ({ request }) => {
 	try {
-		const body = await request.json();
-		const info = await saveSettings({
-			projectsRoot: body.projectsRoot,
-			storageMode: body.storageMode,
-			syncServerUrl: body.syncServerUrl,
-		});
+		const body = await parseJsonBody(request);
+		const parsed = appSettingsSchema
+			.pick({
+				projectsRoot: true,
+				storageMode: true,
+				syncServerUrl: true,
+				syncServerToken: true,
+			})
+			.partial()
+			.parse(body);
+		const info = await saveSettings(parsed);
 		return jsonResponse({
 			projectsRoot: info.projectsRoot,
 			resolvedPath: info.resolvedPath,
@@ -40,27 +43,35 @@ export const PUT: APIRoute = async ({ request }) => {
 			envOverride: info.envOverride,
 			storageMode: info.storageMode,
 			syncServerUrl: info.syncServerUrl,
+			hasSyncServerToken: info.hasSyncServerToken,
 			clientId: info.clientId,
 			configFile: getConfigFilePath(),
 		});
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };
 
 export const POST: APIRoute = async ({ request }) => {
 	try {
-		const body = await request.json().catch(() => ({}));
-		const url = (body.syncServerUrl as string | undefined)?.trim();
+		const body = await parseJsonBody(request);
+		const url =
+			typeof (body as { syncServerUrl?: unknown }).syncServerUrl === 'string'
+				? (body as { syncServerUrl: string }).syncServerUrl.trim()
+				: '';
 		if (!url) {
-			return errorResponse('syncServerUrl is required', 400);
+			return toErrorResponse(new Error('syncServerUrl is required'));
 		}
-		const result = await testSyncServerFromServer(url);
+		const token =
+			typeof (body as { syncServerToken?: unknown }).syncServerToken === 'string'
+				? (body as { syncServerToken: string }).syncServerToken.trim()
+				: undefined;
+		const result = await testSyncServerFromServer({ baseUrl: url, token });
 		if (!result.ok) {
-			return errorResponse(result.error ?? 'Connection failed', 502);
+			return toErrorResponse(new Error(result.error ?? 'Connection failed'), 502);
 		}
 		return jsonResponse(result);
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };

@@ -1,16 +1,17 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { marked } from 'marked';
-	import DOMPurify from 'isomorphic-dompurify';
-	import { api } from '../lib/api';
+import DOMPurify from 'isomorphic-dompurify';
+import { marked } from 'marked';
+import { onMount } from 'svelte';
+import { api } from '../lib/api';
+import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 
-	interface Props {
-		slug: string;
-	}
+interface Props {
+	slug: string;
+}
 
-	let { slug }: Props = $props();
+let { slug }: Props = $props();
 
-	const EXAMPLE = `# Project overview
+const EXAMPLE = `# Project overview
 
 Brief description of the setting and story.
 
@@ -24,77 +25,72 @@ How should scenes feel? (e.g. cozy, tense, comic)
 - Another design goal
 `;
 
-	let overview = $state('');
-	let loadedContent = $state('');
-	let editing = $state(false);
-	let status = $state('');
-	let loadError = $state('');
+let overview = $state('');
+let loadedContent = $state('');
+let editing = $state(false);
+let status = $state('');
+let loadError = $state('');
 
-	let previewSource = $derived(overview.trim() || EXAMPLE);
+let previewSource = $derived(overview.trim() || EXAMPLE);
 
-	let previewHtml = $derived.by(() => {
-		try {
-			return DOMPurify.sanitize(marked.parse(previewSource) as string);
-		} catch {
-			return '<p>Preview unavailable</p>';
-		}
+let previewHtml = $derived.by(() => {
+	try {
+		return DOMPurify.sanitize(marked.parse(previewSource) as string);
+	} catch {
+		return '<p>Preview unavailable</p>';
+	}
+});
+
+const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => {
+	void saveNow(overview).catch((e) => {
+		status = (e as Error).message;
 	});
+});
 
-	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+async function loadOverview() {
+	const res = await api<{ content: string }>(`/api/projects/${slug}/notes/overview.md`);
+	overview = res.content;
+	loadedContent = res.content;
+}
 
-	async function loadOverview() {
-		const res = await api<{ content: string }>(
-			`/api/projects/${slug}/notes/overview.md`,
-		);
-		overview = res.content;
-		loadedContent = res.content;
-	}
+async function saveNow(content: string) {
+	await api(`/api/projects/${slug}/notes/overview.md`, {
+		method: 'PUT',
+		body: JSON.stringify({ content }),
+	});
+	loadedContent = content;
+	status = 'Saved';
+	setTimeout(() => (status = ''), 1500);
+}
 
-	async function saveNow(content: string) {
-		await api(`/api/projects/${slug}/notes/overview.md`, {
-			method: 'PUT',
-			body: JSON.stringify({ content }),
-		});
-		loadedContent = content;
-		status = 'Saved';
-		setTimeout(() => (status = ''), 1500);
-	}
+function scheduleSave(_content: string) {
+	saveTask.schedule();
+}
 
-	function scheduleSave(content: string) {
-		clearTimeout(saveTimer);
-		saveTimer = setTimeout(async () => {
-			try {
-				await saveNow(content);
-			} catch (e) {
-				status = (e as Error).message;
-			}
-		}, 400);
-	}
+function enterEditMode() {
+	if (!overview.trim()) overview = EXAMPLE;
+	editing = true;
+}
 
-	function enterEditMode() {
-		if (!overview.trim()) overview = EXAMPLE;
-		editing = true;
-	}
-
-	async function exitEditMode() {
-		editing = false;
-		clearTimeout(saveTimer);
-		if (overview !== loadedContent) {
-			try {
-				await saveNow(overview);
-			} catch (e) {
-				status = (e as Error).message;
-			}
-		}
-	}
-
-	onMount(async () => {
+async function exitEditMode() {
+	editing = false;
+	clearTimeout(saveTimer);
+	if (overview !== loadedContent) {
 		try {
-			await loadOverview();
+			await saveNow(overview);
 		} catch (e) {
-			loadError = (e as Error).message;
+			status = (e as Error).message;
 		}
-	});
+	}
+}
+
+onMount(async () => {
+	try {
+		await loadOverview();
+	} catch (e) {
+		loadError = (e as Error).message;
+	}
+});
 </script>
 
 <div class="header">

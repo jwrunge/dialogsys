@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import {
 	getSceneSequenceUsage,
 	jsonResponse,
-	errorResponse,
+	toErrorResponse,
 } from '../../../../../../lib/server/projects';
 
 export const GET: APIRoute = async ({ params }) => {
@@ -10,6 +10,6 @@ export const GET: APIRoute = async ({ params }) => {
 		const usages = await getSceneSequenceUsage(params.slug!, params.id!);
 		return jsonResponse({ usages });
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };

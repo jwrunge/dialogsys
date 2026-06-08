@@ -1,10 +1,12 @@
 import type { APIRoute } from 'astro';
+import { flowGraphSchema } from '../../../../../lib/schema/flow';
 import {
-	getSequence,
-	saveSequence,
 	deleteSequence,
+	getSequence,
 	jsonResponse,
-	errorResponse,
+	parseJsonBody,
+	saveSequence,
+	toErrorResponse,
 } from '../../../../../lib/server/projects';
 
 export const GET: APIRoute = async ({ params }) => {
@@ -12,17 +14,21 @@ export const GET: APIRoute = async ({ params }) => {
 		const graph = await getSequence(params.slug!, params.id!);
 		return jsonResponse({ graph });
 	} catch (e) {
-		return errorResponse((e as Error).message, 404);
+		return toErrorResponse(e, 404);
 	}
 };
 
 export const PUT: APIRoute = async ({ params, request }) => {
 	try {
-		const body = await request.json();
-		const graph = await saveSequence(params.slug!, body.graph ?? body);
-		return jsonResponse({ graph });
+		const slug = params.slug!;
+		const id = params.id!;
+		const body = await parseJsonBody(request);
+		const raw = (body as { graph?: unknown }).graph ?? body;
+		const graph = flowGraphSchema.parse(raw);
+		const saved = await saveSequence(slug, id, graph);
+		return jsonResponse({ graph: saved });
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };
 
@@ -31,6 +37,6 @@ export const DELETE: APIRoute = async ({ params }) => {
 		await deleteSequence(params.slug!, params.id!);
 		return jsonResponse({ ok: true });
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };

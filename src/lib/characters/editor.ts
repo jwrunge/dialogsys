@@ -10,7 +10,9 @@ export function cloneState(state: CharacterState): CharacterState {
 }
 
 export function newCharacter(): Character {
-	const id = `char_${nanoid(6).toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+	const id = `char_${nanoid(6)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '')}`;
 	return {
 		id,
 		displayName: 'New Character',
@@ -24,6 +26,7 @@ export function newCharacter(): Character {
 				id: 'default',
 				label: 'Default',
 				portraitPath: '',
+				optOutUnusedWarning: false,
 			},
 		],
 	};
@@ -31,9 +34,12 @@ export function newCharacter(): Character {
 
 export function newState(): CharacterState {
 	return {
-		id: `state_${nanoid(4).toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+		id: `state_${nanoid(4)
+			.toLowerCase()
+			.replace(/[^a-z0-9]/g, '')}`,
 		label: 'New State',
 		portraitPath: '',
+		optOutUnusedWarning: false,
 	};
 }
 

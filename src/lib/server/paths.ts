@@ -7,7 +7,7 @@ export function assertSafeSlug(slug: string): void {
 	}
 }
 
-function assertSafeRelative(rel: string): void {
+export function assertSafeRelative(rel: string): void {
 	const normalized = path.normalize(rel);
 	if (normalized.startsWith('..') || path.isAbsolute(normalized)) {
 		throw new Error('Invalid path');

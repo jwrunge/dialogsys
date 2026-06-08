@@ -1,9 +1,11 @@
 import type { APIRoute } from 'astro';
+import { createProjectInputSchema } from '../../../lib/schema/project';
 import {
-	listProjects,
 	createProject,
 	jsonResponse,
-	errorResponse,
+	listProjects,
+	parseJsonBody,
+	toErrorResponse,
 } from '../../../lib/server/projects';
 
 export const GET: APIRoute = async () => {
@@ -11,18 +13,17 @@ export const GET: APIRoute = async () => {
 		const projects = await listProjects();
 		return jsonResponse({ projects });
 	} catch (e) {
-		return errorResponse((e as Error).message, 500);
+		return toErrorResponse(e, 500);
 	}
 };
 
 export const POST: APIRoute = async ({ request }) => {
 	try {
-		const body = await request.json();
-		const project = await createProject(body);
+		const body = await parseJsonBody(request);
+		const input = createProjectInputSchema.parse(body);
+		const project = await createProject(input);
 		return jsonResponse({ project }, 201);
 	} catch (e) {
-		const msg = (e as Error).message;
-		const status = msg.includes('already exists') ? 409 : 400;
-		return errorResponse(msg, status);
+		return toErrorResponse(e);
 	}
 };

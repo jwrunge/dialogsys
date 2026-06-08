@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { getAppSettingsInfo } from './settings';
 import { projectFilePath } from './paths';
+import { getAppSettingsInfo } from './settings';
 import {
 	ensureRemoteProject,
 	pullActiveOrigin,
+	pushBinaryFileToOrigin,
 	pushFileToOrigin,
 	removeFileFromOrigin,
 } from './sync-remote';
@@ -51,7 +52,11 @@ export async function writeTextFile(
 	}
 }
 
-export async function writeJsonFile(slug: string, segments: string[], data: unknown): Promise<void> {
+export async function writeJsonFile(
+	slug: string,
+	segments: string[],
+	data: unknown,
+): Promise<void> {
 	const content = JSON.stringify(data, null, 2) + '\n';
 	await writeTextFile(slug, segments, content);
 }
@@ -95,5 +100,25 @@ export async function deleteFile(slug: string, ...segments: string[]): Promise<v
 	await fs.unlink(file);
 	if (isRemoteStorage()) {
 		await removeFileFromOrigin(slug, segments.join('/'));
+	}
+}
+
+export async function readBinaryFile(slug: string, ...segments: string[]): Promise<Buffer> {
+	await ensureProjectReady(slug);
+	const file = projectFilePath(slug, ...segments);
+	return fs.readFile(file);
+}
+
+export async function writeBinaryFile(
+	slug: string,
+	segments: string[],
+	data: Buffer,
+): Promise<void> {
+	await ensureProjectReady(slug);
+	const file = projectFilePath(slug, ...segments);
+	await fs.mkdir(path.dirname(file), { recursive: true });
+	await fs.writeFile(file, data);
+	if (isRemoteStorage()) {
+		await pushBinaryFileToOrigin(slug, segments.join('/'), data);
 	}
 }

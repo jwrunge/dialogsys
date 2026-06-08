@@ -1,12 +1,27 @@
 import type { APIRoute } from 'astro';
-import { exportProjectToGodot } from '../../../../lib/compile/exportProject';
-import { jsonResponse, errorResponse } from '../../../../lib/server/projects';
+import { buildExportZip, type ExportFormat } from '../../../../lib/compile/exportProject';
+import { toErrorResponse } from '../../../../lib/server/projects';
 
-export const POST: APIRoute = async ({ params }) => {
+function parseFormat(value: string | null): ExportFormat {
+	return value === 'generic' ? 'generic' : 'godot';
+}
+
+export const POST: APIRoute = async ({ params, url }) => {
 	try {
-		const result = await exportProjectToGodot(params.slug!);
-		return jsonResponse(result);
+		const format = parseFormat(url.searchParams.get('format'));
+		const result = await buildExportZip(params.slug!, format);
+
+		return new Response(new Uint8Array(result.buffer), {
+			status: 200,
+			headers: {
+				'Content-Type': 'application/zip',
+				'Content-Disposition': `attachment; filename="${result.filename}"`,
+				'X-Export-Dialogs': String(result.dialogCount),
+				'X-Export-At': result.exportedAt,
+				'X-Export-Format': format,
+			},
+		});
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };

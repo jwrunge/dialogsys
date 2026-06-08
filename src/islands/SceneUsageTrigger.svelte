@@ -1,58 +1,58 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { api } from '../lib/api';
-	import type { SceneSequenceUsage } from '../lib/schema/flow';
+import { tick } from 'svelte';
+import { api } from '../lib/api';
+import type { SceneSequenceUsage } from '../lib/schema/flow';
 
-	interface Props {
-		slug: string;
-		dialogId: string;
-		nodeCount: number;
-		sequenceCount: number;
+interface Props {
+	slug: string;
+	dialogId: string;
+	nodeCount: number;
+	sequenceCount: number;
+}
+
+let { slug, dialogId, nodeCount, sequenceCount }: Props = $props();
+
+let usageDialogEl = $state<HTMLDialogElement | null>(null);
+let usages = $state<SceneSequenceUsage[]>([]);
+let loading = $state(false);
+let loadError = $state('');
+
+const label = $derived.by(() => {
+	if (nodeCount === 0 && sequenceCount === 0) return null;
+	const seq = `${sequenceCount} sequence${sequenceCount === 1 ? '' : 's'}`;
+	const nodes = `${nodeCount} node${nodeCount === 1 ? '' : 's'}`;
+	return `Used in ${seq} · ${nodes}`;
+});
+
+const hasUsage = $derived(nodeCount > 0 || sequenceCount > 0);
+
+async function openUsageModal() {
+	if (!hasUsage) return;
+	loadError = '';
+	loading = true;
+	usages = [];
+	await tick();
+	usageDialogEl?.showModal();
+	try {
+		const res = await api<{ usages: SceneSequenceUsage[] }>(
+			`/api/projects/${slug}/dialogs/${dialogId}/usage`,
+		);
+		usages = res.usages;
+	} catch (e) {
+		loadError = (e as Error).message;
+	} finally {
+		loading = false;
 	}
+}
 
-	let { slug, dialogId, nodeCount, sequenceCount }: Props = $props();
+function closeUsageModal() {
+	usageDialogEl?.close();
+	loadError = '';
+}
 
-	let usageDialogEl = $state<HTMLDialogElement | null>(null);
-	let usages = $state<SceneSequenceUsage[]>([]);
-	let loading = $state(false);
-	let loadError = $state('');
-
-	const label = $derived.by(() => {
-		if (nodeCount === 0 && sequenceCount === 0) return null;
-		const seq = `${sequenceCount} sequence${sequenceCount === 1 ? '' : 's'}`;
-		const nodes = `${nodeCount} node${nodeCount === 1 ? '' : 's'}`;
-		return `Used in ${seq} · ${nodes}`;
-	});
-
-	const hasUsage = $derived(nodeCount > 0 || sequenceCount > 0);
-
-	async function openUsageModal() {
-		if (!hasUsage) return;
-		loadError = '';
-		loading = true;
-		usages = [];
-		await tick();
-		usageDialogEl?.showModal();
-		try {
-			const res = await api<{ usages: SceneSequenceUsage[] }>(
-				`/api/projects/${slug}/dialogs/${dialogId}/usage`,
-			);
-			usages = res.usages;
-		} catch (e) {
-			loadError = (e as Error).message;
-		} finally {
-			loading = false;
-		}
-	}
-
-	function closeUsageModal() {
-		usageDialogEl?.close();
-		loadError = '';
-	}
-
-	function nodeLabel(count: number): string {
-		return `${count} node${count === 1 ? '' : 's'}`;
-	}
+function nodeLabel(count: number): string {
+	return `${count} node${count === 1 ? '' : 's'}`;
+}
 </script>
 
 {#if label}

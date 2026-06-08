@@ -1,11 +1,15 @@
+/** @deprecated Prefer `/api/projects/{slug}/scenes/{id}` — aliases the same handlers. */
 import type { APIRoute } from 'astro';
+import { dialogGraphSchema } from '../../../../../lib/schema/graph';
+import { updateDialogMetaPatchSchema } from '../../../../../lib/schema/patches';
 import {
-	getDialog,
-	saveDialog,
-	updateDialogMeta,
 	deleteDialog,
+	getDialog,
 	jsonResponse,
-	errorResponse,
+	parseJsonBody,
+	saveDialog,
+	toErrorResponse,
+	updateDialogMeta,
 } from '../../../../../lib/server/projects';
 
 export const GET: APIRoute = async ({ params }) => {
@@ -13,27 +17,34 @@ export const GET: APIRoute = async ({ params }) => {
 		const graph = await getDialog(params.slug!, params.id!);
 		return jsonResponse({ graph });
 	} catch (e) {
-		return errorResponse((e as Error).message, 404);
+		return toErrorResponse(e, 404);
 	}
 };
 
 export const PUT: APIRoute = async ({ params, request }) => {
 	try {
-		const body = await request.json();
-		const graph = await saveDialog(params.slug!, body.graph ?? body);
-		return jsonResponse({ graph });
+		const slug = params.slug!;
+		const id = params.id!;
+		const body = await parseJsonBody(request);
+		const raw = (body as { graph?: unknown }).graph ?? body;
+		const graph = dialogGraphSchema.parse(raw);
+		const saved = await saveDialog(slug, id, graph);
+		return jsonResponse({ graph: saved });
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };
 
 export const PATCH: APIRoute = async ({ params, request }) => {
 	try {
-		const body = await request.json();
-		const graph = await updateDialogMeta(params.slug!, params.id!, body);
+		const slug = params.slug!;
+		const id = params.id!;
+		const body = await parseJsonBody(request);
+		const patch = updateDialogMetaPatchSchema.parse(body);
+		const graph = await updateDialogMeta(slug, id, patch);
 		return jsonResponse({ graph });
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };
 
@@ -42,6 +53,6 @@ export const DELETE: APIRoute = async ({ params }) => {
 		const result = await deleteDialog(params.slug!, params.id!);
 		return jsonResponse({ ok: true, ...result });
 	} catch (e) {
-		return errorResponse((e as Error).message, 404);
+		return toErrorResponse(e, 404);
 	}
 };

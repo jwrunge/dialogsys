@@ -1,7 +1,7 @@
-import type { Character } from '../schema/characters';
-import type { DialogGraph, GraphEdge, GraphNode } from '../schema/graph';
-import type { FlowEdge, FlowGraph, FlowNode } from '../schema/flow';
 import { findEntryNode, getOutgoing, nodeById, singleNextTarget } from '../graph/graphUtils';
+import type { Character } from '../schema/characters';
+import type { FlowEdge, FlowGraph, FlowNode } from '../schema/flow';
+import type { DialogGraph, GraphEdge, GraphNode } from '../schema/graph';
 
 export type FlowFirstMeeting = {
 	characterId: string;
@@ -114,10 +114,7 @@ export function analyzeFlowBranches(
 	return result;
 }
 
-export function applyFirstMeetings(
-	nodes: FlowNode[],
-	analysis: FlowAnalysisResult,
-): FlowNode[] {
+export function applyFirstMeetings(nodes: FlowNode[], analysis: FlowAnalysisResult): FlowNode[] {
 	return nodes.map((node) => {
 		if (node.type !== 'scene') return node;
 		const meetings = analysis.get(node.id) ?? [];

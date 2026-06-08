@@ -1,141 +1,139 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { api } from '../lib/api';
-	import type { DialogGraph } from '../lib/schema/graph';
-	import SceneUsageTrigger from './SceneUsageTrigger.svelte';
+import { tick } from 'svelte';
+import { api } from '../lib/api';
+import type { DialogGraph } from '../lib/schema/graph';
+import SceneUsageTrigger from './SceneUsageTrigger.svelte';
 
-	interface Props {
-		slug: string;
-		dialogId: string;
-		displayName: string;
-		description?: string;
-		nodeCount?: number;
-		sequenceCount?: number;
+interface Props {
+	slug: string;
+	dialogId: string;
+	displayName: string;
+	description?: string;
+	nodeCount?: number;
+	sequenceCount?: number;
+}
+
+let {
+	slug,
+	dialogId,
+	displayName: initialName,
+	description: initialDescription = '',
+	nodeCount: initialNodeCount = 0,
+	sequenceCount: initialSequenceCount = 0,
+}: Props = $props();
+
+let displayName = $state(initialName);
+let description = $state(initialDescription);
+let editDialogEl = $state<HTMLDialogElement | null>(null);
+let deleteDialogEl = $state<HTMLDialogElement | null>(null);
+let draftName = $state('');
+let draftDescription = $state('');
+let error = $state('');
+let saving = $state(false);
+let deleting = $state(false);
+let usageNodeCount = $state(initialNodeCount);
+let usageSequenceCount = $state(initialSequenceCount);
+let deleteMessage = $state('Are you sure?');
+
+function getReturnPath(): string {
+	const scenesPath = `/projects/${slug}/scenes`;
+	const sequencesPath = `/projects/${slug}/sequences`;
+
+	const params = new URLSearchParams(window.location.search);
+	const from = params.get('from');
+	const fromSequence = params.get('sequence');
+	if (from === 'sequence') {
+		return fromSequence ? `/projects/${slug}/sequences/${fromSequence}` : sequencesPath;
 	}
 
-	let {
-		slug,
-		dialogId,
-		displayName: initialName,
-		description: initialDescription = '',
-		nodeCount: initialNodeCount = 0,
-		sequenceCount: initialSequenceCount = 0,
-	}: Props = $props();
-
-	let displayName = $state(initialName);
-	let description = $state(initialDescription);
-	let editDialogEl = $state<HTMLDialogElement | null>(null);
-	let deleteDialogEl = $state<HTMLDialogElement | null>(null);
-	let draftName = $state('');
-	let draftDescription = $state('');
-	let error = $state('');
-	let saving = $state(false);
-	let deleting = $state(false);
-	let usageNodeCount = $state(initialNodeCount);
-	let usageSequenceCount = $state(initialSequenceCount);
-	let deleteMessage = $state('Are you sure?');
-
-	function getReturnPath(): string {
-		const scenesPath = `/projects/${slug}/scenes`;
-		const sequencesPath = `/projects/${slug}/sequences`;
-
-		const params = new URLSearchParams(window.location.search);
-		const from = params.get('from');
-		const fromSequence = params.get('sequence');
-		if (from === 'sequence') {
-			return fromSequence
-				? `/projects/${slug}/sequences/${fromSequence}`
-				: sequencesPath;
-		}
-
-		try {
-			const ref = new URL(document.referrer);
-			if (ref.pathname.startsWith(`/projects/${slug}/sequences`)) return ref.pathname;
-		} catch {
-			/* ignore invalid referrer */
-		}
-
-		return scenesPath;
+	try {
+		const ref = new URL(document.referrer);
+		if (ref.pathname.startsWith(`/projects/${slug}/sequences`)) return ref.pathname;
+	} catch {
+		/* ignore invalid referrer */
 	}
 
-	async function openEditModal() {
-		draftName = displayName;
-		draftDescription = description;
-		error = '';
-		await tick();
-		editDialogEl?.showModal();
-	}
+	return scenesPath;
+}
 
-	function closeEditModal() {
-		editDialogEl?.close();
-		error = '';
-	}
+async function openEditModal() {
+	draftName = displayName;
+	draftDescription = description;
+	error = '';
+	await tick();
+	editDialogEl?.showModal();
+}
 
-	async function submitEdit(e: Event) {
-		e.preventDefault();
-		if (saving) return;
-		error = '';
-		saving = true;
-		const name = draftName.trim();
-		const desc = draftDescription.trim();
-		try {
-			const res = await api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${dialogId}`, {
-				method: 'PATCH',
-				body: JSON.stringify({ displayName: name, description: desc }),
-			});
-			displayName = res.graph.displayName;
-			description = res.graph.description;
-			window.dispatchEvent(
-				new CustomEvent('scene-meta-updated', {
-					detail: { displayName, description },
-				}),
-			);
-			closeEditModal();
-		} catch (err) {
-			error = (err as Error).message;
-		} finally {
-			saving = false;
-		}
-	}
+function closeEditModal() {
+	editDialogEl?.close();
+	error = '';
+}
 
-	async function openDeleteModal() {
-		error = '';
-		try {
-			const res = await api<{ dialogs: { id: string; nodeCount: number; sequenceCount: number }[] }>(
-				`/api/projects/${slug}/dialogs`,
-			);
-			const item = res.dialogs.find((d) => d.id === dialogId);
-			usageNodeCount = item?.nodeCount ?? usageNodeCount;
-			usageSequenceCount = item?.sequenceCount ?? usageSequenceCount;
-		} catch {
-			/* keep existing counts */
-		}
-		deleteMessage =
-			usageNodeCount > 0
-				? `This scene is used in ${usageSequenceCount} sequence${usageSequenceCount === 1 ? '' : 's'} (${usageNodeCount} node${usageNodeCount === 1 ? '' : 's'}). Are you sure you want to delete it?`
-				: 'Are you sure?';
-		await tick();
-		deleteDialogEl?.showModal();
+async function submitEdit(e: Event) {
+	e.preventDefault();
+	if (saving) return;
+	error = '';
+	saving = true;
+	const name = draftName.trim();
+	const desc = draftDescription.trim();
+	try {
+		const res = await api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${dialogId}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ displayName: name, description: desc }),
+		});
+		displayName = res.graph.displayName;
+		description = res.graph.description;
+		window.dispatchEvent(
+			new CustomEvent('scene-meta-updated', {
+				detail: { displayName, description },
+			}),
+		);
+		closeEditModal();
+	} catch (err) {
+		error = (err as Error).message;
+	} finally {
+		saving = false;
 	}
+}
 
-	function closeDeleteModal() {
-		deleteDialogEl?.close();
-		error = '';
+async function openDeleteModal() {
+	error = '';
+	try {
+		const res = await api<{ dialogs: { id: string; nodeCount: number; sequenceCount: number }[] }>(
+			`/api/projects/${slug}/dialogs`,
+		);
+		const item = res.dialogs.find((d) => d.id === dialogId);
+		usageNodeCount = item?.nodeCount ?? usageNodeCount;
+		usageSequenceCount = item?.sequenceCount ?? usageSequenceCount;
+	} catch {
+		/* keep existing counts */
 	}
+	deleteMessage =
+		usageNodeCount > 0
+			? `This scene is used in ${usageSequenceCount} sequence${usageSequenceCount === 1 ? '' : 's'} (${usageNodeCount} node${usageNodeCount === 1 ? '' : 's'}). Are you sure you want to delete it?`
+			: 'Are you sure?';
+	await tick();
+	deleteDialogEl?.showModal();
+}
 
-	async function confirmDelete(e: Event) {
-		e.preventDefault();
-		if (deleting) return;
-		error = '';
-		deleting = true;
-		try {
-			await api(`/api/projects/${slug}/dialogs/${dialogId}`, { method: 'DELETE' });
-			window.location.assign(getReturnPath());
-		} catch (err) {
-			error = (err as Error).message;
-			deleting = false;
-		}
+function closeDeleteModal() {
+	deleteDialogEl?.close();
+	error = '';
+}
+
+async function confirmDelete(e: Event) {
+	e.preventDefault();
+	if (deleting) return;
+	error = '';
+	deleting = true;
+	try {
+		await api(`/api/projects/${slug}/dialogs/${dialogId}`, { method: 'DELETE' });
+		window.location.assign(getReturnPath());
+	} catch (err) {
+		error = (err as Error).message;
+		deleting = false;
 	}
+}
 </script>
 
 <div class="scene-header">

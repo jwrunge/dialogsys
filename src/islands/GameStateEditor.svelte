@@ -1,268 +1,269 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import Fuse from 'fuse.js';
-	import { nanoid } from 'nanoid';
-	import { api } from '../lib/api';
-	import { defaultValidValues } from '../lib/flow/branchState';
-	import {
-		defaultUseValidValues,
-		normalizeGameStateProperty,
-		type GameStateFile,
-		type GameStateProperty,
-		type GameStatePropertyType,
-		type GameStateValue,
-	} from '../lib/schema/gameState';
+import Fuse from 'fuse.js';
+import { nanoid } from 'nanoid';
+import { onMount, tick } from 'svelte';
+import { api } from '../lib/api';
+import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
+import { defaultValidValues } from '../lib/flow/branchState';
+import {
+	defaultUseValidValues,
+	type GameStateFile,
+	type GameStateProperty,
+	type GameStatePropertyType,
+	type GameStateValue,
+	normalizeGameStateProperty,
+} from '../lib/schema/gameState';
 
-	interface Props {
-		slug: string;
+interface Props {
+	slug: string;
+}
+
+let { slug }: Props = $props();
+
+let properties = $state<GameStateProperty[]>([]);
+let ready = $state(false);
+let loadError = $state('');
+let saveStatus = $state('');
+let dialogEl = $state<HTMLDialogElement | null>(null);
+let draft = $state<GameStateProperty | null>(null);
+let editIndex = $state<number | null>(null);
+let addingValue = $state(false);
+let addValueDraft = $state('');
+let addValueInput = $state<HTMLInputElement | null>(null);
+let searchQuery = $state('');
+
+type ListedProperty = { prop: GameStateProperty; index: number };
+
+const listedProperties = $derived.by((): ListedProperty[] => {
+	const q = searchQuery.trim();
+	if (!q) {
+		return properties.map((prop, index) => ({ prop, index }));
 	}
+	const fuse = new Fuse(properties, {
+		keys: [
+			{ name: 'label', weight: 0.5 },
+			{ name: 'id', weight: 0.35 },
+			{ name: 'description', weight: 0.15 },
+		],
+		threshold: 0.4,
+		ignoreLocation: true,
+	});
+	return fuse.search(q).map((result) => ({
+		prop: result.item,
+		index: properties.findIndex((p) => p.id === result.item.id),
+	}));
+});
 
-	let { slug }: Props = $props();
+function cloneProperty(prop: GameStateProperty): GameStateProperty {
+	return JSON.parse(JSON.stringify(prop)) as GameStateProperty;
+}
 
-	let properties = $state<GameStateProperty[]>([]);
-	let ready = $state(false);
-	let loadError = $state('');
-	let saveStatus = $state('');
-	let dialogEl = $state<HTMLDialogElement | null>(null);
-	let draft = $state<GameStateProperty | null>(null);
-	let editIndex = $state<number | null>(null);
-	let addingValue = $state(false);
-	let addValueDraft = $state('');
-	let addValueInput = $state<HTMLInputElement | null>(null);
-	let searchQuery = $state('');
+function newProperty(): GameStateProperty {
+	const id = `var_${nanoid(4)
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '')}`;
+	const type: GameStatePropertyType = 'boolean';
+	return {
+		id,
+		label: 'New state',
+		type,
+		useValidValues: true,
+	};
+}
 
-	type ListedProperty = { prop: GameStateProperty; index: number };
+function slugifyLabel(label: string): string {
+	return (
+		label
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '_')
+			.replace(/^_|_$/g, '')
+			.slice(0, 32) || 'var'
+	);
+}
 
-	const listedProperties = $derived.by((): ListedProperty[] => {
-		const q = searchQuery.trim();
-		if (!q) {
-			return properties.map((prop, index) => ({ prop, index }));
-		}
-		const fuse = new Fuse(properties, {
-			keys: [
-				{ name: 'label', weight: 0.5 },
-				{ name: 'id', weight: 0.35 },
-				{ name: 'description', weight: 0.15 },
-			],
-			threshold: 0.4,
-			ignoreLocation: true,
+const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
+
+function scheduleSave() {
+	saveTask.schedule();
+}
+
+async function save() {
+	saveStatus = 'Saving…';
+	try {
+		const res = await api<GameStateFile>(`/api/projects/${slug}/game-state`, {
+			method: 'PUT',
+			body: JSON.stringify({ properties }),
 		});
-		return fuse.search(q).map((result) => ({
-			prop: result.item,
-			index: properties.findIndex((p) => p.id === result.item.id),
-		}));
-	});
-
-	function cloneProperty(prop: GameStateProperty): GameStateProperty {
-		return JSON.parse(JSON.stringify(prop)) as GameStateProperty;
+		properties = res.properties;
+		saveStatus = 'Saved';
+		setTimeout(() => {
+			if (saveStatus === 'Saved') saveStatus = '';
+		}, 1500);
+	} catch (e) {
+		saveStatus = (e as Error).message;
 	}
+}
 
-	function newProperty(): GameStateProperty {
-		const id = `var_${nanoid(4).toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-		const type: GameStatePropertyType = 'boolean';
-		return {
-			id,
-			label: 'New state',
-			type,
-			useValidValues: true,
-		};
+async function load() {
+	ready = false;
+	loadError = '';
+	try {
+		const res = await api<GameStateFile>(`/api/projects/${slug}/game-state`);
+		properties = res.properties;
+		ready = true;
+	} catch (e) {
+		loadError = (e as Error).message;
 	}
+}
 
-	function slugifyLabel(label: string): string {
-		return (
-			label
-				.toLowerCase()
-				.replace(/[^a-z0-9]+/g, '_')
-				.replace(/^_|_$/g, '')
-				.slice(0, 32) || 'var'
-		);
+async function openAdd() {
+	resetAddValue();
+	draft = newProperty();
+	editIndex = null;
+	await tick();
+	dialogEl?.showModal();
+}
+
+async function openEdit(index: number) {
+	resetAddValue();
+	draft = normalizeGameStateProperty(cloneProperty(properties[index]!));
+	editIndex = index;
+	await tick();
+	dialogEl?.showModal();
+}
+
+function closeModal() {
+	dialogEl?.close();
+	draft = null;
+	editIndex = null;
+	addingValue = false;
+	addValueDraft = '';
+}
+
+function resetAddValue() {
+	addingValue = false;
+	addValueDraft = '';
+}
+
+function startAddValue(e: MouseEvent) {
+	e.preventDefault();
+	e.stopPropagation();
+	if (!draft) return;
+	if (addingValue) {
+		commitAddValue();
 	}
+	addingValue = true;
+	addValueDraft = '';
+}
 
-	let saveTimer: ReturnType<typeof setTimeout> | undefined;
-
-	function scheduleSave() {
-		clearTimeout(saveTimer);
-		saveTimer = setTimeout(save, 450);
+$effect(() => {
+	if (addingValue && addValueInput) {
+		addValueInput.focus();
 	}
+});
 
-	async function save() {
-		saveStatus = 'Saving…';
-		try {
-			const res = await api<GameStateFile>(`/api/projects/${slug}/game-state`, {
-				method: 'PUT',
-				body: JSON.stringify({ properties }),
-			});
-			properties = res.properties;
-			saveStatus = 'Saved';
-			setTimeout(() => {
-				if (saveStatus === 'Saved') saveStatus = '';
-			}, 1500);
-		} catch (e) {
-			saveStatus = (e as Error).message;
-		}
-	}
-
-	async function load() {
-		ready = false;
-		loadError = '';
-		try {
-			const res = await api<GameStateFile>(`/api/projects/${slug}/game-state`);
-			properties = res.properties;
-			ready = true;
-		} catch (e) {
-			loadError = (e as Error).message;
-		}
-	}
-
-	async function openAdd() {
+function commitAddValue() {
+	if (!draft || !addingValue) return;
+	const raw = addValueInput?.value ?? addValueDraft;
+	if (addValidValue(raw)) {
 		resetAddValue();
-		draft = newProperty();
-		editIndex = null;
-		await tick();
-		dialogEl?.showModal();
 	}
+}
 
-	async function openEdit(index: number) {
-		resetAddValue();
-		draft = normalizeGameStateProperty(cloneProperty(properties[index]!));
-		editIndex = index;
-		await tick();
-		dialogEl?.showModal();
-	}
-
-	function closeModal() {
-		dialogEl?.close();
-		draft = null;
-		editIndex = null;
-		addingValue = false;
-		addValueDraft = '';
-	}
-
-	function resetAddValue() {
-		addingValue = false;
-		addValueDraft = '';
-	}
-
-	function startAddValue(e: MouseEvent) {
+function onAddValueKeydown(e: KeyboardEvent) {
+	if (e.key === 'Enter') {
 		e.preventDefault();
-		e.stopPropagation();
-		if (!draft) return;
-		if (addingValue) {
-			commitAddValue();
-		}
-		addingValue = true;
-		addValueDraft = '';
-	}
-
-	$effect(() => {
-		if (addingValue && addValueInput) {
-			addValueInput.focus();
-		}
-	});
-
-	function commitAddValue() {
-		if (!draft || !addingValue) return;
-		const raw = addValueInput?.value ?? addValueDraft;
-		if (addValidValue(raw)) {
-			resetAddValue();
-		}
-	}
-
-	function onAddValueKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			commitAddValue();
-		} else if (e.key === 'Escape') {
-			e.preventDefault();
-			resetAddValue();
-		}
-	}
-
-	function applyDraft() {
-		if (!draft) return;
-		const next = normalizeGameStateProperty(cloneProperty(draft));
-		if (editIndex === null) {
-			properties = [...properties, next];
-		} else {
-			properties = properties.map((p, i) => (i === editIndex ? next : p));
-		}
-		closeModal();
-		scheduleSave();
-	}
-
-	function removeProperty(index: number) {
-		properties = properties.filter((_, i) => i !== index);
-		scheduleSave();
-	}
-
-	function onTypeChange(type: GameStatePropertyType) {
-		if (!draft) return;
+		commitAddValue();
+	} else if (e.key === 'Escape') {
+		e.preventDefault();
 		resetAddValue();
-		const useValidValues = defaultUseValidValues(type);
-		draft = {
-			...draft,
-			type,
-			useValidValues,
-			validValues:
-				type === 'boolean' || !useValidValues ? undefined : (draft.validValues ?? []),
-		};
 	}
+}
 
-	function toggleUseValidValues(checked: boolean) {
-		if (!draft) return;
-		resetAddValue();
-		draft = {
-			...draft,
-			useValidValues: checked,
-			validValues: checked ? (draft.validValues ?? defaultValidValues(draft.type)) : undefined,
-		};
+function applyDraft() {
+	if (!draft) return;
+	const next = normalizeGameStateProperty(cloneProperty(draft));
+	if (editIndex === null) {
+		properties = [...properties, next];
+	} else {
+		properties = properties.map((p, i) => (i === editIndex ? next : p));
 	}
+	closeModal();
+	scheduleSave();
+}
 
-	function addValidValue(raw: string | number): boolean {
-		if (!draft || !draft.useValidValues || draft.type === 'boolean') return false;
-		let value: GameStateValue;
-		if (draft.type === 'number') {
-			const n = typeof raw === 'number' ? raw : Number(raw);
-			if (raw === '' || Number.isNaN(n)) return false;
-			value = n;
-		} else {
-			value = String(raw).trim();
-			if (!value) return false;
-		}
-		const values = [...(draft.validValues ?? []), value];
-		draft = { ...draft, validValues: values };
-		return true;
+function removeProperty(index: number) {
+	properties = properties.filter((_, i) => i !== index);
+	scheduleSave();
+}
+
+function onTypeChange(type: GameStatePropertyType) {
+	if (!draft) return;
+	resetAddValue();
+	const useValidValues = defaultUseValidValues(type);
+	draft = {
+		...draft,
+		type,
+		useValidValues,
+		validValues: type === 'boolean' || !useValidValues ? undefined : (draft.validValues ?? []),
+	};
+}
+
+function toggleUseValidValues(checked: boolean) {
+	if (!draft) return;
+	resetAddValue();
+	draft = {
+		...draft,
+		useValidValues: checked,
+		validValues: checked ? (draft.validValues ?? defaultValidValues(draft.type)) : undefined,
+	};
+}
+
+function addValidValue(raw: string | number): boolean {
+	if (!draft || !draft.useValidValues || draft.type === 'boolean') return false;
+	let value: GameStateValue;
+	if (draft.type === 'number') {
+		const n = typeof raw === 'number' ? raw : Number(raw);
+		if (raw === '' || Number.isNaN(n)) return false;
+		value = n;
+	} else {
+		value = String(raw).trim();
+		if (!value) return false;
 	}
+	const values = [...(draft.validValues ?? []), value];
+	draft = { ...draft, validValues: values };
+	return true;
+}
 
-	function removeValidValue(index: number) {
-		if (!draft?.validValues) return;
-		draft = {
-			...draft,
-			validValues: draft.validValues.filter((_, i) => i !== index),
-		};
+function removeValidValue(index: number) {
+	if (!draft?.validValues) return;
+	draft = {
+		...draft,
+		validValues: draft.validValues.filter((_, i) => i !== index),
+	};
+}
+
+function formatValidValue(value: GameStateValue): string {
+	return typeof value === 'string' ? value : String(value);
+}
+
+function descriptionPreview(description?: string): string {
+	const t = description?.trim() ?? '';
+	if (!t) return 'No description';
+	return t.length > 120 ? `${t.slice(0, 120)}…` : t;
+}
+
+function metaLabel(prop: GameStateProperty): string {
+	const typeLabel = prop.type.charAt(0).toUpperCase() + prop.type.slice(1);
+	if (prop.type === 'boolean') return typeLabel;
+	if (prop.useValidValues === true && prop.validValues?.length) {
+		const count = prop.validValues.length;
+		return `${typeLabel} · ${count} value${count === 1 ? '' : 's'}`;
 	}
+	return `${typeLabel} · comparisons`;
+}
 
-	function formatValidValue(value: GameStateValue): string {
-		return typeof value === 'string' ? value : String(value);
-	}
-
-	function descriptionPreview(description?: string): string {
-		const t = description?.trim() ?? '';
-		if (!t) return 'No description';
-		return t.length > 120 ? `${t.slice(0, 120)}…` : t;
-	}
-
-	function metaLabel(prop: GameStateProperty): string {
-		const typeLabel = prop.type.charAt(0).toUpperCase() + prop.type.slice(1);
-		if (prop.type === 'boolean') return typeLabel;
-		if (prop.useValidValues === true && prop.validValues?.length) {
-			const count = prop.validValues.length;
-			return `${typeLabel} · ${count} value${count === 1 ? '' : 's'}`;
-		}
-		return `${typeLabel} · comparisons`;
-	}
-
-	onMount(load);
+onMount(load);
 </script>
 
 <div class="toolbar">

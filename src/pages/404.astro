@@ -1,0 +1,22 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Not found · Dialogsys">
+	<div class="container">
+		<h1>Page not found</h1>
+		<p class="lead">That project or page does not exist.</p>
+		<p><a href="/">← Back to projects</a></p>
+	</div>
+</BaseLayout>
+
+<style>
+	.container {
+		padding-block: 3rem;
+	}
+
+	.lead {
+		color: var(--text-muted);
+		margin-bottom: 1.5rem;
+	}
+</style>

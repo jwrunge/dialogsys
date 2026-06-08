@@ -1,434 +1,390 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import { nanoid } from 'nanoid';
-	import { api } from '../lib/api';
-	import type { DialogListItem } from '../lib/server/projects';
-	import type { DialogGraph } from '../lib/schema/graph';
-	import type { CharactersFile } from '../lib/schema/characters';
-	import type { FlowGraph, FlowNode, FlowEdge } from '../lib/schema/flow';
-	import type { GameStateProperty } from '../lib/schema/gameState';
-	import { analyzeFlowBranches, applyFirstMeetings } from '../lib/flow/branchAnalyzer';
-	import { createSceneNode } from '../lib/flow/flowFactory';
-	import GameFlowCanvas from './GameFlowCanvas.svelte';
-	import FlowNodeInspector from './FlowNodeInspector.svelte';
-	import DialogEditorModal from './DialogEditorModal.svelte';
+import { nanoid } from 'nanoid';
+import { onMount, tick } from 'svelte';
+import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
+import { api } from '../lib/api';
+import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
+import { analyzeFlowBranches, applyFirstMeetings } from '../lib/flow/branchAnalyzer';
+import { createSceneNode } from '../lib/flow/flowFactory';
+import {
+	type CanvasEdge,
+	type CanvasNode,
+	canvasNodeToFlowNode,
+	canvasToFlowGraph,
+	flowGraphToCanvas,
+} from '../lib/graph/canvasBridge';
+import type { CharactersFile } from '../lib/schema/characters';
+import type { FlowEdge, FlowGraph, FlowNode } from '../lib/schema/flow';
+import type { GameStateProperty } from '../lib/schema/gameState';
+import type { DialogGraph } from '../lib/schema/graph';
+import type { DialogListItem } from '../lib/server/projects';
+import DialogEditorModal from './DialogEditorModal.svelte';
+import FlowNodeInspector from './FlowNodeInspector.svelte';
+import GameFlowCanvas from './GameFlowCanvas.svelte';
 
-	interface Props {
-		slug: string;
-		sequenceId: string;
-	}
+interface Props {
+	slug: string;
+	sequenceId: string;
+}
 
-	let { slug, sequenceId }: Props = $props();
+let { slug, sequenceId }: Props = $props();
 
-	type CanvasNode = {
-		id: string;
-		type?: string;
-		position: { x: number; y: number };
-		data?: Record<string, unknown>;
-	};
-	type CanvasEdge = {
-		id: string;
-		source: string;
-		target: string;
-		sourceHandle?: string | null;
-		targetHandle?: string | null;
-		data?: Record<string, unknown>;
-	};
+let loading = $state(true);
+let ready = $state(false);
+let loadError = $state('');
+let saveStatus = $state('');
+let selectedNodeId = $state<string | null>(null);
+let dialogs = $state<DialogListItem[]>([]);
+let gameStateProperties = $state<GameStateProperty[]>([]);
+let syncKey = $state('');
+let confirmDialogEl = $state<HTMLDialogElement | null>(null);
+let confirmMode = $state<'node' | 'edge'>('node');
+let confirmMessage = $state('');
+let pendingEdge = $state<CanvasEdge | null>(null);
+let editorDialogId = $state<string | null>(null);
+let editorTitle = $state('Edit scene');
+let analyzing = $state(false);
+let sequenceDisplayName = $state('Main sequence');
 
-	let loading = $state(true);
-	let ready = $state(false);
-	let loadError = $state('');
-	let saveStatus = $state('');
-	let selectedNodeId = $state<string | null>(null);
-	let dialogs = $state<DialogListItem[]>([]);
-	let gameStateProperties = $state<GameStateProperty[]>([]);
-	let syncKey = $state('');
-	let confirmDialogEl = $state<HTMLDialogElement | null>(null);
-	let confirmMode = $state<'node' | 'edge'>('node');
-	let confirmMessage = $state('');
-	let pendingEdge = $state<CanvasEdge | null>(null);
-	let editorDialogId = $state<string | null>(null);
-	let editorTitle = $state('Edit scene');
-	let analyzing = $state(false);
-	let sequenceDisplayName = $state('Main sequence');
+let flowNodes = $state<FlowNode[]>([]);
+let flowEdges = $state<FlowEdge[]>([]);
+let canvasNodes = $state.raw<CanvasNode[]>([]);
+let canvasEdges = $state.raw<CanvasEdge[]>([]);
 
-	let flowNodes = $state<FlowNode[]>([]);
-	let flowEdges = $state<FlowEdge[]>([]);
-	let canvasNodes = $state.raw<CanvasNode[]>([]);
-	let canvasEdges = $state.raw<CanvasEdge[]>([]);
+const selectedNode = $derived.by((): FlowNode | null => {
+	if (!selectedNodeId) return null;
+	const n = canvasNodes.find((cn) => cn.id === selectedNodeId);
+	return n ? canvasNodeToFlowNode(n) : null;
+});
 
-	const selectedNode = $derived.by((): FlowNode | null => {
-		if (!selectedNodeId) return null;
-		const n = canvasNodes.find((cn) => cn.id === selectedNodeId);
-		if (!n) return null;
-		return {
-			id: n.id,
-			type: n.type as FlowNode['type'],
-			position: n.position,
-			data: (n.data ?? {}) as FlowNode['data'],
-		};
+function toCanvas(graph: FlowGraph) {
+	const mapped = flowGraphToCanvas(graph);
+	canvasNodes = mapped.nodes;
+	canvasEdges = mapped.edges;
+	syncKey = mapped.syncKey;
+}
+
+function fromCanvas(): FlowGraph {
+	return canvasToFlowGraph({
+		id: sequenceId,
+		displayName: sequenceDisplayName,
+		nodes: canvasNodes,
+		edges: canvasEdges,
 	});
+}
 
-	function toCanvas(graph: FlowGraph) {
-		canvasNodes = graph.nodes.map((n) => ({
-			id: n.id,
-			type: n.type,
-			position: n.position,
-			data: n.data,
-		}));
-		canvasEdges = graph.edges.map((e) => ({
-			id: e.id,
-			source: e.source,
-			target: e.target,
-			sourceHandle: e.sourceHandle,
-			targetHandle: e.targetHandle,
-			data: e.data,
-		}));
-		syncKey = `${graph.updatedAt ?? Date.now()}`;
+const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
+let analyzeTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleSave() {
+	if (loading || !ready) return;
+	flowNodes = fromCanvas().nodes;
+	flowEdges = fromCanvas().edges;
+	saveTask.schedule();
+	scheduleAnalyze();
+}
+
+function scheduleAnalyze() {
+	if (loading || !ready) return;
+	clearTimeout(analyzeTimer);
+	analyzeTimer = setTimeout(runBranchAnalyzer, 500);
+}
+
+async function save() {
+	saveStatus = 'Saving…';
+	try {
+		const graph = fromCanvas();
+		const res = await api<{ graph: FlowGraph }>(`/api/projects/${slug}/sequences/${sequenceId}`, {
+			method: 'PUT',
+			body: JSON.stringify({ graph }),
+		});
+		flowNodes = res.graph.nodes;
+		flowEdges = res.graph.edges;
+		saveStatus = 'Saved';
+		setTimeout(() => {
+			if (saveStatus === 'Saved') saveStatus = '';
+		}, 1500);
+	} catch (e) {
+		saveStatus = (e as Error).message;
 	}
+}
 
-	function fromCanvas(): FlowGraph {
-		return {
-			id: sequenceId,
-			displayName: sequenceDisplayName,
-			nodes: canvasNodes.map((n) => ({
-				id: n.id,
-				type: n.type as FlowNode['type'],
-				position: n.position,
-				data: (n.data ?? {}) as FlowNode['data'],
-			})),
-			edges: canvasEdges.map((e) => ({
-				id: e.id,
-				source: e.source,
-				target: e.target,
-				sourceHandle: e.sourceHandle ?? undefined,
-				targetHandle: e.targetHandle ?? undefined,
-				data: e.data as FlowEdge['data'],
-			})),
-		};
-	}
+async function loadDialogs() {
+	const res = await api<{ dialogs: DialogListItem[] }>(`/api/projects/${slug}/dialogs`);
+	dialogs = res.dialogs;
+}
 
-	let saveTimer: ReturnType<typeof setTimeout> | undefined;
-	let analyzeTimer: ReturnType<typeof setTimeout> | undefined;
+async function loadGameState() {
+	const res = await api<{ properties: GameStateProperty[] }>(`/api/projects/${slug}/game-state`);
+	gameStateProperties = res.properties;
+}
 
-	function scheduleSave() {
-		if (loading || !ready) return;
-		flowNodes = fromCanvas().nodes;
-		flowEdges = fromCanvas().edges;
-		clearTimeout(saveTimer);
-		saveTimer = setTimeout(save, 450);
+async function load() {
+	loading = true;
+	ready = false;
+	loadError = '';
+	try {
+		const [{ graph }] = await Promise.all([
+			api<{ graph: FlowGraph }>(`/api/projects/${slug}/sequences/${sequenceId}`),
+			loadDialogs(),
+			loadGameState(),
+		]);
+		sequenceDisplayName = graph.displayName || sequenceId;
+		flowNodes = graph.nodes;
+		flowEdges = graph.edges;
+		toCanvas(graph);
+		ready = true;
+		selectFromHash();
 		scheduleAnalyze();
+	} catch (e) {
+		loadError = (e as Error).message;
+	} finally {
+		loading = false;
 	}
+}
 
-	function scheduleAnalyze() {
-		if (loading || !ready) return;
-		clearTimeout(analyzeTimer);
-		analyzeTimer = setTimeout(runBranchAnalyzer, 500);
-	}
+function setCanvasNodes(nodes: CanvasNode[]) {
+	canvasNodes = nodes;
+	scheduleSave();
+}
 
-	async function save() {
-		saveStatus = 'Saving…';
-		try {
-			const graph = fromCanvas();
-			const res = await api<{ graph: FlowGraph }>(
-				`/api/projects/${slug}/sequences/${sequenceId}`,
-				{
-				method: 'PUT',
-					body: JSON.stringify({ graph }),
-				},
-			);
-			flowNodes = res.graph.nodes;
-			flowEdges = res.graph.edges;
-			saveStatus = 'Saved';
-			setTimeout(() => {
-				if (saveStatus === 'Saved') saveStatus = '';
-			}, 1500);
-		} catch (e) {
-			saveStatus = (e as Error).message;
+function setCanvasEdges(edges: CanvasEdge[]) {
+	canvasEdges = edges;
+	scheduleSave();
+}
+
+function selectNode(id: string) {
+	selectedNodeId = id;
+	if (typeof window !== 'undefined') {
+		const hash = id ? `#${id}` : '';
+		if (window.location.hash !== hash) {
+			history.replaceState(null, '', `${window.location.pathname}${hash}`);
 		}
 	}
+}
 
-	async function loadDialogs() {
-		const res = await api<{ dialogs: DialogListItem[] }>(`/api/projects/${slug}/dialogs`);
-		dialogs = res.dialogs;
-	}
-
-	async function loadGameState() {
-		const res = await api<{ properties: GameStateProperty[] }>(`/api/projects/${slug}/game-state`);
-		gameStateProperties = res.properties;
-	}
-
-	async function load() {
-		loading = true;
-		ready = false;
-		loadError = '';
-		try {
-			const [{ graph }] = await Promise.all([
-				api<{ graph: FlowGraph }>(`/api/projects/${slug}/sequences/${sequenceId}`),
-				loadDialogs(),
-				loadGameState(),
-			]);
-			sequenceDisplayName = graph.displayName || sequenceId;
-			flowNodes = graph.nodes;
-			flowEdges = graph.edges;
-			toCanvas(graph);
-			ready = true;
-			selectFromHash();
-			scheduleAnalyze();
-		} catch (e) {
-			loadError = (e as Error).message;
-		} finally {
-			loading = false;
-		}
-	}
-
-	function setCanvasNodes(nodes: CanvasNode[]) {
-		canvasNodes = nodes;
-		scheduleSave();
-	}
-
-	function setCanvasEdges(edges: CanvasEdge[]) {
-		canvasEdges = edges;
-		scheduleSave();
-	}
-
-	function selectNode(id: string) {
+function selectFromHash() {
+	if (typeof window === 'undefined') return;
+	const id = window.location.hash.replace(/^#/, '');
+	if (id && canvasNodes.some((n) => n.id === id)) {
 		selectedNodeId = id;
-		if (typeof window !== 'undefined') {
-			const hash = id ? `#${id}` : '';
-			if (window.location.hash !== hash) {
-				history.replaceState(null, '', `${window.location.pathname}${hash}`);
-			}
-		}
 	}
+}
 
-	function selectFromHash() {
-		if (typeof window === 'undefined') return;
-		const id = window.location.hash.replace(/^#/, '');
-		if (id && canvasNodes.some((n) => n.id === id)) {
-			selectedNodeId = id;
-		}
-	}
+function updateNode(updated: FlowNode) {
+	canvasNodes = canvasNodes.map((n) =>
+		n.id === updated.id ? { ...n, data: updated.data, type: updated.type } : n,
+	);
+	flowNodes = flowNodes.map((n) => (n.id === updated.id ? updated : n));
+	syncKey = `local-${Date.now()}`;
+	scheduleSave();
+}
 
-	function updateNode(updated: FlowNode) {
+function onConnect() {
+	scheduleSave();
+}
+
+function changeNodeType(type: 'scene' | 'branch') {
+	if (!selectedNodeId) return;
+	const node = canvasNodes.find((n) => n.id === selectedNodeId);
+	if (!node || (node.type !== 'scene' && node.type !== 'branch') || node.type === type) return;
+
+	if (type === 'branch') {
 		canvasNodes = canvasNodes.map((n) =>
-			n.id === updated.id
-				? { ...n, data: updated.data, type: updated.type }
+			n.id === selectedNodeId
+				? {
+						...n,
+						type: 'branch',
+						data: {
+							label: (n.data?.label as string | undefined) || 'Branch',
+							branchStateId: undefined,
+							options: [],
+						},
+					}
 				: n,
 		);
-		flowNodes = flowNodes.map((n) => (n.id === updated.id ? updated : n));
-		syncKey = `local-${Date.now()}`;
-		scheduleSave();
-	}
-
-	function onConnect() {
-		scheduleSave();
-	}
-
-	function changeNodeType(type: 'scene' | 'branch') {
-		if (!selectedNodeId) return;
-		const node = canvasNodes.find((n) => n.id === selectedNodeId);
-		if (!node || (node.type !== 'scene' && node.type !== 'branch') || node.type === type) return;
-
-		if (type === 'branch') {
-			canvasNodes = canvasNodes.map((n) =>
-				n.id === selectedNodeId
-					? {
-							...n,
-							type: 'branch',
-							data: {
-								label: (n.data?.label as string | undefined) || 'Branch',
-								branchStateId: undefined,
-								options: [],
-							},
-						}
-					: n,
-			);
-			canvasEdges = canvasEdges.filter((e) => e.source !== selectedNodeId);
-		} else {
-			canvasNodes = canvasNodes.map((n) =>
-				n.id === selectedNodeId
-					? {
-							...n,
-							type: 'scene',
-							data: { label: (n.data?.label as string | undefined) || 'New scene' },
-						}
-					: n,
-			);
-			canvasEdges = canvasEdges.map((e) =>
-				e.source === selectedNodeId ? { ...e, sourceHandle: null } : e,
-			);
-		}
-		syncKey = `local-${Date.now()}`;
-		scheduleSave();
-	}
-
-	async function openDeleteNodeConfirm() {
-		if (!selectedNodeId) return;
-		const node = canvasNodes.find((n) => n.id === selectedNodeId);
-		if (!node || node.type === 'start') return;
-		const label = (node.data?.label as string | undefined) ?? node.id;
-		confirmMode = 'node';
-		pendingEdge = null;
-		confirmMessage = `Delete "${label}" from this sequence?`;
-		await tick();
-		confirmDialogEl?.showModal();
-	}
-
-	function edgeMatches(a: CanvasEdge, b: CanvasEdge): boolean {
-		return (
-			a.source === b.source &&
-			a.target === b.target &&
-			(a.sourceHandle ?? null) === (b.sourceHandle ?? null) &&
-			(a.targetHandle ?? null) === (b.targetHandle ?? null)
+		canvasEdges = canvasEdges.filter((e) => e.source !== selectedNodeId);
+	} else {
+		canvasNodes = canvasNodes.map((n) =>
+			n.id === selectedNodeId
+				? {
+						...n,
+						type: 'scene',
+						data: { label: (n.data?.label as string | undefined) || 'New scene' },
+					}
+				: n,
+		);
+		canvasEdges = canvasEdges.map((e) =>
+			e.source === selectedNodeId ? { ...e, sourceHandle: null } : e,
 		);
 	}
+	syncKey = `local-${Date.now()}`;
+	scheduleSave();
+}
 
-	async function requestDeleteEdge(edge: CanvasEdge) {
-		confirmMode = 'edge';
-		pendingEdge = edge;
-		confirmMessage = 'Remove this connection from this sequence?';
-		await tick();
-		confirmDialogEl?.showModal();
-	}
+async function openDeleteNodeConfirm() {
+	if (!selectedNodeId) return;
+	const node = canvasNodes.find((n) => n.id === selectedNodeId);
+	if (!node || node.type === 'start') return;
+	const label = (node.data?.label as string | undefined) ?? node.id;
+	confirmMode = 'node';
+	pendingEdge = null;
+	confirmMessage = `Delete "${label}" from this sequence?`;
+	await tick();
+	confirmDialogEl?.showModal();
+}
 
-	function closeConfirmDialog() {
-		confirmDialogEl?.close();
+function edgeMatches(a: CanvasEdge, b: CanvasEdge): boolean {
+	return (
+		a.source === b.source &&
+		a.target === b.target &&
+		(a.sourceHandle ?? null) === (b.sourceHandle ?? null) &&
+		(a.targetHandle ?? null) === (b.targetHandle ?? null)
+	);
+}
+
+async function requestDeleteEdge(edge: CanvasEdge) {
+	confirmMode = 'edge';
+	pendingEdge = edge;
+	confirmMessage = 'Remove this connection from this sequence?';
+	await tick();
+	confirmDialogEl?.showModal();
+}
+
+function closeConfirmDialog() {
+	confirmDialogEl?.close();
+	pendingEdge = null;
+}
+
+function applyConfirmDelete() {
+	if (confirmMode === 'node') {
+		if (!selectedNodeId) return;
+		canvasNodes = canvasNodes.filter((n) => n.id !== selectedNodeId);
+		canvasEdges = canvasEdges.filter(
+			(e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
+		);
+		selectedNodeId = null;
+	} else if (pendingEdge) {
+		const target = pendingEdge;
+		canvasEdges = canvasEdges.filter((e) => e.id !== target.id && !edgeMatches(e, target));
 		pendingEdge = null;
 	}
+	syncKey = `local-${Date.now()}`;
+	closeConfirmDialog();
+	scheduleSave();
+}
 
-	function applyConfirmDelete() {
-		if (confirmMode === 'node') {
-			if (!selectedNodeId) return;
-			canvasNodes = canvasNodes.filter((n) => n.id !== selectedNodeId);
-			canvasEdges = canvasEdges.filter(
-				(e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
-			);
-			selectedNodeId = null;
-		} else if (pendingEdge) {
-			const target = pendingEdge;
-			canvasEdges = canvasEdges.filter(
-				(e) => e.id !== target.id && !edgeMatches(e, target),
-			);
-			pendingEdge = null;
-		}
-		syncKey = `local-${Date.now()}`;
-		closeConfirmDialog();
-		scheduleSave();
-	}
+function onConnectEndToPane(params: {
+	sourceNodeId: string;
+	sourceHandle: string | null;
+	position: { x: number; y: number };
+}) {
+	const node = createSceneNode(params.position);
+	const id = `e-${params.sourceNodeId}-${node.id}-${nanoid(4)}`;
+	canvasNodes = [
+		...canvasNodes,
+		{
+			id: node.id,
+			type: node.type,
+			position: node.position,
+			data: node.data,
+		},
+	];
+	canvasEdges = [
+		...canvasEdges,
+		{
+			id,
+			source: params.sourceNodeId,
+			target: node.id,
+			sourceHandle: params.sourceHandle,
+		},
+	];
+	selectedNodeId = node.id;
+	syncKey = `local-${Date.now()}`;
+	scheduleSave();
+}
 
-	function onConnectEndToPane(params: {
-		sourceNodeId: string;
-		sourceHandle: string | null;
-		position: { x: number; y: number };
-	}) {
-		const node = createSceneNode(params.position);
-		const id = `e-${params.sourceNodeId}-${node.id}-${nanoid(4)}`;
-		canvasNodes = [
-			...canvasNodes,
-			{
-				id: node.id,
-				type: node.type,
-				position: node.position,
-				data: node.data,
-			},
+function isEditableTarget(target: EventTarget | null): boolean {
+	if (!(target instanceof HTMLElement)) return false;
+	const tag = target.tagName;
+	if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+	return target.isContentEditable;
+}
+
+function openDialogEditor(dialogId: string, title?: string) {
+	editorDialogId = dialogId;
+	editorTitle = title?.trim() ? `Edit: ${title.trim()}` : `Edit: ${dialogId}`;
+}
+
+async function closeDialogEditor() {
+	editorDialogId = null;
+	await loadDialogs();
+	scheduleAnalyze();
+}
+
+async function runBranchAnalyzer() {
+	if (analyzing || loading || !ready) return;
+	analyzing = true;
+	try {
+		const graph = fromCanvas();
+		const sceneDialogIds = [
+			...new Set(
+				graph.nodes
+					.filter((n) => n.type === 'scene' && n.data.dialogId)
+					.map((n) => n.data.dialogId!),
+			),
 		];
-		canvasEdges = [
-			...canvasEdges,
-			{
-				id,
-				source: params.sourceNodeId,
-				target: node.id,
-				sourceHandle: params.sourceHandle,
-			},
-		];
-		selectedNodeId = node.id;
+
+		const [charactersRes, ...dialogGraphs] = await Promise.all([
+			api<CharactersFile>(`/api/projects/${slug}/characters`),
+			...sceneDialogIds.map((id) =>
+				api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${id}`),
+			),
+		]);
+
+		const dialogs: Record<string, DialogGraph> = {};
+		sceneDialogIds.forEach((id, i) => {
+			dialogs[id] = dialogGraphs[i]!.graph;
+		});
+
+		const analysis = analyzeFlowBranches(graph, dialogs, charactersRes.characters);
+		const updated = applyFirstMeetings(graph.nodes, analysis);
+
+		canvasNodes = canvasNodes.map((n) => {
+			const match = updated.find((u) => u.id === n.id);
+			if (!match) return n;
+			return { ...n, data: match.data };
+		});
 		syncKey = `local-${Date.now()}`;
-		scheduleSave();
+		clearTimeout(saveTimer);
+		await save();
+	} catch {
+		/* analyzer is best-effort; flow edits still save normally */
+	} finally {
+		analyzing = false;
 	}
+}
 
-	function isEditableTarget(target: EventTarget | null): boolean {
-		if (!(target instanceof HTMLElement)) return false;
-		const tag = target.tagName;
-		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-		return target.isContentEditable;
-	}
+function onKeyDown(event: KeyboardEvent) {
+	if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+	if (isEditableTarget(event.target)) return;
+	if (!selectedNodeId) return;
+	const node = canvasNodes.find((n) => n.id === selectedNodeId);
+	if (!node || node.type === 'start') return;
+	event.preventDefault();
+	openDeleteNodeConfirm();
+}
 
-	function openDialogEditor(dialogId: string, title?: string) {
-		editorDialogId = dialogId;
-		editorTitle = title?.trim() ? `Edit: ${title.trim()}` : `Edit: ${dialogId}`;
-	}
-
-	async function closeDialogEditor() {
-		editorDialogId = null;
-		await loadDialogs();
-		scheduleAnalyze();
-	}
-
-	async function runBranchAnalyzer() {
-		if (analyzing || loading || !ready) return;
-		analyzing = true;
-		try {
-			const graph = fromCanvas();
-			const sceneDialogIds = [
-				...new Set(
-					graph.nodes
-						.filter((n) => n.type === 'scene' && n.data.dialogId)
-						.map((n) => n.data.dialogId!),
-				),
-			];
-
-			const [charactersRes, ...dialogGraphs] = await Promise.all([
-				api<CharactersFile>(`/api/projects/${slug}/characters`),
-				...sceneDialogIds.map((id) =>
-					api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${id}`),
-				),
-			]);
-
-			const dialogs: Record<string, DialogGraph> = {};
-			sceneDialogIds.forEach((id, i) => {
-				dialogs[id] = dialogGraphs[i]!.graph;
-			});
-
-			const analysis = analyzeFlowBranches(graph, dialogs, charactersRes.characters);
-			const updated = applyFirstMeetings(graph.nodes, analysis);
-
-			canvasNodes = canvasNodes.map((n) => {
-				const match = updated.find((u) => u.id === n.id);
-				if (!match) return n;
-				return { ...n, data: match.data };
-			});
-			syncKey = `local-${Date.now()}`;
-			clearTimeout(saveTimer);
-			await save();
-		} catch {
-			/* analyzer is best-effort; flow edits still save normally */
-		} finally {
-			analyzing = false;
-		}
-	}
-
-	function onKeyDown(event: KeyboardEvent) {
-		if (event.key !== 'Delete' && event.key !== 'Backspace') return;
-		if (isEditableTarget(event.target)) return;
-		if (!selectedNodeId) return;
-		const node = canvasNodes.find((n) => n.id === selectedNodeId);
-		if (!node || node.type === 'start') return;
-		event.preventDefault();
-		openDeleteNodeConfirm();
-	}
-
-	onMount(() => {
-		load();
-		window.addEventListener('keydown', onKeyDown);
-		return () => window.removeEventListener('keydown', onKeyDown);
-	});
+onMount(() => {
+	load();
+	window.addEventListener('keydown', onKeyDown);
+	return () => window.removeEventListener('keydown', onKeyDown);
+});
 </script>
 
 <div class="flow-editor">
-	{#if loadError}
-		<p class="error-banner">{loadError}</p>
-	{:else if ready}
+	<EditorStatusBanner {loadError} />
+	{#if !loadError && ready}
 		<div class="editor-layout flow-layout">
 			<div class="editor-canvas">
 				<GameFlowCanvas

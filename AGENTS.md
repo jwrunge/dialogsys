@@ -25,7 +25,9 @@ See `README.md` for full documentation. Common commands:
 | `npm run tauri:dev` | Tauri native shell + Astro dev server |
 | `npm run tauri:build` | Desktop release bundle (spawns bundled Node + Astro server) |
 
-There are **no** lint or test scripts in this repo.
+| `npm run test` | Vitest unit tests |
+| `npm run lint` | Biome lint + format check |
+| `npm run check` | Astro TypeScript check (`astro check`) |
 
 ### Tauri shell
 

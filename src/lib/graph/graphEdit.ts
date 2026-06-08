@@ -1,20 +1,9 @@
 import { nanoid } from 'nanoid';
 import type { GraphEdge, GraphNode } from '../schema/graph';
 import { findEntryNode, getEdgeForHandle, getOutgoing, nodeById } from './graphUtils';
-import {
-	flattenActivePathWithDepth,
-	getBlockMemberIds,
-	type PathStep,
-} from './pathTree';
+import { flattenActivePathWithDepth, getBlockMemberIds, type PathStep } from './pathTree';
 
-const NON_DRAGGABLE_TYPES = new Set([
-	'entry',
-	'end',
-	'choice',
-	'condition',
-	'jump',
-	'blank',
-]);
+const NON_DRAGGABLE_TYPES = new Set(['entry', 'end', 'choice', 'condition', 'jump', 'blank']);
 
 export function setBranchTarget(
 	edges: GraphEdge[],
@@ -64,9 +53,7 @@ export function insertNodeAfter(
 	let nextEdges = [...edges];
 
 	if (out) {
-		nextEdges = nextEdges.map((e) =>
-			e.id === out.id ? { ...e, target: newNode.id } : e,
-		);
+		nextEdges = nextEdges.map((e) => (e.id === out.id ? { ...e, target: newNode.id } : e));
 	} else if (sourceHandle) {
 		nextEdges = setBranchTarget(nextEdges, afterId, sourceHandle, newNode.id);
 	} else {
@@ -105,9 +92,13 @@ export function insertNodeBefore(
 		return insertNodeAfter(nodes, edges, beforeId, newNode);
 	}
 
-	let nextEdges = edges.filter((e) => e.target !== beforeId);
+	const nextEdges = edges.filter((e) => e.target !== beforeId);
 	for (const inc of incoming) {
-		nextEdges.push({ ...inc, id: `e-${inc.source}-${newNode.id}-${nanoid(4)}`, target: newNode.id });
+		nextEdges.push({
+			...inc,
+			id: `e-${inc.source}-${newNode.id}-${nanoid(4)}`,
+			target: newNode.id,
+		});
 	}
 	nextEdges.push({
 		id: `e-${newNode.id}-${beforeId}-${nanoid(4)}`,
@@ -149,11 +140,7 @@ function sameDepthSucc(path: PathStep[], idx: number): string | null {
 	return null;
 }
 
-function linkEdge(
-	edges: GraphEdge[],
-	sourceId: string,
-	targetId: string,
-): GraphEdge | undefined {
+function linkEdge(edges: GraphEdge[], sourceId: string, targetId: string): GraphEdge | undefined {
 	return edges.find((e) => e.source === sourceId && e.target === targetId);
 }
 
@@ -196,7 +183,7 @@ export function moveNodeBefore(
 	const removeIds = new Set(
 		[predMoveEdge.id, predBeforeEdge.id, moveSuccEdge?.id].filter(Boolean) as string[],
 	);
-	let nextEdges = edges.filter((e) => !removeIds.has(e.id));
+	const nextEdges = edges.filter((e) => !removeIds.has(e.id));
 
 	if (succId) {
 		nextEdges.push(cloneEdge(predMoveEdge, predId, succId));
@@ -237,11 +224,7 @@ export function removeChoiceOption(
 				: n,
 		),
 		edges: edges.filter(
-			(e) =>
-				!(
-					e.source === nodeId &&
-					(e.sourceHandle === optionId || e.data?.branch === optionId)
-				),
+			(e) => !(e.source === nodeId && (e.sourceHandle === optionId || e.data?.branch === optionId)),
 		),
 	};
 }
@@ -263,9 +246,7 @@ export function unlinkNode(
 		})),
 	);
 
-	const nextEdges = edges
-		.filter((e) => e.source !== nodeId && e.target !== nodeId)
-		.concat(bypass);
+	const nextEdges = edges.filter((e) => e.source !== nodeId && e.target !== nodeId).concat(bypass);
 
 	return {
 		nodes: nodes.filter((n) => n.id !== nodeId),

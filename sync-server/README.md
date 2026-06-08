@@ -10,15 +10,38 @@ User-managed `.git` folders inside an origin are allowed and sync like any other
 
 ## Run
 
+**Local dev** (loopback, authentication optional):
+
 ```bash
 cargo run -- --root ./projects --bind 127.0.0.1:3210
 ```
+
+**Remote / LAN access** (requires a shared secret):
+
+```bash
+TOKEN="$(openssl rand -hex 32)"
+cargo run -- --root ./projects --bind 0.0.0.0:3210 --auth-token "$TOKEN"
+```
+
+Paste the same token into Dialogsys **Settings → Access token** when using remote storage.
 
 With config:
 
 ```bash
 cargo run -- --config dialogsys-server.example.json
 ```
+
+Set `authToken` in `dialogsys-server.example.json`. The server refuses to bind to non-loopback addresses without a token.
+
+## Authentication
+
+When `authToken` is configured (or `--auth-token` is passed), all routes except `GET /health` require:
+
+```http
+Authorization: Bearer <authToken>
+```
+
+Use HTTPS behind a reverse proxy when the server is reachable outside your LAN.
 
 ## API
 

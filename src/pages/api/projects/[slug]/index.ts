@@ -1,28 +1,29 @@
 import type { APIRoute } from 'astro';
+import { updateProjectPatchSchema } from '../../../../lib/schema/patches';
 import {
 	getProject,
-	updateProject,
 	jsonResponse,
-	errorResponse,
+	parseJsonBody,
+	toErrorResponse,
+	updateProject,
 } from '../../../../lib/server/projects';
 
 export const GET: APIRoute = async ({ params }) => {
 	try {
-		const slug = params.slug!;
-		const project = await getProject(slug);
+		const project = await getProject(params.slug!);
 		return jsonResponse({ project });
 	} catch (e) {
-		return errorResponse((e as Error).message, 404);
+		return toErrorResponse(e, 404);
 	}
 };
 
 export const PATCH: APIRoute = async ({ params, request }) => {
 	try {
-		const slug = params.slug!;
-		const body = await request.json();
-		const project = await updateProject(slug, body);
+		const body = await parseJsonBody(request);
+		const patch = updateProjectPatchSchema.parse(body);
+		const project = await updateProject(params.slug!, patch);
 		return jsonResponse({ project });
 	} catch (e) {
-		return errorResponse((e as Error).message, 400);
+		return toErrorResponse(e);
 	}
 };

@@ -1,144 +1,164 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { api } from '../lib/api';
-	import type { Character, CharacterState } from '../lib/schema/characters';
-	import { portraitPreviewUrl } from '../lib/characters';
-	import {
-		cloneCharacter,
-		cloneState,
-		newCharacter,
-		newState,
-		slugifyStateLabel,
-	} from '../lib/characters/editor';
+import { tick } from 'svelte';
+import { api } from '../lib/api';
+import { portraitPreviewUrl } from '../lib/characters';
+import {
+	cloneCharacter,
+	cloneState,
+	newCharacter,
+	newState,
+	slugifyStateLabel,
+} from '../lib/characters/editor';
+import { uploadPortrait } from '../lib/client/download';
+import type { Character, CharacterState } from '../lib/schema/characters';
 
-	interface Props {
-		slug: string;
-		characters: Character[];
-		onsaved: (characters: Character[], saved: Character) => void;
+interface Props {
+	slug: string;
+	characters: Character[];
+	onsaved: (characters: Character[], saved: Character) => void;
+}
+
+let { slug, characters, onsaved }: Props = $props();
+
+let dialogEl = $state<HTMLDialogElement | null>(null);
+let characterDraft = $state<Character | null>(null);
+let characterEditIndex = $state<number | null>(null);
+let stateDraft = $state<CharacterState | null>(null);
+let stateEditIndex = $state<number | null>(null);
+let saving = $state(false);
+let error = $state('');
+let portraitUploading = $state(false);
+let portraitUploadError = $state('');
+
+export async function openAdd() {
+	characterDraft = newCharacter();
+	characterEditIndex = null;
+	error = '';
+	await tick();
+	dialogEl?.showModal();
+}
+
+export async function openEdit(character: Character) {
+	characterEditIndex = characters.findIndex((c) => c.id === character.id);
+	characterDraft = cloneCharacter(character);
+	error = '';
+	await tick();
+	dialogEl?.showModal();
+}
+
+function closeModal() {
+	closeStateModal();
+	dialogEl?.close();
+	characterDraft = null;
+	characterEditIndex = null;
+	error = '';
+}
+
+function openAddState() {
+	if (!characterDraft) return;
+	stateDraft = newState();
+	stateEditIndex = null;
+}
+
+function openEditState(index: number) {
+	if (!characterDraft) return;
+	stateDraft = cloneState(characterDraft.states[index]);
+	stateEditIndex = index;
+}
+
+function closeStateModal() {
+	stateDraft = null;
+	stateEditIndex = null;
+	portraitUploadError = '';
+}
+
+async function onPortraitSelected(e: Event) {
+	const input = e.currentTarget as HTMLInputElement;
+	const file = input.files?.[0];
+	input.value = '';
+	if (!file || !characterDraft || !stateDraft || portraitUploading) return;
+
+	portraitUploading = true;
+	portraitUploadError = '';
+	try {
+		const path = await uploadPortrait(slug, characterDraft.id, stateDraft.id, file);
+		stateDraft = { ...stateDraft, portraitPath: path };
+	} catch (err) {
+		portraitUploadError = (err as Error).message;
+	} finally {
+		portraitUploading = false;
 	}
+}
 
-	let { slug, characters, onsaved }: Props = $props();
-
-	let dialogEl = $state<HTMLDialogElement | null>(null);
-	let characterDraft = $state<Character | null>(null);
-	let characterEditIndex = $state<number | null>(null);
-	let stateDraft = $state<CharacterState | null>(null);
-	let stateEditIndex = $state<number | null>(null);
-	let saving = $state(false);
-	let error = $state('');
-
-	export async function openAdd() {
-		characterDraft = newCharacter();
-		characterEditIndex = null;
-		error = '';
-		await tick();
-		dialogEl?.showModal();
-	}
-
-	export async function openEdit(character: Character) {
-		characterEditIndex = characters.findIndex((c) => c.id === character.id);
-		characterDraft = cloneCharacter(character);
-		error = '';
-		await tick();
-		dialogEl?.showModal();
-	}
-
-	function closeModal() {
-		closeStateModal();
-		dialogEl?.close();
-		characterDraft = null;
-		characterEditIndex = null;
-		error = '';
-	}
-
-	function openAddState() {
-		if (!characterDraft) return;
-		stateDraft = newState();
-		stateEditIndex = null;
-	}
-
-	function openEditState(index: number) {
-		if (!characterDraft) return;
-		stateDraft = cloneState(characterDraft.states[index]);
-		stateEditIndex = index;
-	}
-
-	function closeStateModal() {
-		stateDraft = null;
-		stateEditIndex = null;
-	}
-
-	function applyStateDraft() {
-		if (!characterDraft || !stateDraft) return;
-		const draft = cloneState(stateDraft);
-		if (stateEditIndex === null) {
-			characterDraft = {
-				...characterDraft,
-				states: [...characterDraft.states, draft],
-			};
-		} else {
-			characterDraft = {
-				...characterDraft,
-				states: characterDraft.states.map((s, i) => (i === stateEditIndex ? draft : s)),
-			};
-		}
-		if (!characterDraft.states.some((s) => s.id === characterDraft!.defaultStateId)) {
-			characterDraft = { ...characterDraft, defaultStateId: characterDraft.states[0]!.id };
-		}
-		closeStateModal();
-	}
-
-	function removeStateFromModal() {
-		if (!characterDraft || stateEditIndex === null || !stateDraft) return;
-		if (stateDraft.id === characterDraft.defaultStateId) return;
+function applyStateDraft() {
+	if (!characterDraft || !stateDraft) return;
+	const draft = cloneState(stateDraft);
+	if (stateEditIndex === null) {
 		characterDraft = {
 			...characterDraft,
-			states: characterDraft.states.filter((_, i) => i !== stateEditIndex),
+			states: [...characterDraft.states, draft],
 		};
-		closeStateModal();
+	} else {
+		characterDraft = {
+			...characterDraft,
+			states: characterDraft.states.map((s, i) => (i === stateEditIndex ? draft : s)),
+		};
 	}
+	if (!characterDraft.states.some((s) => s.id === characterDraft!.defaultStateId)) {
+		characterDraft = { ...characterDraft, defaultStateId: characterDraft.states[0]!.id };
+	}
+	closeStateModal();
+}
 
-	function onStateLabelBlur() {
-		if (!stateDraft) return;
-		if (stateDraft.id === 'default' || stateDraft.id.startsWith('state_')) {
-			const next = slugifyStateLabel(stateDraft.label);
-			if (!next) return;
-			const taken = characterDraft?.states.some(
-				(s, i) => s.id === next && i !== stateEditIndex,
-			);
-			if (!taken) {
-				const wasDefault = characterDraft?.defaultStateId === stateDraft.id;
-				stateDraft = { ...stateDraft, id: next };
-				if (wasDefault && characterDraft) {
-					characterDraft = { ...characterDraft, defaultStateId: next };
-				}
+function removeStateFromModal() {
+	if (!characterDraft || stateEditIndex === null || !stateDraft) return;
+	if (stateDraft.id === characterDraft.defaultStateId) return;
+	characterDraft = {
+		...characterDraft,
+		states: characterDraft.states.filter((_, i) => i !== stateEditIndex),
+	};
+	closeStateModal();
+}
+
+function onStateLabelBlur() {
+	if (!stateDraft) return;
+	if (stateDraft.id === 'default' || stateDraft.id.startsWith('state_')) {
+		const next = slugifyStateLabel(stateDraft.label);
+		if (!next) return;
+		const taken = characterDraft?.states.some((s, i) => s.id === next && i !== stateEditIndex);
+		if (!taken) {
+			const wasDefault = characterDraft?.defaultStateId === stateDraft.id;
+			stateDraft = { ...stateDraft, id: next };
+			if (wasDefault && characterDraft) {
+				characterDraft = { ...characterDraft, defaultStateId: next };
 			}
 		}
 	}
+}
 
-	async function applyCharacterDraft(e: Event) {
-		e.preventDefault();
-		if (!characterDraft || saving) return;
-		error = '';
-		saving = true;
-		const draft = cloneCharacter(characterDraft);
-		const nextCharacters =
-			characterEditIndex === null
-				? [...characters, draft]
-				: characters.map((c, i) => (i === characterEditIndex ? draft : c));
-		try {
-			await api(`/api/projects/${slug}/characters`, {
-				method: 'PUT',
-				body: JSON.stringify({ characters: nextCharacters }),
-			});
-			onsaved(nextCharacters, draft);
-			closeModal();
-		} catch (err) {
-			error = (err as Error).message;
-		} finally {
-			saving = false;
-		}
+async function applyCharacterDraft(e: Event) {
+	e.preventDefault();
+	if (!characterDraft || saving) return;
+	error = '';
+	saving = true;
+	const draft = cloneCharacter(characterDraft);
+	const nextCharacters =
+		characterEditIndex === null
+			? [...characters, draft]
+			: characters.map((c, i) => (i === characterEditIndex ? draft : c));
+	try {
+		await api(`/api/projects/${slug}/characters`, {
+			method: 'PUT',
+			body: JSON.stringify({ characters: nextCharacters }),
+		});
+		onsaved(nextCharacters, draft);
+		closeModal();
+	} catch (err) {
+		error = (err as Error).message;
+	} finally {
+		saving = false;
 	}
+}
 </script>
 
 <dialog bind:this={dialogEl} class="modal" onclose={closeModal}>
@@ -205,7 +225,7 @@
 					</div>
 					<div class="state-summary-list">
 						{#each characterDraft.states as state, si (state.id)}
-							{@const statePortrait = portraitPreviewUrl(state.portraitPath)}
+							{@const statePortrait = portraitPreviewUrl(slug, state.portraitPath)}
 							<article class="state-summary-card">
 								<div class="portrait portrait-sm" title={state.portraitPath || 'No portrait'}>
 									{#if statePortrait}
@@ -272,12 +292,41 @@
 									pattern="[a-z][a-z0-9_]*"
 								/>
 							</div>
-							<div class="field">
-								<label for="state-portrait">Portrait (Godot res://)</label>
+							<div class="field portrait-field">
+								<label for="state-portrait-file">Portrait</label>
+								<div class="portrait-upload-row">
+									<div class="portrait portrait-sm" title={stateDraft.portraitPath || 'No portrait'}>
+										{#if portraitPreviewUrl(slug, stateDraft.portraitPath)}
+											<img src={portraitPreviewUrl(slug, stateDraft.portraitPath)!} alt="" />
+										{:else}
+											<span class="portrait-fallback">{stateDraft.label.charAt(0).toUpperCase()}</span>
+										{/if}
+									</div>
+									<div class="portrait-upload-controls">
+										<input
+											id="state-portrait-file"
+											type="file"
+											accept="image/png,image/jpeg,image/webp,image/gif"
+											disabled={portraitUploading}
+											onchange={onPortraitSelected}
+										/>
+										{#if portraitUploading}
+											<p class="portrait-hint">Uploading…</p>
+										{:else if stateDraft.portraitPath}
+											<p class="portrait-hint"><code>{stateDraft.portraitPath}</code></p>
+										{:else}
+											<p class="portrait-hint">Upload PNG, JPEG, WebP, or GIF (max 5 MB)</p>
+										{/if}
+										{#if portraitUploadError}
+											<p class="error">{portraitUploadError}</p>
+										{/if}
+									</div>
+								</div>
+								<label class="sr-only" for="state-portrait-url">Portrait URL override</label>
 								<input
-									id="state-portrait"
+									id="state-portrait-url"
 									bind:value={stateDraft.portraitPath}
-									placeholder="res://portraits/{characterDraft.id}_{stateDraft.id}.png"
+									placeholder="Or paste https://… URL"
 								/>
 							</div>
 						</div>
@@ -477,5 +526,42 @@
 	.error {
 		color: var(--error);
 		margin: 0 0 1rem;
+	}
+
+	.portrait-upload-row {
+		display: flex;
+		gap: 0.75rem;
+		align-items: flex-start;
+	}
+
+	.portrait-upload-controls {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.portrait-field input[type='file'] {
+		font-size: 0.85rem;
+	}
+
+	.portrait-hint {
+		margin: 0.35rem 0 0;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+	}
+
+	.portrait-sm {
+		width: 40px;
+		height: 40px;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
 	}
 </style>

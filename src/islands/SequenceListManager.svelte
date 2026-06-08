@@ -1,106 +1,104 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import Fuse from 'fuse.js';
-	import { api } from '../lib/api';
-	import type { SequenceListItem } from '../lib/schema/flow';
+import Fuse from 'fuse.js';
+import { onMount, tick } from 'svelte';
+import { api } from '../lib/api';
+import type { SequenceListItem } from '../lib/schema/flow';
 
-	interface Props {
-		slug: string;
+interface Props {
+	slug: string;
+}
+
+let { slug }: Props = $props();
+
+let sequences = $state<SequenceListItem[]>([]);
+let ready = $state(false);
+let loadError = $state('');
+let searchQuery = $state('');
+
+let createDialogEl = $state<HTMLDialogElement | null>(null);
+let draftId = $state('');
+let draftName = $state('');
+let modalError = $state('');
+let creating = $state(false);
+
+type ListedSequence = { sequence: SequenceListItem; index: number };
+
+const listedSequences = $derived.by((): ListedSequence[] => {
+	const q = searchQuery.trim();
+	if (!q) {
+		return sequences.map((sequence, index) => ({ sequence, index }));
 	}
-
-	let { slug }: Props = $props();
-
-	let sequences = $state<SequenceListItem[]>([]);
-	let ready = $state(false);
-	let loadError = $state('');
-	let searchQuery = $state('');
-
-	let createDialogEl = $state<HTMLDialogElement | null>(null);
-	let draftId = $state('');
-	let draftName = $state('');
-	let modalError = $state('');
-	let creating = $state(false);
-
-	type ListedSequence = { sequence: SequenceListItem; index: number };
-
-	const listedSequences = $derived.by((): ListedSequence[] => {
-		const q = searchQuery.trim();
-		if (!q) {
-			return sequences.map((sequence, index) => ({ sequence, index }));
-		}
-		const fuse = new Fuse(sequences, {
-			keys: [
-				{ name: 'displayName', weight: 0.6 },
-				{ name: 'id', weight: 0.4 },
-			],
-			threshold: 0.4,
-			ignoreLocation: true,
-		});
-		return fuse.search(q).map((result) => ({
-			sequence: result.item,
-			index: sequences.findIndex((s) => s.id === result.item.id),
-		}));
+	const fuse = new Fuse(sequences, {
+		keys: [
+			{ name: 'displayName', weight: 0.6 },
+			{ name: 'id', weight: 0.4 },
+		],
+		threshold: 0.4,
+		ignoreLocation: true,
 	});
+	return fuse.search(q).map((result) => ({
+		sequence: result.item,
+		index: sequences.findIndex((s) => s.id === result.item.id),
+	}));
+});
 
-	function updatedLabel(updatedAt: string): string {
-		if (!updatedAt) return 'Not saved yet';
-		const date = new Date(updatedAt);
-		if (Number.isNaN(date.getTime())) return 'Updated';
-		return `Updated ${date.toLocaleDateString()}`;
+function updatedLabel(updatedAt: string): string {
+	if (!updatedAt) return 'Not saved yet';
+	const date = new Date(updatedAt);
+	if (Number.isNaN(date.getTime())) return 'Updated';
+	return `Updated ${date.toLocaleDateString()}`;
+}
+
+async function load() {
+	ready = false;
+	loadError = '';
+	try {
+		const res = await api<{ sequences: SequenceListItem[] }>(`/api/projects/${slug}/sequences`);
+		sequences = res.sequences;
+		ready = true;
+	} catch (e) {
+		loadError = (e as Error).message;
+		sequences = [];
 	}
+}
 
-	async function load() {
-		ready = false;
-		loadError = '';
-		try {
-			const res = await api<{ sequences: SequenceListItem[] }>(
-				`/api/projects/${slug}/sequences`,
-			);
-			sequences = res.sequences;
-			ready = true;
-		} catch (e) {
-			loadError = (e as Error).message;
-			sequences = [];
-		}
-	}
+async function openCreateModal() {
+	draftId = '';
+	draftName = '';
+	modalError = '';
+	await tick();
+	createDialogEl?.showModal();
+}
 
-	async function openCreateModal() {
-		draftId = '';
-		draftName = '';
-		modalError = '';
-		await tick();
-		createDialogEl?.showModal();
-	}
+function closeCreateModal() {
+	createDialogEl?.close();
+	draftId = '';
+	draftName = '';
+	modalError = '';
+}
 
-	function closeCreateModal() {
+async function submitCreate(e: Event) {
+	e.preventDefault();
+	if (creating) return;
+	modalError = '';
+	creating = true;
+	const id = draftId.trim();
+	const displayName = draftName.trim();
+	try {
+		await api(`/api/projects/${slug}/sequences`, {
+			method: 'POST',
+			body: JSON.stringify({ id, displayName }),
+		});
 		createDialogEl?.close();
-		draftId = '';
-		draftName = '';
-		modalError = '';
+		window.location.assign(`/projects/${slug}/sequences/${id}`);
+	} catch (err) {
+		modalError = (err as Error).message;
+	} finally {
+		creating = false;
 	}
+}
 
-	async function submitCreate(e: Event) {
-		e.preventDefault();
-		if (creating) return;
-		modalError = '';
-		creating = true;
-		const id = draftId.trim();
-		const displayName = draftName.trim();
-		try {
-			await api(`/api/projects/${slug}/sequences`, {
-				method: 'POST',
-				body: JSON.stringify({ id, displayName }),
-			});
-			createDialogEl?.close();
-			window.location.assign(`/projects/${slug}/sequences/${id}`);
-		} catch (err) {
-			modalError = (err as Error).message;
-		} finally {
-			creating = false;
-		}
-	}
-
-	onMount(load);
+onMount(load);
 </script>
 
 <div class="toolbar">
