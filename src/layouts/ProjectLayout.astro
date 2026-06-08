@@ -29,7 +29,7 @@ const pageTitle = title ? `${title} · ${project.displayName}` : project.display
 	<div class:list={['project-shell', { 'project-shell--flow': variant === 'flow' }]}>
 		<div class="container">
 			<div class="project-header">
-				<a href="/" class="back-link">← All projects</a>
+				<a href="/" class="back-link" data-transmut="include">← All projects</a>
 				<ProjectTitle
 					client:load
 					slug={slug}

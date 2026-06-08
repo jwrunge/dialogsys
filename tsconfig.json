@@ -1,5 +1,11 @@
 {
 	"extends": "astro/tsconfigs/strict",
+	"compilerOptions": {
+		"paths": {
+			"@jwrunge/transmut": ["./node_modules/@jwrunge/transmut/src/index.ts"],
+			"@jwrunge/transmut/*": ["./node_modules/@jwrunge/transmut/src/*"]
+		}
+	},
 	"include": [".astro/types.d.ts", "**/*"],
 	"exclude": ["dist", "src-tauri/**"]
 }

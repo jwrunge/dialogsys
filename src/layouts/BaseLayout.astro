@@ -1,13 +1,17 @@
 ---
+import TranslationProvider from '../islands/TranslationProvider.svelte';
+import { getHtmlLangAttribute } from '../lib/server/translations';
+
 interface Props {
 	title?: string;
 }
 
 const { title = 'Dialogsys' } = Astro.props;
+const htmlLang = getHtmlLangAttribute();
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={htmlLang}>
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -15,7 +19,8 @@ const { title = 'Dialogsys' } = Astro.props;
 		<title>{title}</title>
 	</head>
 	<body>
-		<main>
+		<TranslationProvider client:load initialLocale={htmlLang} />
+		<main data-transmut="include">
 			<slot />
 		</main>
 	</body>

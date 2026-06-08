@@ -28,6 +28,7 @@ See `README.md` for full documentation. Common commands:
 | `npm run test` | Vitest unit tests |
 | `npm run lint` | Biome lint + format check |
 | `npm run check` | Astro TypeScript check (`astro check`) |
+| `npm run seed:translations` | Build `i18n/translations.sqlite` from `src/lib/i18n/catalog/*.json` |
 
 ### Tauri shell
 
@@ -59,6 +60,12 @@ The graph editor should show Entry, Direction, Line, Condition, Set var, and End
 
 - Default projects root: `./projects`
 - Override via **Settings** (`/settings`) or env var `DIALOGSYS_PROJECTS_ROOT` (see `.env.example`)
+
+### Localization
+
+- Client: `@jwrunge/transmut` `TranslationObserver` with `requireExplicitOptIn: true` (mark app UI with `data-transmut="include"`).
+- User/project content: `data-transmut-skip` on names, dialogue, notes, validation messages with dynamic IDs.
+- Locale preference: `locale` in `dialogsys.config.json` / Settings; catalogs in `src/lib/i18n/catalog/` (seeded to `i18n/translations.sqlite`).
 
 ### Gotchas
 

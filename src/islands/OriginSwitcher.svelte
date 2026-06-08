@@ -59,7 +59,7 @@ onMount(load);
 </script>
 
 {#if !hidden}
-	<div class="origin-switcher">
+	<div class="origin-switcher" data-transmut="include">
 		<span class="label">Working thread</span>
 		<div class="origin-list">
 			{#each origins as origin (origin.originId)}
@@ -69,8 +69,8 @@ onMount(load);
 					disabled={switching}
 					onclick={() => switchTo(origin.originId)}
 				>
-					<span class="name">{labelFor(origin)}</span>
-					<span class="meta">{new Date(origin.updatedAt).toLocaleString()}</span>
+					<span class="name" data-transmut-skip>{labelFor(origin)}</span>
+					<span class="meta" data-transmut-skip>{new Date(origin.updatedAt).toLocaleString()}</span>
 				</button>
 			{/each}
 		</div>
@@ -79,7 +79,7 @@ onMount(load);
 			another device&apos;s saved state.
 		</p>
 		{#if error}
-			<p class="error">{error}</p>
+			<p class="error" data-transmut-skip>{error}</p>
 		{/if}
 	</div>
 {/if}

@@ -4,13 +4,13 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 
 <BaseLayout title="Dialogsys">
-	<div class="container">
+	<div class="container" data-transmut="include">
 		<header class="page-header">
 			<div>
 				<h1>Projects</h1>
 				<p class="lead">Author branching scenes for Godot. Projects are stored as files on disk.</p>
 			</div>
-			<a class="btn" href="/settings">Settings</a>
+			<a class="btn" href="/settings" data-transmut-attrs="title" title="Settings">Settings</a>
 		</header>
 
 		<section>

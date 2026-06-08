@@ -87,11 +87,13 @@ const subtitle = $derived.by(() => {
 	{#if nodeType !== 'entry'}
 		<Handle type="target" position={Position.Top} />
 	{/if}
-	<span class="type">{labels[nodeType] ?? nodeType}</span>
-	<strong>{title}</strong>
-	{#if subtitle}
-		<p>{subtitle}{subtitle.length >= 40 ? '…' : ''}</p>
-	{/if}
+	<span class="type" data-transmut="include">{labels[nodeType] ?? nodeType}</span>
+	<div data-transmut-skip>
+		<strong>{title}</strong>
+		{#if subtitle}
+			<p>{subtitle}{subtitle.length >= 40 ? '…' : ''}</p>
+		{/if}
+	</div>
 	{#if nodeType === 'choice'}
 		{#each (data?.options ?? []) as opt, i (opt.id ?? i)}
 			<Handle

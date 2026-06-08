@@ -45,6 +45,7 @@ async function exportProject(format: 'godot' | 'generic') {
 onMount(validate);
 </script>
 
+<div data-transmut="include">
 <div class="toolbar">
 	<button type="button" class="btn" onclick={validate}>Validate</button>
 	<button
@@ -61,18 +62,18 @@ onMount(validate);
 </div>
 
 {#if error}
-	<p class="error">{error}</p>
+	<p class="error" data-transmut-skip>{error}</p>
 {/if}
 
 {#if result}
-	<p class="success">
+	<p class="success" data-transmut-skip>
 		Downloaded {result.filename} — {result.dialogCount} scene(s) at
 		{new Date(result.exportedAt).toLocaleString()}
 	</p>
 {/if}
 
 {#if issues.length > 0}
-	<ul class="issues">
+	<ul class="issues" data-transmut-skip>
 		{#each issues as issue}
 			<li class={issue.level}>
 				<span class="badge badge-{issue.level === 'error' ? 'error' : 'warning'}">{issue.level}</span>
@@ -107,6 +108,7 @@ onMount(validate);
 		<li><code>characters.json</code> and <code>manifest.json</code> describe the bundle</li>
 		<li>Wire into Unity, Unreal, or a custom runtime</li>
 	</ol>
+</div>
 </div>
 
 <style>

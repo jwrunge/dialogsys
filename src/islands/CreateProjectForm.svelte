@@ -27,6 +27,7 @@ async function create() {
 
 <form
 	class="create-form"
+	data-transmut="include"
 	onsubmit={(e) => {
 		e.preventDefault();
 		create();
@@ -45,7 +46,7 @@ async function create() {
 		<textarea id="description" bind:value={description} rows="2"></textarea>
 	</div>
 	{#if error}
-		<p class="error">{error}</p>
+		<p class="error" data-transmut-skip>{error}</p>
 	{/if}
 	<button type="submit" class="btn btn-primary" disabled={loading}>
 		{loading ? 'Creating…' : 'Create project'}

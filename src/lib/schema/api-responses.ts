@@ -26,6 +26,7 @@ export const settingsResponseSchema = z.object({
 	hasSyncServerToken: z.boolean(),
 	clientId: z.string(),
 	configFile: z.string().nullable(),
+	locale: z.string(),
 });
 
 export const charactersResponseSchema = charactersFileSchema;

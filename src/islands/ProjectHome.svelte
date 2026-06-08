@@ -32,43 +32,45 @@ async function load() {
 onMount(load);
 </script>
 
-{#if loadError}
-	<p class="error-banner">{loadError}</p>
-{:else if !ready}
-	<p class="muted">Loading projects…</p>
-{:else}
-	{#if storageMode === 'remote' && syncServerUrl}
-		<p class="remote-banner">
-			Projects sync through <code>{syncServerUrl}</code>. Each device keeps its own thread; switch
-			threads inside a project to work from another device&apos;s latest save.
-		</p>
-	{/if}
-
-	{#if projects.length === 0}
-		<p class="muted">No projects yet. Create one below or open the bundled demo.</p>
-		<p><a href="/projects/demo/characters" class="btn">Open demo project</a></p>
+<div data-transmut="include">
+	{#if loadError}
+		<p class="error-banner" data-transmut-skip>{loadError}</p>
+	{:else if !ready}
+		<p class="muted">Loading projects…</p>
 	{:else}
-		<div class="card-grid">
-			{#each projects as project (project.slug)}
-				<a class="card project-card" href={`/projects/${project.slug}/characters`}>
-					<h3>{project.displayName}</h3>
-					<p class="slug">{project.slug}</p>
-					{#if project.description}
-						<p class="desc">{project.description}</p>
-					{/if}
-					{#if storageMode === 'remote'}
-						<span class="badge">Remote</span>
-					{/if}
-				</a>
-			{/each}
-		</div>
-	{/if}
+		{#if storageMode === 'remote' && syncServerUrl}
+			<p class="remote-banner">
+				Projects sync through <code data-transmut-skip>{syncServerUrl}</code>. Each device keeps its own
+				thread; switch threads inside a project to work from another device&apos;s latest save.
+			</p>
+		{/if}
 
-	<section class="create-section">
-		<h2>Create project</h2>
-		<CreateProjectForm />
-	</section>
-{/if}
+		{#if projects.length === 0}
+			<p class="muted">No projects yet. Create one below or open the bundled demo.</p>
+			<p><a href="/projects/demo/characters" class="btn">Open demo project</a></p>
+		{:else}
+			<div class="card-grid">
+				{#each projects as project (project.slug)}
+					<a class="card project-card" href={`/projects/${project.slug}/characters`}>
+						<h3 data-transmut-skip>{project.displayName}</h3>
+						<p class="slug" data-transmut-skip>{project.slug}</p>
+						{#if project.description}
+							<p class="desc" data-transmut-skip>{project.description}</p>
+						{/if}
+						{#if storageMode === 'remote'}
+							<span class="badge">Remote</span>
+						{/if}
+					</a>
+				{/each}
+			</div>
+		{/if}
+
+		<section class="create-section">
+			<h2>Create project</h2>
+			<CreateProjectForm />
+		</section>
+	{/if}
+</div>
 
 <style>
 	.remote-banner {
@@ -128,12 +130,6 @@ onMount(load);
 	.create-section h2 {
 		font-size: 1.1rem;
 		margin-bottom: 0.5rem;
-	}
-
-	.hint {
-		color: var(--text-muted);
-		font-size: 0.85rem;
-		margin-bottom: 1rem;
 	}
 
 	.muted {

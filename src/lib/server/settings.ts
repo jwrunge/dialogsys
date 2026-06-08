@@ -27,7 +27,13 @@ export type AppSettingsInfo = {
 	syncServerUrl: string;
 	hasSyncServerToken: boolean;
 	clientId: string;
+	locale: string;
 };
+
+export function getConfiguredLocale(): string | undefined {
+	const locale = readConfigSync().locale?.trim();
+	return locale || undefined;
+}
 
 export function getConfigFilePath(): string {
 	return path.resolve(process.cwd(), CONFIG_FILENAME);
@@ -130,6 +136,7 @@ export function getAppSettingsInfo(): AppSettingsInfo {
 		syncServerUrl: config.syncServerUrl?.trim() ?? '',
 		hasSyncServerToken: Boolean(getStoredSyncServerToken()),
 		clientId: getClientId(),
+		locale: getConfiguredLocale() ?? 'en',
 	};
 }
 
@@ -175,11 +182,14 @@ function normalizeSettingsInput(
 		}
 	}
 
+	const locale = input.locale?.trim() || current.locale?.trim() || undefined;
+
 	const settings: AppSettings = {
 		projectsRoot: safeRoot,
 		storageMode,
 		syncServerUrl: syncServerUrl || undefined,
 		syncServerToken,
+		locale,
 	};
 
 	return { settings, externalTokenUpdate };

@@ -16,6 +16,7 @@ export const GET: APIRoute = async () => {
 			syncServerUrl: info.syncServerUrl,
 			hasSyncServerToken: info.hasSyncServerToken,
 			clientId: info.clientId,
+			locale: info.locale,
 			configFile: info.envOverride ? null : getConfigFilePath(),
 		});
 	} catch (e) {
@@ -32,6 +33,7 @@ export const PUT: APIRoute = async ({ request }) => {
 				storageMode: true,
 				syncServerUrl: true,
 				syncServerToken: true,
+				locale: true,
 			})
 			.partial()
 			.parse(body);
@@ -45,6 +47,7 @@ export const PUT: APIRoute = async ({ request }) => {
 			syncServerUrl: info.syncServerUrl,
 			hasSyncServerToken: info.hasSyncServerToken,
 			clientId: info.clientId,
+			locale: info.locale,
 			configFile: getConfigFilePath(),
 		});
 	} catch (e) {

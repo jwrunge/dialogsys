@@ -71,6 +71,7 @@ function issueLink(issue: ValidationIssue): string | null {
 onMount(refresh);
 </script>
 
+<div data-transmut="include">
 <div class="toolbar">
 	<button type="button" class="btn btn-primary" onclick={refresh} disabled={loading}>
 		{loading ? 'Checking…' : 'Refresh'}
@@ -98,9 +99,9 @@ onMount(refresh);
 				{#each list as issue}
 					<li class={issue.level}>
 						<span class="badge badge-{issue.level === 'error' ? 'error' : 'warning'}"
-							>{issue.level}</span
+							data-transmut-skip>{issue.level}</span
 						>
-						{issue.message}
+						<span data-transmut-skip>{issue.message}</span>
 						{#if issueLink(issue)}
 							<a href={issueLink(issue)!} class="link">Open in editor</a>
 						{:else if issue.characterId}
@@ -112,6 +113,7 @@ onMount(refresh);
 		</section>
 	{/each}
 {/if}
+</div>
 
 <style>
 	.toolbar {

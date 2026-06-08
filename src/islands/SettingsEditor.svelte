@@ -6,6 +6,8 @@ import {
 	isTauriRuntime,
 	saveSyncTokenToKeychain,
 } from '../lib/client/tauri-secrets';
+import { dispatchLocaleChange } from '../lib/i18n/events';
+import { LOCALE_OPTIONS } from '../lib/i18n/locales';
 import {
 	type SettingsResponse,
 	settingsResponseSchema,
@@ -32,6 +34,7 @@ let saved = $state(false);
 let connectionStatus = $state<'idle' | 'ok' | 'error'>('idle');
 let connectionMessage = $state('');
 let connectionProjectCount = $state(0);
+let locale = $state('en');
 
 const sourceLabel = $derived.by(() => {
 	switch (source) {
@@ -60,6 +63,7 @@ async function load() {
 		source = res.source;
 		envOverride = res.envOverride;
 		configFile = res.configFile;
+		locale = res.locale ?? 'en';
 		ready = true;
 	} catch (e) {
 		error = (e as Error).message;
@@ -122,6 +126,7 @@ async function save(e: Event) {
 			projectsRoot: projectsRoot.trim(),
 			storageMode,
 			syncServerUrl: syncServerUrl.trim(),
+			locale,
 		};
 
 		const tauri = await isTauriRuntime();
@@ -150,6 +155,8 @@ async function save(e: Event) {
 		resolvedPath = res.resolvedPath;
 		source = res.source;
 		configFile = res.configFile;
+		locale = res.locale ?? locale;
+		dispatchLocaleChange(locale);
 		saved = true;
 	} catch (e) {
 		error = (e as Error).message;
@@ -164,13 +171,29 @@ onMount(load);
 {#if !ready && !error}
 	<p class="muted">Loading settings…</p>
 {:else}
-	<form class="settings-form" onsubmit={save}>
+	<form class="settings-form" data-transmut="include" onsubmit={save}>
 		{#if error}
 			<p class="error">{error}</p>
 		{/if}
 		{#if saved}
 			<p class="success">Settings saved.</p>
 		{/if}
+
+		<section class="settings-section">
+			<h2>Language</h2>
+			<p class="hint">
+				Interface language for app menus and labels. Project content (dialogue, names, notes) is
+				not translated.
+			</p>
+			<div class="field">
+				<label for="locale">Language</label>
+				<select id="locale" bind:value={locale} disabled={envOverride}>
+					{#each LOCALE_OPTIONS as option (option.tag)}
+						<option value={option.tag}>{option.label}</option>
+					{/each}
+				</select>
+			</div>
+		</section>
 
 		<section class="settings-section">
 			<h2>Project storage</h2>
@@ -228,10 +251,17 @@ onMount(load);
 
 			{#if resolvedPath}
 				<div class="info-card">
-					<p><strong>Current location:</strong> <code>{resolvedPath}</code></p>
-					<p class="hint">Active source: {sourceLabel}</p>
-					{#if configFile}
-						<p class="hint">Saved in <code>{configFile}</code></p>
+				<p>
+					<strong>Current location:</strong>
+					<code data-transmut-skip>{resolvedPath}</code>
+				</p>
+				<p class="hint">
+					Active source: <span data-transmut-skip>{sourceLabel}</span>
+				</p>
+				{#if configFile}
+					<p class="hint">
+						Saved in <code data-transmut-skip>{configFile}</code>
+					</p>
 					{/if}
 				</div>
 			{/if}
@@ -284,9 +314,9 @@ onMount(load);
 					{testing ? 'Testing…' : 'Test connection'}
 				</button>
 				{#if connectionStatus === 'ok'}
-					<span class="status-ok">{connectionMessage}</span>
+					<span class="status-ok" data-transmut-skip>{connectionMessage}</span>
 				{:else if connectionStatus === 'error'}
-					<span class="status-error">{connectionMessage}</span>
+					<span class="status-error" data-transmut-skip>{connectionMessage}</span>
 				{/if}
 			</div>
 
@@ -311,7 +341,9 @@ onMount(load);
 
 		{#if clientId}
 			<div class="info-card">
-				<p class="hint"><strong>This device ID:</strong> <code>{clientId}</code></p>
+				<p class="hint">
+					<strong>This device ID:</strong> <code data-transmut-skip>{clientId}</code>
+				</p>
 			</div>
 		{/if}
 

@@ -25,7 +25,7 @@ export default defineConfig({
 			include: ['marked', 'isomorphic-dompurify'],
 		},
 		ssr: {
-			noExternal: [],
+			noExternal: ['sql.js'],
 		},
 	},
 });

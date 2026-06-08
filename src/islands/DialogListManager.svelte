@@ -106,6 +106,7 @@ async function submitCreate(e: Event) {
 onMount(load);
 </script>
 
+<div data-transmut="include">
 <div class="toolbar">
 	<input
 		class="search"
@@ -121,13 +122,15 @@ onMount(load);
 </div>
 
 {#if loadError}
-	<p class="error-banner">{loadError}</p>
+	<p class="error-banner" data-transmut-skip>{loadError}</p>
 {:else if !ready}
 	<p class="muted">Loading scenes…</p>
 {:else if dialogs.length === 0}
 	<p class="muted">No scenes yet. Click <strong>Add scene</strong> to create one.</p>
 {:else if listedDialogs.length === 0}
-	<p class="muted">No scenes match “{searchQuery.trim()}”.</p>
+	<p class="muted">
+		No scenes match “<span data-transmut-skip>{searchQuery.trim()}</span>”.
+	</p>
 {:else}
 	<div class="summary-list">
 		{#each listedDialogs as { dialog } (dialog.id)}
@@ -135,7 +138,7 @@ onMount(load);
 				<div class="scene-icon" title="Scene">
 					<span class="scene-icon-fallback">{dialog.displayName.charAt(0).toUpperCase()}</span>
 				</div>
-				<div class="summary-body">
+				<div class="summary-body" data-transmut-skip>
 					<div class="summary-head">
 						<div>
 							<h3>{dialog.displayName}</h3>
@@ -170,7 +173,7 @@ onMount(load);
 
 		<div class="modal-body">
 			{#if modalError}
-				<p class="error">{modalError}</p>
+				<p class="error" data-transmut-skip>{modalError}</p>
 			{/if}
 			<div class="field">
 				<label for="dialog-id">ID</label>
@@ -207,6 +210,7 @@ onMount(load);
 		</footer>
 	</form>
 </dialog>
+</div>
 
 <style>
 	.toolbar {

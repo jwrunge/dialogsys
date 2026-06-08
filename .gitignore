@@ -13,6 +13,7 @@ sync-server/target/
 
 # Local app settings (projects folder path)
 dialogsys.config.json
+i18n/translations.sqlite
 
 # Editor / IDE
 .vscode/

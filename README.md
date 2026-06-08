@@ -15,6 +15,18 @@ Open [http://localhost:4321](http://localhost:4321) and open the **demo** projec
 
 Projects are saved as folders on disk (default: `./projects` in the app directory). Open **Settings** (`/settings`) to change the path, or set `DIALOGSYS_PROJECTS_ROOT` in the environment to override.
 
+## Localization
+
+App menus and labels can be translated via [`@jwrunge/transmut`](https://www.npmjs.com/package/@jwrunge/transmut). Choose **Language** in Settings (English or Spanish today). Project content—scene names, dialogue lines, character bios, notes—is **not** translated (`data-transmut-skip`).
+
+Translation catalogs live in `src/lib/i18n/catalog/` (JSON keyed by English source text). Seed the SQLite store with:
+
+```bash
+npm run seed:translations
+```
+
+(`predev` runs this automatically.) Add a new locale by creating `src/lib/i18n/catalog/<lang>.json` and re-seeding.
+
 ## Project structure
 
 Each project is a folder:
