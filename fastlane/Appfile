@@ -1,0 +1,8 @@
+# iOS / App Store Connect (fill in when enabling TestFlight uploads)
+app_identifier('com.dialogsys.app')
+# apple_id(ENV['APPLE_ID'])
+# team_id(ENV['APPLE_TEAM_ID'])
+# itc_team_id(ENV['APPLE_ITC_TEAM_ID'])
+
+# Android package name (Play Console)
+package_name('com.dialogsys.app')

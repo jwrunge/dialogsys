@@ -1,3 +1,4 @@
+# Validates every push/PR. Desktop release builds: .github/workflows/release.yml
 name: CI
 
 on:

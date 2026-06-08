@@ -29,6 +29,16 @@ See `README.md` for full documentation. Common commands:
 | `npm run lint` | Biome lint + format check |
 | `npm run check` | Astro TypeScript check (`astro check`) |
 | `npm run seed:translations` | Build `i18n/translations.sqlite` from `src/lib/i18n/catalog/*.json` |
+| `npm run version:sync` | Sync `package.json` version into Rust `Cargo.toml` files |
+| `npm version patch` | Bump `package.json` version (Tauri reads it via `tauri.conf.json`; preversion syncs Cargo.toml) |
+
+### CI / releases
+
+- **CI** (`.github/workflows/ci.yml`): lint, test, `astro check`, build on every push/PR; `cargo test` for sync-server.
+- **Release** (`.github/workflows/release.yml`): Tauri desktop bundles for macOS (arm + Intel), Linux, Windows — triggered by `v*` tags or manual dispatch. Creates a **GitHub Release** with downloadable artifacts.
+- **Mobile**: Fastlane scaffold in `fastlane/` (`bundle exec fastlane ios build`, etc.); not wired to CI yet.
+
+App version source of truth: **`package.json` `version`**, referenced by Tauri as `"version": "../package.json"` in `src-tauri/tauri.conf.json`.
 
 ### Tauri shell
 

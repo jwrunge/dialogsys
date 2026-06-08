@@ -109,6 +109,40 @@ Open **Export** in a project to validate and download a zip bundle.
 3. Autoload `DialogueRunner.gd`.
 4. Call `start("tavern_intro")` and wire UI to `line_shown`, `choices_shown`, `dialogue_ended`, and `run_command`.
 
+## Versioning
+
+**Source of truth:** `package.json` → `version`.
+
+Tauri reads it natively — `src-tauri/tauri.conf.json` sets `"version": "../package.json"`, so desktop bundles, iOS `CFBundleShortVersionString`, and Android `versionName` / `versionCode` all derive from that file at build time (no manual plist sync).
+
+`npm run version:sync` only updates Rust `Cargo.toml` manifests (`src-tauri/`, `sync-server/`) for crate metadata. Use `npm version patch|minor|major` to bump; the `preversion` hook runs sync automatically.
+
+## CI/CD and downloads
+
+| Workflow | When | What |
+|----------|------|------|
+| [CI](.github/workflows/ci.yml) | Push / PR to `main` | Lint, unit tests, `astro check`, production web build, sync-server tests |
+| [Release](.github/workflows/release.yml) | Push tag `v*` (e.g. `v0.1.0`) or manual dispatch | Desktop installers for **macOS** (Apple Silicon + Intel), **Linux**, **Windows** |
+
+**GitHub Releases** host the built artifacts — you do not need separate file hosting for desktop downloads. After a release workflow completes, publish the draft release on GitHub; users download from:
+
+`https://github.com/<owner>/dialogsys/releases/latest`
+
+GitHub provides direct asset URLs on each release page. For very large files or custom domains, you can mirror artifacts elsewhere, but GitHub Releases is the intended distribution path.
+
+### Cutting a desktop release
+
+```bash
+npm version minor          # bumps package.json and syncs manifests
+git push && git push origin v0.2.0   # tag triggers release workflow
+```
+
+Ensure **Settings → Actions → General → Workflow permissions** allows read/write for releases.
+
+### Mobile (Fastlane)
+
+iOS/Android auto-build scaffolding lives in `fastlane/`. Not part of CI yet — see `fastlane/README.md` for lanes and store signing setup.
+
 ## Desktop and mobile app (Tauri)
 
 Dialogsys ships as a [Tauri](https://v2.tauri.app) shell around the same Astro app. One shared codebase — no per-OS UI logic.

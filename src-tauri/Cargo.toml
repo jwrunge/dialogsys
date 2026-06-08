@@ -1,6 +1,6 @@
 [package]
 name = "dialogsys"
-version = "0.0.1"
+version = "0.1.0"
 description = "Dialogsys desktop and mobile shell"
 authors = ["Dialogsys"]
 license = "MIT"

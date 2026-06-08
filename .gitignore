@@ -23,6 +23,15 @@ i18n/translations.sqlite
 .DS_Store
 Thumbs.db
 
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+*.p8
+play-store-credentials.json
+google-play-api-key.json
+
 # User-created projects (bundled demo folder is excepted below)
 projects/*
 !projects/demo/

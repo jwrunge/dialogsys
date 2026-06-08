@@ -1,7 +1,7 @@
 {
 	"name": "dialogsys",
 	"type": "module",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"engines": {
 		"node": ">=22.12.0"
 	},
@@ -28,7 +28,13 @@
 		"tauri:android:build": "tauri android build",
 		"tauri:ios:dev": "tauri ios dev",
 		"tauri:ios:build": "tauri ios build",
-		"tauri:prepare": "node scripts/prepare-tauri.mjs"
+		"tauri:prepare": "node scripts/prepare-tauri.mjs",
+		"version:sync": "node scripts/sync-version.mjs",
+		"preversion": "node scripts/sync-version.mjs",
+		"fastlane:ios:build": "bundle exec fastlane ios build",
+		"fastlane:ios:beta": "bundle exec fastlane ios beta",
+		"fastlane:android:build": "bundle exec fastlane android build",
+		"fastlane:android:internal": "bundle exec fastlane android internal"
 	},
 	"dependencies": {
 		"@astrojs/node": "^10.1.3",
