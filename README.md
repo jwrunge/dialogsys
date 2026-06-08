@@ -50,6 +50,17 @@ Snapshots are stored as `autosave/*` branches and pruned after **7 days** (confi
 
 **Git must be installed** (`git` on your PATH). If it is missing, the app still saves project files normally; the **History** page shows an install prompt and autosave is skipped.
 
+## Self-hosted sync server
+
+Dialogsys includes a simple Rust sync server in `sync-server/`. It stores the same project folder format, exposes HTTP endpoints for listing projects and reading/writing files, and can run optional command hooks such as JavaScript scripts or Git automation on reads, writes, and snapshots.
+
+```bash
+cd sync-server
+cargo run -- --root ./projects --bind 127.0.0.1:3210
+```
+
+The server intentionally serves HTTP only; put HTTPS behind nginx, Caddy, Traefik, or another reverse proxy. See `sync-server/README.md` for the API and hook contract.
+
 ## Godot integration
 
 1. In Dialogsys, open **Export** and click **Export to Godot**.

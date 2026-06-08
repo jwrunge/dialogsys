@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .astro/
+target/
+sync-server/target/
 
 .env
 .env.*
