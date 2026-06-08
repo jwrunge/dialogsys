@@ -39,17 +39,6 @@ let locale = $state('en');
 let deviceDisplayName = $state('');
 let syncAccessRole = $state<'read' | 'write'>('write');
 
-const sourceLabel = $derived.by(() => {
-	switch (source) {
-		case 'env':
-			return 'Environment variable (DIALOGSYS_PROJECTS_ROOT)';
-		case 'config':
-			return 'Settings file';
-		default:
-			return 'Default';
-	}
-});
-
 async function load() {
 	ready = false;
 	error = '';
@@ -176,10 +165,11 @@ async function save(e: Event) {
 onMount(load);
 </script>
 
+<div data-transmut="include">
 {#if !ready && !error}
 	<p class="muted">Loading settings…</p>
 {:else}
-	<form class="settings-form" data-transmut="include" onsubmit={save}>
+	<form class="settings-form" onsubmit={save}>
 		{#if error}
 			<p class="error">{error}</p>
 		{/if}
@@ -190,8 +180,7 @@ onMount(load);
 		<section class="settings-section">
 			<h2>Language</h2>
 			<p class="hint">
-				Interface language for app menus and labels. Project content (dialogue, names, notes) is
-				not translated.
+				Interface language for app menus and labels. Project content (dialogue, names, notes) is not translated.
 			</p>
 			<div class="field">
 				<label for="locale">Language</label>
@@ -206,8 +195,7 @@ onMount(load);
 		<section class="settings-section">
 			<h2>Project storage</h2>
 			<p class="hint">
-				Local mode stores projects on this machine. Remote mode reads and writes through your
-				sync server; each device keeps its own version thread.
+				Local mode stores projects on this machine. Remote mode reads and writes through your sync server; each device keeps its own version thread.
 			</p>
 
 			<div class="mode-toggle" role="radiogroup" aria-label="Storage mode">
@@ -252,8 +240,7 @@ onMount(load);
 					disabled={envOverride}
 				/>
 				<p class="hint">
-					Relative paths resolve from the app directory. Each project is a subfolder with
-					<code>project.json</code>, scenes, sequences, and more.
+					<span>Relative paths resolve from the app directory. Each project is a subfolder with</span><code data-transmut-skip>project.json</code><span>, scenes, sequences, and more.</span>
 				</p>
 			</div>
 
@@ -264,11 +251,17 @@ onMount(load);
 					<code data-transmut-skip>{resolvedPath}</code>
 				</p>
 				<p class="hint">
-					Active source: <span data-transmut-skip>{sourceLabel}</span>
+					{#if source === 'env'}
+						Active source: Environment variable (DIALOGSYS_PROJECTS_ROOT)
+					{:else if source === 'config'}
+						Active source: Settings file
+					{:else}
+						Active source: Default
+					{/if}
 				</p>
 				{#if configFile}
 					<p class="hint">
-						Saved in <code data-transmut-skip>{configFile}</code>
+						<span>Saved in</span> <code data-transmut-skip>{configFile}</code>
 					</p>
 					{/if}
 				</div>
@@ -301,8 +294,7 @@ onMount(load);
 					disabled={envOverride}
 				/>
 				<p class="hint">
-					Base URL of your self-hosted server from <code>sync-server/</code>. Use HTTPS behind a
-					reverse proxy when accessing from other devices.
+					Base URL of your self-hosted server from <code data-transmut-skip>sync-server/</code>. Use HTTPS behind a reverse proxy when accessing from other devices.
 				</p>
 			</div>
 
@@ -317,8 +309,7 @@ onMount(load);
 					disabled={envOverride}
 				/>
 				<p class="hint">
-					Must match <code>authToken</code> in the server config. Leave blank to keep the saved token.
-					Generate one with <code>openssl rand -hex 32</code>.
+					<span>Must match</span> <code data-transmut-skip>authToken</code> <span>in the server config. Leave blank to keep the saved token. Generate one with</span> <code data-transmut-skip>openssl rand -hex 32</code><span>.</span>
 				</p>
 				{#if hasSyncServerToken}
 					<label class="clear-token">
@@ -358,8 +349,7 @@ onMount(load);
 
 		{#if envOverride}
 			<p class="warning">
-				<code>DIALOGSYS_PROJECTS_ROOT</code> is set in the environment, so the local folder path
-				is overridden. Remove that variable to control it from here.
+				The local folder path is overridden because <code data-transmut-skip>DIALOGSYS_PROJECTS_ROOT</code> is set in the environment. Remove that variable to control it from here.
 			</p>
 		{/if}
 
@@ -383,6 +373,7 @@ onMount(load);
 		</div>
 	</form>
 {/if}
+</div>
 
 <style>
 	.settings-form {

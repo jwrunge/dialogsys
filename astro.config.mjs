@@ -25,7 +25,7 @@ export default defineConfig({
 			include: ['marked', 'isomorphic-dompurify'],
 		},
 		ssr: {
-			noExternal: ['sql.js'],
+			noExternal: ['sql.js', '@jwrunge/transmut'],
 		},
 	},
 });

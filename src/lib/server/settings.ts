@@ -9,10 +9,12 @@ import {
 } from '../schema/settings';
 import { isValidSyncServerUrl } from '../sync/client';
 import { getClientId } from './client';
+import { readConfigSync, updateConfig } from './config-file';
 import { validateConfiguredProjectsRoot } from './projectsRoot';
 
 const DEFAULT_ROOT = './projects';
-const CONFIG_FILENAME = 'dialogsys.config.json';
+
+export { getConfigFilePath } from './config-file';
 
 export type ProjectsRootSource = 'env' | 'config' | 'default';
 
@@ -44,21 +46,6 @@ export function getPluginSettings(): NonNullable<AppSettings['plugins']> {
 export function getConfiguredLocale(): string | undefined {
 	const locale = readConfigSync().locale?.trim();
 	return locale || undefined;
-}
-
-export function getConfigFilePath(): string {
-	return path.resolve(process.cwd(), CONFIG_FILENAME);
-}
-
-function readConfigSync(): AppSettings {
-	try {
-		const raw = fs.readFileSync(getConfigFilePath(), 'utf-8');
-		return appSettingsSchema.parse(JSON.parse(raw));
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') return {};
-		if (e instanceof SyntaxError) return {};
-		throw e;
-	}
 }
 
 export function resolveProjectsRoot(settings?: AppSettings): ProjectsRootInfo {
@@ -173,14 +160,7 @@ export async function getAppSettingsInfoAsync(): Promise<AppSettingsInfo> {
 }
 
 export async function loadSettings(): Promise<AppSettings> {
-	const file = getConfigFilePath();
-	try {
-		const raw = await fsPromises.readFile(file, 'utf-8');
-		return appSettingsSchema.parse(JSON.parse(raw));
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') return {};
-		throw e;
-	}
+	return readConfigSync();
 }
 
 function normalizeSettingsInput(
@@ -245,10 +225,7 @@ export async function saveSettings(input: AppSettings): Promise<AppSettingsInfo>
 		await writeSyncTokenFile(externalTokenUpdate);
 	}
 
-	const file = getConfigFilePath();
-	const tmp = `${file}.${Date.now()}.tmp`;
-	await fsPromises.writeFile(tmp, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-	await fsPromises.rename(tmp, file);
+	await updateConfig(() => data);
 
 	await fsPromises.mkdir(path.resolve(process.cwd(), data.projectsRoot!), { recursive: true });
 

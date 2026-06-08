@@ -9,19 +9,12 @@ const info = getAppSettingsInfo();
 <BaseLayout title="Settings · Dialogsys">
 	<div class="container" data-transmut="include">
 		<h1>Settings</h1>
-		<p class="lead">
-			Configure local project storage or connect to a self-hosted Dialogsys sync server.
-			{info.storageMode === 'remote' && info.syncServerUrl ? (
-				<>
-					{' '}Currently using remote storage at{' '}
-					<code data-transmut-skip>{info.syncServerUrl}</code>.
-				</>
-			) : (
-				<>
-					{' '}Local projects folder: <code data-transmut-skip>{info.resolvedPath}</code>.
-				</>
-			)}
-		</p>
+		<p class="lead">Configure local project storage or connect to a self-hosted Dialogsys sync server.</p>
+		{info.storageMode === 'remote' && info.syncServerUrl ? (
+			<p class="lead"><span>Currently using remote storage at</span> <code data-transmut-skip>{info.syncServerUrl}</code><span>.</span></p>
+		) : (
+			<p class="lead"><span>Local projects folder:</span> <code data-transmut-skip>{info.resolvedPath}</code><span>.</span></p>
+		)}
 		<SettingsEditor client:load />
 	</div>
 </BaseLayout>

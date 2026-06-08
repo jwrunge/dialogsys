@@ -24,6 +24,16 @@ async function fetchTranslations(
 	return (await response.json()) as Record<string, string>;
 }
 
+const observerOptions = {
+	requireExplicitOptIn: true,
+	textSelector: '[data-transmut]',
+	attributeSelector: '[data-transmut-attrs]',
+	attributeNames: ['title', 'aria-label', 'aria-description', 'placeholder', 'alt'],
+	skipEditable: true,
+	setLanguageAttributes: true,
+	direction: 'auto' as const,
+};
+
 export function getTranslationObserver(): TranslationObserver | null {
 	return observer;
 }
@@ -31,34 +41,29 @@ export function getTranslationObserver(): TranslationObserver | null {
 export async function initTranslationObserver(localeTag: string): Promise<TranslationObserver> {
 	const { langCode, region, tag } = parseLocaleTag(localeTag);
 
-	if (observer && observerLocale === tag) {
+	if (!observer) {
+		observer = new TranslationObserver(
+			SOURCE_LOCALE,
+			tag,
+			fetchTranslations,
+			24,
+			undefined,
+			observerOptions,
+		);
+		observerLocale = tag;
 		return observer;
 	}
 
-	if (observer) {
-		observer.disconnect();
-		observer = null;
+	if (observerLocale !== tag) {
+		observerLocale = tag;
+		await observer.changeLocale(langCode, region);
 	}
 
-	observer = new TranslationObserver(SOURCE_LOCALE, tag, fetchTranslations, 24, undefined, {
-		requireExplicitOptIn: true,
-		textSelector: '[data-transmut]',
-		attributeSelector: '[data-transmut-attrs]',
-		attributeNames: ['title', 'aria-label', 'aria-description', 'placeholder', 'alt'],
-		skipEditable: true,
-		setLanguageAttributes: true,
-		direction: 'auto',
-	});
-
-	observerLocale = tag;
-	await observer.changeLocale(langCode, region);
 	return observer;
 }
 
 export async function applyAppLocale(localeTag: string): Promise<void> {
-	const obs = await initTranslationObserver(localeTag);
-	const { langCode, region } = parseLocaleTag(localeTag);
-	await obs.changeLocale(langCode, region);
+	await initTranslationObserver(localeTag);
 }
 
 export function bindLocaleChangeListener(): () => void {

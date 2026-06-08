@@ -3,8 +3,8 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import type { GetTransMapFn } from '@jwrunge/transmut/observer/types';
 import type { Database, SqlJsStatic } from 'sql.js';
-import initSqlJs from 'sql.js';
 import { parseLocaleTag } from '../i18n/locales';
+import { resolveInitSqlJs } from './sqljs';
 
 const require = createRequire(import.meta.url);
 const SQL_WASM_PATH = process.env.SQLJS_WASM_PATH ?? require.resolve('sql.js/dist/sql-wasm.wasm');
@@ -13,8 +13,10 @@ let sqlJsInstancePromise: Promise<SqlJsStatic> | null = null;
 
 async function loadSqlJs(): Promise<SqlJsStatic> {
 	if (!sqlJsInstancePromise) {
+		const initSqlJs = resolveInitSqlJs();
 		sqlJsInstancePromise = initSqlJs({
-			locateFile: (file: string) => (file === 'sql-wasm.wasm' ? SQL_WASM_PATH : path.resolve(file)),
+			locateFile: (file: string) =>
+				file === 'sql-wasm.wasm' ? SQL_WASM_PATH : path.resolve(file),
 		});
 	}
 	return sqlJsInstancePromise;
