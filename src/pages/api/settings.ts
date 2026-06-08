@@ -17,6 +17,7 @@ export const GET: APIRoute = async () => {
 			envOverride: info.envOverride,
 			storageMode: info.storageMode,
 			syncServerUrl: info.syncServerUrl,
+			clientId: info.clientId,
 			configFile: info.envOverride ? null : getConfigFilePath(),
 		});
 	} catch (e) {
@@ -39,6 +40,7 @@ export const PUT: APIRoute = async ({ request }) => {
 			envOverride: info.envOverride,
 			storageMode: info.storageMode,
 			syncServerUrl: info.syncServerUrl,
+			clientId: info.clientId,
 			configFile: getConfigFilePath(),
 		});
 	} catch (e) {

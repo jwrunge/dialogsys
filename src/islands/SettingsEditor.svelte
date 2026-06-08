@@ -11,10 +11,12 @@
 		envOverride: boolean;
 		storageMode: StorageMode;
 		syncServerUrl: string;
+		clientId: string;
 		configFile: string | null;
 	};
 
 	let projectsRoot = $state('./projects');
+	let clientId = $state('');
 	let storageMode = $state<StorageMode>('local');
 	let syncServerUrl = $state('');
 	let resolvedPath = $state('');
@@ -49,6 +51,7 @@
 			projectsRoot = res.projectsRoot;
 			storageMode = res.storageMode ?? 'local';
 			syncServerUrl = res.syncServerUrl ?? '';
+			clientId = res.clientId ?? '';
 			resolvedPath = res.resolvedPath;
 			source = res.source;
 			envOverride = res.envOverride;
@@ -115,6 +118,7 @@
 			projectsRoot = res.projectsRoot;
 			storageMode = res.storageMode ?? 'local';
 			syncServerUrl = res.syncServerUrl ?? '';
+			clientId = res.clientId ?? '';
 			resolvedPath = res.resolvedPath;
 			source = res.source;
 			configFile = res.configFile;
@@ -143,8 +147,8 @@
 		<section class="settings-section">
 			<h2>Project storage</h2>
 			<p class="hint">
-				Choose where the home page loads projects from. Local folder is always used for saves
-				on this machine unless you run the app against a remote data directory.
+				Local mode stores projects on this machine. Remote mode reads and writes through your
+				sync server; each device keeps its own version thread.
 			</p>
 
 			<div class="mode-toggle" role="radiogroup" aria-label="Storage mode">
@@ -249,6 +253,12 @@
 				<code>DIALOGSYS_PROJECTS_ROOT</code> is set in the environment, so the local folder path
 				is overridden. Remove that variable to control it from here.
 			</p>
+		{/if}
+
+		{#if clientId}
+			<div class="info-card">
+				<p class="hint"><strong>This device ID:</strong> <code>{clientId}</code></p>
+			</div>
 		{/if}
 
 		<div class="actions">

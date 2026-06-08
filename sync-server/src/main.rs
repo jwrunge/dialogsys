@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, path::PathBuf};
 
-use dialogsys_server::{default_bind_addr, load_config, serve, AppState, GitConfig, HookConfig};
+use dialogsys_server::{default_bind_addr, load_config, serve, AppState, HookConfig};
 
 #[derive(Debug, Default)]
 struct Cli {
@@ -32,8 +32,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let addr: SocketAddr = bind.parse()?;
 
     let hooks: HookConfig = config.hooks;
-    let git: GitConfig = config.git;
-    let state = AppState::new(root, hooks, git);
+    let state = AppState::new(root, hooks);
 
     println!("Dialogsys server listening on http://{addr}");
     println!("Projects root: {}", state.root().display());

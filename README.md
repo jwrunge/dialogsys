@@ -37,22 +37,13 @@ Open **Issues** (`/projects/<slug>/issues`) to see warnings such as:
 
 On condition and choice nodes, use **Force branch** or per-edge **Just use this branch** to always follow one path at export and suppress alternate-branch warnings.
 
-## History and autosave (Git)
+## Cloud sync (self-hosted server)
 
-Each project folder is a **local Git repository** (not pushed to GitHub). Snapshots are created when you:
+Dialogsys includes a Rust sync server in `sync-server/`. In **Settings**, choose **Remote sync server** and enter its URL.
 
-- Save characters (immediate), create/delete scenes (immediate)
-- Save scenes or notes (debounced, default 60s)
-- Use **Save snapshot now** on the History page
-- Keep a project page open (interval autosave, default 5 minutes)
+Each app install gets a **device ID** (UUID). Saves go to that device's **origin thread** on the server. Inside a project, use **Working thread** to switch to another device's latest saved version.
 
-Snapshots are stored as `autosave/*` branches and pruned after **7 days** (configurable via `SNAPSHOT_RETENTION_DAYS`). Restore replaces project files with a past snapshot and records a new autosave afterward.
-
-**Git must be installed** (`git` on your PATH). If it is missing, the app still saves project files normally; the **History** page shows an install prompt and autosave is skipped.
-
-## Self-hosted sync server
-
-Dialogsys includes a simple Rust sync server in `sync-server/`. It stores the same project folder format, exposes HTTP endpoints for listing projects and reading/writing files, and can run optional command hooks such as JavaScript scripts or Git automation on reads, writes, and snapshots.
+Local mode keeps projects on disk only. Remote mode reads and writes through the sync server (with a local cache for performance). You can add your own Git repo inside a project if you want; `.git` files sync like any other project files.
 
 ```bash
 cd sync-server

@@ -48,8 +48,8 @@
 {:else}
 	{#if storageMode === 'remote' && syncServerUrl}
 		<p class="remote-banner">
-			Showing projects from <code>{syncServerUrl}</code>. Open a project to edit using this
-			app instance’s local storage.
+			Projects sync through <code>{syncServerUrl}</code>. Each device keeps its own thread; switch
+			threads inside a project to work from another device&apos;s latest save.
 		</p>
 	{/if}
 
@@ -75,9 +75,6 @@
 
 	<section class="create-section">
 		<h2>Create project</h2>
-		{#if storageMode === 'remote'}
-			<p class="hint">New projects are created in the local folder on this machine.</p>
-		{/if}
 		<CreateProjectForm />
 	</section>
 {/if}

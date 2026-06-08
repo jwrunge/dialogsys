@@ -14,7 +14,7 @@ use axum::{
     extract::{Path as AxumPath, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -36,15 +36,13 @@ static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub struct AppState {
     root: Arc<PathBuf>,
     hooks: Arc<HookConfig>,
-    git: Arc<GitConfig>,
 }
 
 impl AppState {
-    pub fn new(root: PathBuf, hooks: HookConfig, git: GitConfig) -> Self {
+    pub fn new(root: PathBuf, hooks: HookConfig) -> Self {
         Self {
             root: Arc::new(root),
             hooks: Arc::new(hooks),
-            git: Arc::new(git),
         }
     }
 
@@ -60,8 +58,6 @@ pub struct ServerConfig {
     pub bind: Option<String>,
     #[serde(default)]
     pub hooks: HookConfig,
-    #[serde(default)]
-    pub git: GitConfig,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -166,6 +162,7 @@ pub struct ManifestResponse {
 #[serde(rename_all = "camelCase")]
 pub struct FileReadResponse {
     pub project: String,
+    pub origin_id: String,
     pub path: String,
     pub content: String,
     pub timestamp: String,
@@ -183,14 +180,23 @@ pub struct FileWriteResponse {
     pub request_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SnapshotResponse {
-    pub project: String,
-    pub created: bool,
-    pub pushed: bool,
-    pub timestamp: String,
-    pub request_id: String,
+pub struct OriginMeta {
+    pub origin_id: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OriginsResponse {
+    pub origins: Vec<OriginMeta>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OriginResponse {
+    pub origin: OriginMeta,
 }
 
 #[derive(Debug, Serialize)]
@@ -299,12 +305,18 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/projects", get(list_projects).post(create_project))
         .route("/projects/{slug}", get(get_project))
-        .route("/projects/{slug}/files", get(list_files))
+        .route("/projects/{slug}/origins", get(list_origins))
+        .route("/projects/{slug}/origins/{origin_id}", post(ensure_origin))
         .route(
-            "/projects/{slug}/files/{*file_path}",
-            get(read_file).put(write_file),
+            "/projects/{slug}/origins/{origin_id}/files",
+            get(list_origin_files),
         )
-        .route("/projects/{slug}/snapshot", post(create_snapshot))
+        .route(
+            "/projects/{slug}/origins/{origin_id}/files/{*file_path}",
+            get(read_origin_file)
+                .put(write_origin_file)
+                .delete(delete_origin_file),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -384,39 +396,14 @@ async fn create_project(
         updated_at: now,
     };
 
-    fs::create_dir_all(dir.join("dialogs"))
+    fs::create_dir_all(dir.join(".dialogsys"))
         .await
         .map_err(internal_error)?;
-    fs::create_dir_all(dir.join("sequences"))
-        .await
-        .map_err(internal_error)?;
-    fs::create_dir_all(dir.join("notes"))
-        .await
-        .map_err(internal_error)?;
-    fs::create_dir_all(dir.join("export/godot/dialogs"))
+    fs::create_dir_all(dir.join("origins"))
         .await
         .map_err(internal_error)?;
     write_json_atomic(&dir.join("project.json"), &project).await?;
-    write_json_atomic(
-        &dir.join("characters.json"),
-        &serde_json::json!({ "characters": [] }),
-    )
-    .await?;
-    write_json_atomic(
-        &dir.join("gameState.json"),
-        &serde_json::json!({ "properties": [] }),
-    )
-    .await?;
-    write_atomic(
-        &dir.join("notes/overview.md"),
-        &format!("# {}\n\nProject overview notes.\n", project.display_name),
-    )
-    .await?;
-
-    if state.git.enabled {
-        ensure_git_repo(&state, &input.slug).await?;
-        let _ = commit_project(&state, &input.slug, "project created").await?;
-    }
+    write_origins_index(&dir, &[]).await?;
 
     Ok((StatusCode::CREATED, Json(ProjectResponse { project })))
 }
@@ -429,24 +416,47 @@ async fn get_project(
     Ok(Json(ProjectResponse { project }))
 }
 
-async fn list_files(
+async fn list_origins(
     State(state): State<AppState>,
     AxumPath(slug): AxumPath<String>,
-) -> Result<Json<ManifestResponse>, AppError> {
+) -> Result<Json<OriginsResponse>, AppError> {
     let dir = project_dir(&state, &slug)?;
     ensure_project_exists(&dir).await?;
+    let origins = read_origins_index(&dir).await?;
+    Ok(Json(OriginsResponse { origins }))
+}
+
+async fn ensure_origin(
+    State(state): State<AppState>,
+    AxumPath((slug, origin_id)): AxumPath<(String, String)>,
+) -> Result<Json<OriginResponse>, AppError> {
+    validate_origin_id(&origin_id)?;
+    let dir = project_dir(&state, &slug)?;
+    ensure_project_exists(&dir).await?;
+    let origin = ensure_origin_scaffold(&state, &slug, &origin_id).await?;
+    Ok(Json(OriginResponse { origin }))
+}
+
+async fn list_origin_files(
+    State(state): State<AppState>,
+    AxumPath((slug, origin_id)): AxumPath<(String, String)>,
+) -> Result<Json<ManifestResponse>, AppError> {
+    validate_origin_id(&origin_id)?;
+    let dir = origin_dir(&state, &slug, &origin_id)?;
+    ensure_origin_exists(&dir).await?;
     let files = manifest(&dir)?;
     Ok(Json(ManifestResponse { files }))
 }
 
-async fn read_file(
+async fn read_origin_file(
     State(state): State<AppState>,
-    AxumPath((slug, file_path)): AxumPath<(String, String)>,
+    AxumPath((slug, origin_id, file_path)): AxumPath<(String, String, String)>,
 ) -> Result<Json<FileReadResponse>, AppError> {
+    validate_origin_id(&origin_id)?;
     let request_id = request_id();
     let rel = safe_relative_path(&file_path)?;
-    let path = project_dir(&state, &slug)?.join(&rel);
-    ensure_project_exists(path.parent().unwrap_or_else(|| state.root())).await?;
+    let path = origin_dir(&state, &slug, &origin_id)?.join(&rel);
+    ensure_origin_exists(path.parent().unwrap_or_else(|| state.root())).await?;
 
     let content = fs::read_to_string(&path)
         .await
@@ -477,6 +487,7 @@ async fn read_file(
 
     let response = FileReadResponse {
         project: slug.clone(),
+        origin_id: origin_id.clone(),
         path: path_string.clone(),
         content,
         timestamp: timestamp.clone(),
@@ -499,18 +510,19 @@ async fn read_file(
     Ok(Json(response))
 }
 
-async fn write_file(
+async fn write_origin_file(
     State(state): State<AppState>,
-    AxumPath((slug, file_path)): AxumPath<(String, String)>,
+    AxumPath((slug, origin_id, file_path)): AxumPath<(String, String, String)>,
     Json(input): Json<WriteFileRequest>,
 ) -> Result<Json<FileWriteResponse>, AppError> {
+    validate_origin_id(&origin_id)?;
     let request_id = request_id();
     let rel = safe_relative_path(&file_path)?;
     let path_string = rel_to_string(&rel);
-    let project_dir = project_dir(&state, &slug)?;
-    ensure_project_exists(&project_dir).await?;
+    let origin_root = origin_dir(&state, &slug, &origin_id)?;
+    ensure_origin_exists(&origin_root).await?;
 
-    let path = project_dir.join(&rel);
+    let path = origin_root.join(&rel);
     if let Some(expected_hash) = input.previous_content_hash.as_deref() {
         if fs::try_exists(&path).await.map_err(internal_error)? {
             let existing = fs::read_to_string(&path).await.map_err(internal_error)?;
@@ -549,6 +561,7 @@ async fn write_file(
     }
 
     write_atomic(&path, &content).await?;
+    touch_origin(&state, &slug, &origin_id).await?;
     touch_project(&state, &slug).await?;
 
     let content_hash = content_hash(&content);
@@ -563,7 +576,7 @@ async fn write_file(
     let payload = HookPayload {
         event: HookEvent::AfterWrite,
         project: slug.clone(),
-        path: path_string.clone(),
+        path: path_string,
         content,
         timestamp: response.timestamp.clone(),
         content_hash,
@@ -572,69 +585,22 @@ async fn write_file(
     };
     run_after_hook(state.hooks.after_write.as_deref(), &state, &payload).await;
 
-    if state.git.enabled && state.git.auto_commit {
-        let _ = commit_project(&state, &slug, &format!("write: {path_string}")).await?;
-    }
-
     Ok(Json(response))
 }
 
-async fn create_snapshot(
+async fn delete_origin_file(
     State(state): State<AppState>,
-    AxumPath(slug): AxumPath<String>,
-) -> Result<Json<SnapshotResponse>, AppError> {
-    let request_id = request_id();
-    let timestamp = now_string();
-    let payload = HookPayload {
-        event: HookEvent::BeforeSnapshot,
-        project: slug.clone(),
-        path: String::new(),
-        content: String::new(),
-        timestamp: timestamp.clone(),
-        content_hash: String::new(),
-        previous_content_hash: None,
-        request_id: request_id.clone(),
-    };
-    run_before_hook(
-        state.hooks.before_snapshot.as_deref(),
-        &state,
-        &slug,
-        &payload,
-    )
-    .await
-    .map_err(|e| e.with_request_id(request_id.clone()))?;
-
-    let created = if state.git.enabled {
-        ensure_git_repo(&state, &slug).await?;
-        commit_project(&state, &slug, "manual snapshot").await?
-    } else {
-        false
-    };
-    let pushed = if created && state.git.push {
-        push_project(&state, &slug).await?
-    } else {
-        false
-    };
-
-    let payload = HookPayload {
-        event: HookEvent::AfterSnapshot,
-        project: slug.clone(),
-        path: String::new(),
-        content: String::new(),
-        timestamp: timestamp.clone(),
-        content_hash: String::new(),
-        previous_content_hash: None,
-        request_id: request_id.clone(),
-    };
-    run_after_hook(state.hooks.after_snapshot.as_deref(), &state, &payload).await;
-
-    Ok(Json(SnapshotResponse {
-        project: slug,
-        created,
-        pushed,
-        timestamp,
-        request_id,
-    }))
+    AxumPath((slug, origin_id, file_path)): AxumPath<(String, String, String)>,
+) -> Result<StatusCode, AppError> {
+    validate_origin_id(&origin_id)?;
+    let rel = safe_relative_path(&file_path)?;
+    let path = origin_dir(&state, &slug, &origin_id)?.join(&rel);
+    if fs::try_exists(&path).await.map_err(internal_error)? {
+        fs::remove_file(&path).await.map_err(internal_error)?;
+        touch_origin(&state, &slug, &origin_id).await?;
+        touch_project(&state, &slug).await?;
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn validate_slug(slug: &str) -> Result<(), AppError> {
@@ -669,6 +635,133 @@ fn project_dir(state: &AppState, slug: &str) -> Result<PathBuf, AppError> {
     Ok(state.root().join(slug))
 }
 
+fn validate_origin_id(origin_id: &str) -> Result<(), AppError> {
+    let valid = origin_id.len() == 36
+        && origin_id
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-')
+        && origin_id.chars().filter(|c| *c == '-').count() == 4;
+    if !valid {
+        return Err(AppError::new(
+            StatusCode::BAD_REQUEST,
+            "Invalid origin id (expected UUID)",
+        ));
+    }
+    Ok(())
+}
+
+fn origin_dir(state: &AppState, slug: &str, origin_id: &str) -> Result<PathBuf, AppError> {
+    validate_origin_id(origin_id)?;
+    Ok(project_dir(state, slug)?.join("origins").join(origin_id))
+}
+
+fn origins_index_path(project_dir: &Path) -> PathBuf {
+    project_dir.join(".dialogsys/origins.json")
+}
+
+async fn read_origins_index(project_dir: &Path) -> Result<Vec<OriginMeta>, AppError> {
+    let path = origins_index_path(project_dir);
+    if !fs::try_exists(&path).await.map_err(internal_error)? {
+        return Ok(Vec::new());
+    }
+    let raw = fs::read_to_string(&path).await.map_err(internal_error)?;
+    #[derive(Deserialize)]
+    struct Index {
+        origins: Vec<OriginMeta>,
+    }
+    let index: Index = serde_json::from_str(&raw).map_err(|e| {
+        AppError::new(
+            StatusCode::BAD_REQUEST,
+            format!("Invalid origins index: {e}"),
+        )
+    })?;
+    Ok(index.origins)
+}
+
+async fn write_origins_index(project_dir: &Path, origins: &[OriginMeta]) -> Result<(), AppError> {
+    fs::create_dir_all(project_dir.join(".dialogsys"))
+        .await
+        .map_err(internal_error)?;
+    write_json_atomic(
+        &origins_index_path(project_dir),
+        &serde_json::json!({ "origins": origins }),
+    )
+    .await
+}
+
+async fn touch_origin(state: &AppState, slug: &str, origin_id: &str) -> Result<(), AppError> {
+    let dir = project_dir(state, slug)?;
+    let mut origins = read_origins_index(&dir).await?;
+    let now = now_string();
+    if let Some(origin) = origins.iter_mut().find(|o| o.origin_id == origin_id) {
+        origin.updated_at = now;
+    } else {
+        origins.push(OriginMeta {
+            origin_id: origin_id.to_string(),
+            updated_at: now,
+            label: None,
+        });
+    }
+    origins.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    write_origins_index(&dir, &origins).await
+}
+
+async fn ensure_origin_exists(dir: &Path) -> Result<(), AppError> {
+    if !fs::try_exists(dir).await.map_err(internal_error)? {
+        return Err(AppError::new(StatusCode::NOT_FOUND, "Origin not found"));
+    }
+    Ok(())
+}
+
+async fn ensure_origin_scaffold(
+    state: &AppState,
+    slug: &str,
+    origin_id: &str,
+) -> Result<OriginMeta, AppError> {
+    let dir = origin_dir(state, slug, origin_id)?;
+    let now = now_string();
+    if !fs::try_exists(&dir).await.map_err(internal_error)? {
+        fs::create_dir_all(dir.join("dialogs"))
+            .await
+            .map_err(internal_error)?;
+        fs::create_dir_all(dir.join("sequences"))
+            .await
+            .map_err(internal_error)?;
+        fs::create_dir_all(dir.join("notes"))
+            .await
+            .map_err(internal_error)?;
+        fs::create_dir_all(dir.join("export/godot/dialogs"))
+            .await
+            .map_err(internal_error)?;
+        write_json_atomic(
+            &dir.join("characters.json"),
+            &serde_json::json!({ "characters": [] }),
+        )
+        .await?;
+        write_json_atomic(
+            &dir.join("gameState.json"),
+            &serde_json::json!({ "properties": [] }),
+        )
+        .await?;
+        write_atomic(
+            &dir.join("notes/overview.md"),
+            "# Overview\n\nProject overview notes.\n",
+        )
+        .await?;
+    }
+    touch_origin(state, slug, origin_id).await?;
+    let project_dir = project_dir(state, slug)?;
+    let origins = read_origins_index(&project_dir).await?;
+    Ok(origins
+        .into_iter()
+        .find(|o| o.origin_id == origin_id)
+        .unwrap_or(OriginMeta {
+            origin_id: origin_id.to_string(),
+            updated_at: now,
+            label: None,
+        }))
+}
+
 fn safe_relative_path(raw: &str) -> Result<PathBuf, AppError> {
     if raw.is_empty() || raw.contains('\0') {
         return Err(AppError::new(StatusCode::BAD_REQUEST, "Invalid file path"));
@@ -683,7 +776,7 @@ fn safe_relative_path(raw: &str) -> Result<PathBuf, AppError> {
     for component in path.components() {
         match component {
             Component::Normal(part) => {
-                if part == ".git" {
+                if part == ".dialogsys" {
                     return Err(AppError::new(StatusCode::BAD_REQUEST, "Invalid file path"));
                 }
                 clean.push(part);
@@ -770,10 +863,6 @@ fn collect_manifest(root: &Path, dir: &Path, files: &mut Vec<FileInfo>) -> Resul
     for entry in std::fs::read_dir(dir).map_err(internal_error)? {
         let entry = entry.map_err(internal_error)?;
         let path = entry.path();
-        let name = entry.file_name();
-        if name == ".git" {
-            continue;
-        }
         let metadata = entry.metadata().map_err(internal_error)?;
         if metadata.is_dir() {
             collect_manifest(root, &path, files)?;
@@ -878,68 +967,6 @@ async fn run_hook_command(
     .map_err(internal_error)
 }
 
-async fn ensure_git_repo(state: &AppState, slug: &str) -> Result<(), AppError> {
-    let dir = project_dir(state, slug)?;
-    ensure_project_exists(&dir).await?;
-    if fs::try_exists(dir.join(".git"))
-        .await
-        .map_err(internal_error)?
-    {
-        return Ok(());
-    }
-    run_git(&dir, &["init", "-b", &state.git.branch]).await?;
-    run_git(&dir, &["config", "user.email", "dialogsys-server@local"]).await?;
-    run_git(&dir, &["config", "user.name", "Dialogsys Server"]).await?;
-    Ok(())
-}
-
-async fn commit_project(state: &AppState, slug: &str, message: &str) -> Result<bool, AppError> {
-    let dir = project_dir(state, slug)?;
-    ensure_git_repo(state, slug).await?;
-    run_git(&dir, &["add", "-A"]).await?;
-    let changed = !run_git_status(&dir, &["diff", "--cached", "--quiet"]).await?;
-    if !changed {
-        return Ok(false);
-    }
-    run_git(&dir, &["commit", "-m", message]).await?;
-    Ok(true)
-}
-
-async fn push_project(state: &AppState, slug: &str) -> Result<bool, AppError> {
-    let dir = project_dir(state, slug)?;
-    run_git(&dir, &["push", &state.git.remote, &state.git.branch]).await?;
-    Ok(true)
-}
-
-async fn run_git(dir: &Path, args: &[&str]) -> Result<(), AppError> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .await
-        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, format!("git failed: {e}")))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(AppError::new(
-            StatusCode::BAD_REQUEST,
-            hook_stderr("git command failed", &output.stderr),
-        ))
-    }
-}
-
-async fn run_git_status(dir: &Path, args: &[&str]) -> Result<bool, AppError> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .await
-        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, format!("git failed: {e}")))?;
-    Ok(output.status.success())
-}
-
 fn hook_stderr(prefix: &str, stderr: &[u8]) -> String {
     let stderr = String::from_utf8_lossy(stderr).trim().to_string();
     if stderr.is_empty() {
@@ -1019,11 +1046,7 @@ mod tests {
     }
 
     fn test_state(root: &Path) -> AppState {
-        AppState::new(
-            root.to_path_buf(),
-            HookConfig::default(),
-            GitConfig::default(),
-        )
+        AppState::new(root.to_path_buf(), HookConfig::default())
     }
 
     async fn json_request(
@@ -1046,9 +1069,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_project_write_and_read_file() {
+    async fn create_project_write_and_read_origin_file() {
         let temp = TestDir::new();
         let router = build_router(test_state(temp.path()));
+        let origin_id = "11111111-1111-1111-1111-111111111111";
 
         let (status, _) = json_request(
             router.clone(),
@@ -1063,10 +1087,19 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CREATED);
 
+        let (status, _) = json_request(
+            router.clone(),
+            "POST",
+            &format!("/projects/demo/origins/{origin_id}"),
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
         let (status, write) = json_request(
             router.clone(),
             "PUT",
-            "/projects/demo/files/notes/overview.md",
+            &format!("/projects/demo/origins/{origin_id}/files/notes/overview.md"),
             serde_json::json!({ "content": "# Updated\n" }),
         )
         .await;
@@ -1074,7 +1107,9 @@ mod tests {
         assert_eq!(write["project"], "demo");
 
         let request = Request::builder()
-            .uri("/projects/demo/files/notes/overview.md")
+            .uri(format!(
+                "/projects/demo/origins/{origin_id}/files/notes/overview.md"
+            ))
             .body(Body::empty())
             .unwrap();
         let response = router.oneshot(request).await.unwrap();
@@ -1089,7 +1124,8 @@ mod tests {
         assert!(safe_relative_path("notes/overview.md").is_ok());
         assert!(safe_relative_path("../secret").is_err());
         assert!(safe_relative_path("/secret").is_err());
-        assert!(safe_relative_path(".git/config").is_err());
+        assert!(safe_relative_path(".git/config").is_ok());
+        assert!(safe_relative_path(".dialogsys/origins.json").is_err());
     }
 
     #[tokio::test]
@@ -1111,9 +1147,9 @@ mod tests {
                 ]),
                 ..HookConfig::default()
             },
-            GitConfig::default(),
         );
         let router = build_router(state);
+        let origin_id = "22222222-2222-2222-2222-222222222222";
 
         let (status, _) = json_request(
             router.clone(),
@@ -1125,14 +1161,28 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
 
         let (status, _) = json_request(
+            router.clone(),
+            "POST",
+            &format!("/projects/demo/origins/{origin_id}"),
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, _) = json_request(
             router,
             "PUT",
-            "/projects/demo/files/notes/hooked.md",
+            &format!("/projects/demo/origins/{origin_id}/files/notes/hooked.md"),
             serde_json::json!({ "content": "original" }),
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        let written = std::fs::read_to_string(temp.path().join("demo/notes/hooked.md")).unwrap();
+        let written = std::fs::read_to_string(
+            temp
+                .path()
+                .join(format!("demo/origins/{origin_id}/notes/hooked.md")),
+        )
+        .unwrap();
         assert_eq!(written, "hooked");
     }
 }

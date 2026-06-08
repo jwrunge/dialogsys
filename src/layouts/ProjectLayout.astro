@@ -2,7 +2,7 @@
 import BaseLayout from './BaseLayout.astro';
 import ProjectNav from '../components/ProjectNav.astro';
 import ProjectTitle from '../islands/ProjectTitle.svelte';
-import VersioningHeartbeat from '../islands/VersioningHeartbeat.svelte';
+import OriginSwitcher from '../islands/OriginSwitcher.svelte';
 import { getProject } from '../lib/server/projects';
 
 interface Props {
@@ -30,7 +30,7 @@ const pageTitle = title ? `${title} · ${project.displayName}` : project.display
 				/>
 			</div>
 			<ProjectNav slug={slug} current={current} />
-			<VersioningHeartbeat client:load slug={slug} />
+			<OriginSwitcher client:load slug={slug} />
 			{variant !== 'flow' && <slot />}
 		</div>
 		{variant === 'flow' && (

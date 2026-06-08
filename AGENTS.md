@@ -10,7 +10,7 @@ Dialogsys is a local-first Astro + Svelte 5 web app for authoring branching dial
 
 - **Node.js** `>=22.12.0` (see `package.json` `engines`)
 - **npm** (lockfile: `package-lock.json`)
-- **Git** (optional): required only for History/autosave snapshots; file saves work without it
+- **Sync server** (optional): run `sync-server/` for multi-device cloud storage
 
 ### Standard commands
 
@@ -31,7 +31,8 @@ There are **no** lint or test scripts in this repo.
 
 - Config: `src-tauri/tauri.conf.json` (+ `tauri.ios.conf.json`, `tauri.android.conf.json`)
 - Release builds run `scripts/prepare-tauri.mjs` (Astro build → `src-tauri/resources/web/`, Node runtime → `src-tauri/binaries/`)
-- Desktop prod URL: `http://127.0.0.1:4310` (local Node sidecar). Dev uses `devUrl` `http://localhost:4321`.
+- Desktop prod URL: `http://127.0.0.1:4310` (local Node sidecar). Dev uses `devUrl` `http://127.0.0.1:4321`.
+- Remote storage: `storageMode: remote` routes project I/O through sync server origin threads (`clientId` per device).
 - Rust toolchain: `rust-toolchain.toml` (stable)
 
 ### Running the dev server

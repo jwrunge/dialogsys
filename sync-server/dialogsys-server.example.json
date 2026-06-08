@@ -4,12 +4,5 @@
   "hooks": {
     "beforeWrite": ["node", "./hooks/before-write.js"],
     "afterWrite": ["node", "./hooks/after-write.js"]
-  },
-  "git": {
-    "enabled": false,
-    "autoCommit": false,
-    "branch": "main",
-    "remote": "origin",
-    "push": false
   }
 }

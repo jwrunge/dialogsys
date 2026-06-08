@@ -2,16 +2,11 @@
 
 Self-hosted HTTP sync server for Dialogsys projects.
 
-The server stores the same project folder format used by the local app:
+Each connected device writes to its own **origin thread** under `projects/{slug}/origins/{originId}/`. The server keeps the latest saved version per origin. Devices can switch threads in the app to continue from another machine's state.
 
-- `project.json`
-- `characters.json`
-- `gameState.json`
-- `notes/*.md`
-- `dialogs/*.graph.json`
-- `sequences/*.graph.json`
+Project metadata lives at `projects/{slug}/project.json`. Origin indexes are stored in `projects/{slug}/.dialogsys/origins.json`.
 
-It intentionally serves plain HTTP. Put HTTPS behind nginx, Caddy, Traefik, or another reverse proxy.
+User-managed `.git` folders inside an origin are allowed and sync like any other files.
 
 ## Run
 
@@ -33,10 +28,12 @@ cargo run -- --config dialogsys-server.example.json
 | `GET` | `/projects` | List projects |
 | `POST` | `/projects` | Create a project |
 | `GET` | `/projects/:slug` | Read project metadata |
-| `GET` | `/projects/:slug/files` | List project files and hashes |
-| `GET` | `/projects/:slug/files/*path` | Read a UTF-8 project file |
-| `PUT` | `/projects/:slug/files/*path` | Write a UTF-8 project file |
-| `POST` | `/projects/:slug/snapshot` | Run snapshot hooks and optional Git commit |
+| `GET` | `/projects/:slug/origins` | List origin threads |
+| `POST` | `/projects/:slug/origins/:originId` | Ensure origin exists (scaffold if new) |
+| `GET` | `/projects/:slug/origins/:originId/files` | List files and hashes for an origin |
+| `GET` | `/projects/:slug/origins/:originId/files/*path` | Read a UTF-8 file |
+| `PUT` | `/projects/:slug/origins/:originId/files/*path` | Write a UTF-8 file |
+| `DELETE` | `/projects/:slug/origins/:originId/files/*path` | Delete a file |
 
 Write request:
 
@@ -54,29 +51,12 @@ When `previousContentHash` is present, the server rejects the write with `409 Co
 
 Hooks are external commands. The server sends one JSON object on stdin.
 
-Payload:
-
-```json
-{
-  "event": "beforeWrite",
-  "project": "demo",
-  "path": "notes/overview.md",
-  "content": "# Overview\n",
-  "timestamp": "2026-06-08T00:00:00Z",
-  "contentHash": "sha256",
-  "previousContentHash": null,
-  "requestId": "server-generated-id"
-}
-```
-
 Supported hook events:
 
 - `beforeRead`
 - `afterRead`
 - `beforeWrite`
 - `afterWrite`
-- `beforeSnapshot`
-- `afterSnapshot`
 
 `before*` hooks may reject by exiting non-zero or printing:
 
@@ -91,31 +71,3 @@ Supported hook events:
 ```
 
 `after*` hook failures are ignored by the request path.
-
-JavaScript hooks work as normal subprocesses:
-
-```json
-{
-  "hooks": {
-    "beforeWrite": ["node", "./hooks/before-write.js"]
-  }
-}
-```
-
-## Git
-
-Git is optional and runs as an external command. Enable auto-commits on write:
-
-```json
-{
-  "git": {
-    "enabled": true,
-    "autoCommit": true,
-    "branch": "main",
-    "remote": "origin",
-    "push": false
-  }
-}
-```
-
-Set `push` to `true` only after configuring the project repository remote yourself.

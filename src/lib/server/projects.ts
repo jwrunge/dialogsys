@@ -15,26 +15,25 @@ import {
 	type GameStateFile,
 } from '../schema/gameState';
 import { createDefaultFlowGraph } from '../flow/flowFactory';
-import { getProjectsRoot } from './settings';
-import { ensureProjectRepo, scheduleSnapshot } from './versioning';
+import { getProjectsRoot, getAppSettingsInfo } from './settings';
+import { getClientId, setActiveOriginId } from './client';
+import { projectDir, projectFilePath } from './paths';
+import {
+	isRemoteStorage,
+	readJsonFile,
+	writeJsonFile,
+	readTextFile,
+	writeTextFile,
+	ensureDir,
+	listDir,
+	fileExists,
+	deleteFile,
+} from './storage';
+import { createSyncProject, ensureSyncOrigin } from '../sync/client';
+import { pushFileToOrigin } from './sync-remote';
 
 export { getProjectsRoot } from './settings';
-
-function assertSafeSlug(slug: string): void {
-	if (!/^[a-z0-9][a-z0-9_-]*$/.test(slug)) {
-		throw new Error('Invalid project slug');
-	}
-}
-
-export function projectDir(slug: string): string {
-	assertSafeSlug(slug);
-	const dir = path.resolve(getProjectsRoot(), slug);
-	const root = path.resolve(getProjectsRoot());
-	if (!dir.startsWith(root + path.sep) && dir !== root) {
-		throw new Error('Path traversal denied');
-	}
-	return dir;
-}
+export { projectDir, projectFilePath } from './paths';
 
 function assertSafeRelative(rel: string): void {
 	const normalized = path.normalize(rel);
@@ -43,42 +42,15 @@ function assertSafeRelative(rel: string): void {
 	}
 }
 
-export function projectFilePath(slug: string, ...segments: string[]): string {
-	segments.forEach(assertSafeRelative);
-	const dir = projectDir(slug);
-	const file = path.resolve(dir, ...segments);
-	if (!file.startsWith(dir + path.sep) && file !== dir) {
-		throw new Error('Path traversal denied');
-	}
-	return file;
-}
-
-async function ensureDir(dir: string): Promise<void> {
-	await fs.mkdir(dir, { recursive: true });
-}
-
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-	try {
-		const raw = await fs.readFile(filePath, 'utf-8');
-		return JSON.parse(raw) as T;
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-			return fallback;
-		}
-		throw e;
-	}
-}
-
-export async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
-	await ensureDir(path.dirname(filePath));
-	const tmp = `${filePath}.${Date.now()}.tmp`;
-	await fs.writeFile(tmp, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-	await fs.rename(tmp, filePath);
-}
-
 export async function listProjects(): Promise<ProjectMeta[]> {
+	if (isRemoteStorage()) {
+		const { syncServerUrl } = getAppSettingsInfo();
+		const { listSyncProjects } = await import('../sync/client');
+		return listSyncProjects(syncServerUrl);
+	}
+
 	const root = getProjectsRoot();
-	await ensureDir(root);
+	await fs.mkdir(root, { recursive: true });
 	const entries = await fs.readdir(root, { withFileTypes: true });
 	const projects: ProjectMeta[] = [];
 
@@ -96,9 +68,24 @@ export async function listProjects(): Promise<ProjectMeta[]> {
 }
 
 export async function getProject(slug: string): Promise<ProjectMeta> {
-	const file = projectFilePath(slug, 'project.json');
-	const raw = await readJsonFile(file, null);
+	const raw = await readJsonFile(slug, ['project.json'], null);
 	return projectMetaSchema.parse(raw);
+}
+
+async function scaffoldProjectFiles(slug: string, meta: ProjectMeta): Promise<void> {
+	await ensureDir(slug);
+	await ensureDir(slug, 'dialogs');
+	await ensureDir(slug, 'sequences');
+	await ensureDir(slug, 'export', 'godot', 'dialogs');
+	await writeJsonFile(slug, ['sequences', 'main.graph.json'], createDefaultFlowGraph());
+	await writeJsonFile(slug, ['project.json'], meta);
+	await writeJsonFile(slug, ['characters.json'], { characters: [] });
+	await writeJsonFile(slug, ['gameState.json'], { properties: [] });
+	await writeTextFile(
+		slug,
+		['notes', 'overview.md'],
+		`# ${meta.displayName}\n\nProject overview notes.\n`,
+	);
 }
 
 export async function createProject(input: {
@@ -107,8 +94,22 @@ export async function createProject(input: {
 	description?: string;
 }): Promise<ProjectMeta> {
 	const parsed = createProjectInputSchema.parse(input);
-	const dir = projectDir(parsed.slug);
 
+	if (isRemoteStorage()) {
+		const { syncServerUrl } = getAppSettingsInfo();
+		const remoteMeta = await createSyncProject(syncServerUrl, {
+			slug: parsed.slug,
+			displayName: parsed.displayName,
+			description: parsed.description,
+		});
+		const clientId = getClientId();
+		await ensureSyncOrigin(syncServerUrl, parsed.slug, clientId);
+		await setActiveOriginId(parsed.slug, clientId);
+		await scaffoldProjectFiles(parsed.slug, remoteMeta);
+		return remoteMeta;
+	}
+
+	const dir = projectDir(parsed.slug);
 	try {
 		await fs.access(dir);
 		throw new Error('Project already exists');
@@ -125,31 +126,7 @@ export async function createProject(input: {
 		updatedAt: now,
 	};
 
-	await ensureDir(dir);
-	await ensureDir(projectFilePath(parsed.slug, 'dialogs'));
-	await ensureDir(projectFilePath(parsed.slug, 'sequences'));
-	await ensureDir(projectFilePath(parsed.slug, 'export', 'godot', 'dialogs'));
-	await writeJsonAtomic(
-		projectFilePath(parsed.slug, 'sequences', 'main.graph.json'),
-		createDefaultFlowGraph(),
-	);
-
-	await writeJsonAtomic(projectFilePath(parsed.slug, 'project.json'), meta);
-	await writeJsonAtomic(projectFilePath(parsed.slug, 'characters.json'), { characters: [] });
-	await writeJsonAtomic(projectFilePath(parsed.slug, 'gameState.json'), { properties: [] });
-	await fs.writeFile(
-		projectFilePath(parsed.slug, 'notes', 'overview.md'),
-		`# ${parsed.displayName}\n\nProject overview notes.\n`,
-		'utf-8',
-	);
-
-	try {
-		await ensureProjectRepo(parsed.slug);
-		await scheduleSnapshot(parsed.slug, 'project created', { immediate: true });
-	} catch {
-		/* project works without git; History page shows install prompt */
-	}
-
+	await scaffoldProjectFiles(parsed.slug, meta);
 	return meta;
 }
 
@@ -163,43 +140,32 @@ export async function updateProject(
 		...patch,
 		updatedAt: new Date().toISOString(),
 	};
-	await writeJsonAtomic(projectFilePath(slug, 'project.json'), updated);
-	void scheduleSnapshot(slug, 'project metadata updated');
+	await writeJsonFile(slug, ['project.json'], updated);
 	return updated;
 }
 
 export async function getCharacters(slug: string): Promise<CharactersFile> {
-	const file = projectFilePath(slug, 'characters.json');
-	const raw = await readJsonFile(file, { characters: [] });
+	const raw = await readJsonFile(slug, ['characters.json'], { characters: [] });
 	return charactersFileSchema.parse(raw);
 }
 
 export async function saveCharacters(slug: string, data: CharactersFile): Promise<CharactersFile> {
 	const parsed = charactersFileSchema.parse(data);
-	await writeJsonAtomic(projectFilePath(slug, 'characters.json'), parsed);
+	await writeJsonFile(slug, ['characters.json'], parsed);
 	await touchProject(slug);
-	await scheduleSnapshot(slug, 'characters saved', { immediate: true });
 	return parsed;
 }
 
 export async function readNote(slug: string, notePath: string): Promise<string> {
-	const file = projectFilePath(slug, 'notes', notePath);
-	try {
-		return await fs.readFile(file, 'utf-8');
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') return '';
-		throw e;
-	}
+	assertSafeRelative(notePath);
+	return readTextFile(slug, 'notes', notePath);
 }
 
 export async function writeNote(slug: string, notePath: string, content: string): Promise<void> {
 	assertSafeRelative(notePath);
 	if (!notePath.endsWith('.md')) throw new Error('Notes must be .md files');
-	const file = projectFilePath(slug, 'notes', notePath);
-	await ensureDir(path.dirname(file));
-	await fs.writeFile(file, content, 'utf-8');
+	await writeTextFile(slug, ['notes', notePath], content);
 	await touchProject(slug);
-	await scheduleSnapshot(slug, `notes: ${notePath}`);
 }
 
 export type DialogListItem = {
@@ -219,9 +185,8 @@ export type SceneUsageStats = {
 };
 
 export async function listDialogs(slug: string): Promise<DialogListItem[]> {
-	const dir = projectFilePath(slug, 'dialogs');
-	await ensureDir(dir);
-	const files = await fs.readdir(dir);
+	await ensureDir(slug, 'dialogs');
+	const files = await listDir(slug, 'dialogs');
 	const usage = await getSceneUsageStats(slug);
 	const results: DialogListItem[] = [];
 
@@ -258,8 +223,7 @@ export async function listDialogs(slug: string): Promise<DialogListItem[]> {
 
 export async function getDialog(slug: string, id: string): Promise<DialogGraph> {
 	assertSafeRelative(id);
-	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
-	const raw = await readJsonFile(file, null);
+	const raw = await readJsonFile(slug, ['dialogs', `${id}.graph.json`], null);
 	if (!raw) throw new Error('Scene not found');
 	return dialogGraphSchema.parse(raw);
 }
@@ -269,12 +233,8 @@ export async function saveDialog(slug: string, graph: DialogGraph): Promise<Dial
 		...graph,
 		updatedAt: new Date().toISOString(),
 	});
-	await writeJsonAtomic(
-		projectFilePath(slug, 'dialogs', `${parsed.id}.graph.json`),
-		parsed,
-	);
+	await writeJsonFile(slug, ['dialogs', `${parsed.id}.graph.json`], parsed);
 	await touchProject(slug);
-	void scheduleSnapshot(slug, `dialog saved: ${parsed.id}`);
 	return parsed;
 }
 
@@ -286,12 +246,8 @@ export async function createDialog(
 	assertSafeRelative(id);
 	if (!/^[a-z][a-z0-9_]*$/.test(id)) throw new Error('Invalid scene id');
 
-	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
-	try {
-		await fs.access(file);
+	if (await fileExists(slug, 'dialogs', `${id}.graph.json`)) {
 		throw new Error('Scene already exists');
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
 	}
 
 	const graph: DialogGraph = {
@@ -316,9 +272,7 @@ export async function createDialog(
 		updatedAt: new Date().toISOString(),
 	};
 
-	const saved = await saveDialog(slug, graph);
-	void scheduleSnapshot(slug, `dialog created: ${id}`, { immediate: true });
-	return saved;
+	return saveDialog(slug, graph);
 }
 
 export async function updateDialogMeta(
@@ -338,14 +292,13 @@ function assertSequenceId(id: string): void {
 	if (!/^[a-z][a-z0-9_]*$/.test(id)) throw new Error('Invalid sequence id');
 }
 
-function sequenceFilePath(slug: string, id: string): string {
+function sequenceSegments(id: string): string[] {
 	assertSequenceId(id);
-	return projectFilePath(slug, 'sequences', `${id}.graph.json`);
+	return ['sequences', `${id}.graph.json`];
 }
 
 async function readLegacyFlow(slug: string): Promise<FlowGraph | null> {
-	const file = projectFilePath(slug, 'flow.graph.json');
-	const raw = await readJsonFile(file, null);
+	const raw = await readJsonFile(slug, ['flow.graph.json'], null);
 	if (!raw) return null;
 	return flowGraphSchema.parse(raw);
 }
@@ -408,9 +361,8 @@ export async function getSceneSequenceUsage(
 }
 
 export async function listSequences(slug: string): Promise<SequenceListItem[]> {
-	const dir = projectFilePath(slug, 'sequences');
-	await ensureDir(dir);
-	const files = await fs.readdir(dir);
+	await ensureDir(slug, 'sequences');
+	const files = await listDir(slug, 'sequences');
 	const results: SequenceListItem[] = [];
 
 	for (const file of files) {
@@ -443,8 +395,7 @@ export async function listSequences(slug: string): Promise<SequenceListItem[]> {
 }
 
 export async function getSequence(slug: string, id: string): Promise<FlowGraph> {
-	const file = sequenceFilePath(slug, id);
-	const raw = await readJsonFile(file, null);
+	const raw = await readJsonFile(slug, sequenceSegments(id), null);
 	if (raw) {
 		const graph = flowGraphSchema.parse(raw);
 		return { ...graph, id };
@@ -466,9 +417,8 @@ export async function saveSequence(slug: string, graph: FlowGraph): Promise<Flow
 		...graph,
 		updatedAt: new Date().toISOString(),
 	});
-	await writeJsonAtomic(sequenceFilePath(slug, parsed.id), parsed);
+	await writeJsonFile(slug, sequenceSegments(parsed.id), parsed);
 	await touchProject(slug);
-	void scheduleSnapshot(slug, `sequence saved: ${parsed.id}`);
 	return parsed;
 }
 
@@ -477,26 +427,18 @@ export async function createSequence(
 	input: { id: string; displayName: string },
 ): Promise<FlowGraph> {
 	assertSequenceId(input.id);
-	const file = sequenceFilePath(slug, input.id);
-	try {
-		await fs.access(file);
+	if (await fileExists(slug, ...sequenceSegments(input.id))) {
 		throw new Error('Sequence already exists');
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
 	}
 
 	const graph = createDefaultFlowGraph(input.id, input.displayName.trim());
-	const saved = await saveSequence(slug, graph);
-	void scheduleSnapshot(slug, `sequence created: ${input.id}`, { immediate: true });
-	return saved;
+	return saveSequence(slug, graph);
 }
 
 export async function deleteSequence(slug: string, id: string): Promise<void> {
 	if (id === 'main') throw new Error('Cannot delete the main sequence');
-	const file = sequenceFilePath(slug, id);
-	await fs.unlink(file);
+	await deleteFile(slug, ...sequenceSegments(id));
 	await touchProject(slug);
-	void scheduleSnapshot(slug, `sequence deleted: ${id}`, { immediate: true });
 }
 
 export async function clearDialogFromSequences(slug: string, dialogId: string): Promise<number> {
@@ -527,33 +469,38 @@ export async function clearDialogFromSequences(slug: string, dialogId: string): 
 
 export async function deleteDialog(slug: string, id: string): Promise<{ flowNodesCleared: number }> {
 	const flowNodesCleared = await clearDialogFromSequences(slug, id);
-	const file = projectFilePath(slug, 'dialogs', `${id}.graph.json`);
-	await fs.unlink(file);
+	await deleteFile(slug, 'dialogs', `${id}.graph.json`);
 	await touchProject(slug);
-	void scheduleSnapshot(slug, `dialog deleted: ${id}`, { immediate: true });
 	return { flowNodesCleared };
 }
 
 export async function getGameState(slug: string): Promise<GameStateFile> {
-	const file = projectFilePath(slug, 'gameState.json');
-	const raw = await readJsonFile(file, { properties: [] });
+	const raw = await readJsonFile(slug, ['gameState.json'], { properties: [] });
 	return normalizeGameStateFile(gameStateFileSchema.parse(raw));
 }
 
 export async function saveGameState(slug: string, data: GameStateFile): Promise<GameStateFile> {
 	const parsed = normalizeGameStateFile(gameStateFileSchema.parse(data));
-	await writeJsonAtomic(projectFilePath(slug, 'gameState.json'), parsed);
+	await writeJsonFile(slug, ['gameState.json'], parsed);
 	await touchProject(slug);
-	await scheduleSnapshot(slug, 'game state saved', { immediate: true });
 	return parsed;
 }
 
 async function touchProject(slug: string): Promise<void> {
 	const meta = await getProject(slug);
-	await writeJsonAtomic(projectFilePath(slug, 'project.json'), {
+	const updated = {
 		...meta,
 		updatedAt: new Date().toISOString(),
-	});
+	};
+	await writeJsonFile(slug, ['project.json'], updated);
+}
+
+export async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
+	const dir = path.dirname(filePath);
+	await fs.mkdir(dir, { recursive: true });
+	const tmp = `${filePath}.${Date.now()}.tmp`;
+	await fs.writeFile(tmp, JSON.stringify(data, null, 2) + '\n', 'utf-8');
+	await fs.rename(tmp, filePath);
 }
 
 export function jsonResponse(data: unknown, status = 200): Response {

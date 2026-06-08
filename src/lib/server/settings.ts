@@ -7,6 +7,7 @@ import {
 	type StorageMode,
 } from '../schema/settings';
 import { isValidSyncServerUrl } from '../sync/client';
+import { getClientId } from './client';
 
 const DEFAULT_ROOT = './projects';
 const CONFIG_FILENAME = 'dialogsys.config.json';
@@ -27,6 +28,7 @@ export type AppSettingsInfo = {
 	envOverride: boolean;
 	storageMode: StorageMode;
 	syncServerUrl: string;
+	clientId: string;
 };
 
 export function getConfigFilePath(): string {
@@ -83,6 +85,7 @@ export function getAppSettingsInfo(): AppSettingsInfo {
 		envOverride: root.envOverride,
 		storageMode: config.storageMode ?? 'local',
 		syncServerUrl: config.syncServerUrl?.trim() ?? '',
+		clientId: getClientId(),
 	};
 }
 
@@ -123,7 +126,8 @@ function normalizeSettingsInput(input: AppSettings): AppSettings {
 }
 
 export async function saveSettings(input: AppSettings): Promise<AppSettingsInfo> {
-	const parsed = appSettingsSchema.parse(input);
+	const current = readConfigSync();
+	const parsed = appSettingsSchema.parse({ ...current, ...input });
 	const data = normalizeSettingsInput(parsed);
 
 	const file = getConfigFilePath();
