@@ -22,8 +22,17 @@ See `README.md` for full documentation. Common commands:
 | `npm run dev` | Dev server at http://localhost:4321 (`predev` seeds `projects/demo` from `seed/projects/demo`) |
 | `npm run build` | Production build to `dist/` |
 | `npm run preview` | Preview production build |
+| `npm run tauri:dev` | Tauri native shell + Astro dev server |
+| `npm run tauri:build` | Desktop release bundle (spawns bundled Node + Astro server) |
 
 There are **no** lint or test scripts in this repo.
+
+### Tauri shell
+
+- Config: `src-tauri/tauri.conf.json` (+ `tauri.ios.conf.json`, `tauri.android.conf.json`)
+- Release builds run `scripts/prepare-tauri.mjs` (Astro build → `src-tauri/resources/web/`, Node runtime → `src-tauri/binaries/`)
+- Desktop prod URL: `http://127.0.0.1:4310` (local Node sidecar). Dev uses `devUrl` `http://localhost:4321`.
+- Rust toolchain: `rust-toolchain.toml` (stable)
 
 ### Running the dev server
 

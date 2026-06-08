@@ -2,6 +2,9 @@ node_modules/
 dist/
 .astro/
 target/
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/resources/web/
 sync-server/target/
 
 .env

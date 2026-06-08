@@ -8,6 +8,10 @@ import { xyflowSsrStub } from './src/lib/vite/xyflow-ssr-plugin.mjs';
 // https://astro.build/config
 export default defineConfig({
   output: 'server',
+  server: {
+    host: '127.0.0.1',
+    port: 4321,
+  },
   security: {
     checkOrigin: false,
   },

@@ -68,13 +68,60 @@ The server intentionally serves HTTP only; put HTTPS behind nginx, Caddy, Traefi
 3. Autoload `DialogueRunner.gd`.
 4. Call `start("tavern_intro")` and wire UI to `line_shown`, `choices_shown`, `dialogue_ended`, and `run_command`.
 
+## Desktop and mobile app (Tauri)
+
+Dialogsys ships as a [Tauri](https://v2.tauri.app) shell around the same Astro app. One shared codebase — no per-OS UI logic.
+
+### Prerequisites
+
+- **Rust** (stable toolchain; see `rust-toolchain.toml`)
+- **Tauri prerequisites** for your platform: [v2.tauri.app/start/prerequisites](https://v2.tauri.app/start/prerequisites/)
+- **iOS builds:** Xcode, CocoaPods (`pod`), and `npm run tauri ios init` (already run once in this repo)
+- **Android builds:** Android Studio / SDK / NDK, and `npm run tauri android init`
+
+### Development
+
+```bash
+npm install
+npm run tauri:dev
+```
+
+This starts the Astro dev server and opens the native window at `http://localhost:4321`.
+
+### Desktop release builds
+
+`npm run tauri:build` bundles the Astro server, a Node runtime for the target platform, and opens the app at `http://127.0.0.1:4310`. Project data is stored under the OS app data directory (with the demo project seeded on first launch).
+
+| Command | Output |
+|---------|--------|
+| `npm run tauri:build` | Native bundle for the current machine |
+| `npm run tauri:build:mac` | macOS Apple Silicon `.app` / `.dmg` |
+| `npm run tauri:build:mac-intel` | macOS Intel |
+| `npm run tauri:build:win` | Windows `.msi` / `.exe` (cross-compile from macOS/Linux requires extra tooling) |
+| `npm run tauri:build:linux` | Linux `.deb` / `.AppImage` |
+
+Prepare bundled assets manually with `npm run tauri:prepare` (also runs automatically before `tauri build`).
+
+### Mobile
+
+| Command | Description |
+|---------|-------------|
+| `npm run tauri:ios:dev` | iOS Simulator + Astro dev server on your Mac |
+| `npm run tauri:ios:build` | iOS release build (requires Apple signing setup) |
+| `npm run tauri:android:dev` | Android emulator/device + Astro dev server |
+| `npm run tauri:android:build` | Android APK/AAB |
+
+Mobile **release** builds are a thin shell today: offline editing requires the desktop app. Use `tauri ios dev` / `tauri android dev` during development, or the desktop app for full local authoring.
+
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Development server |
+| `npm run dev` | Development server (browser) |
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build |
+| `npm run tauri:dev` | Native app + dev server |
+| `npm run tauri:build` | Native desktop release build |
 
 ## Stack
 
@@ -82,3 +129,4 @@ The server intentionally serves HTTP only; put HTTPS behind nginx, Caddy, Traefi
 - [Svelte](https://svelte.dev) islands (graph editor, forms)
 - [@xyflow/svelte](https://svelteflow.dev) (scene graph)
 - [Zod](https://zod.dev) (validation)
+- [Tauri](https://v2.tauri.app) (desktop + mobile shell)
