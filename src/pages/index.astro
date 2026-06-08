@@ -1,10 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import ProjectCard from '../components/ProjectCard.astro';
-import CreateProjectForm from '../islands/CreateProjectForm.svelte';
-import { listProjects } from '../lib/server/projects';
-
-const projects = await listProjects();
+import ProjectHome from '../islands/ProjectHome.svelte';
 ---
 
 <BaseLayout title="Dialogsys">
@@ -19,23 +15,7 @@ const projects = await listProjects();
 
 		<section>
 			<h2>Your projects</h2>
-			{projects.length === 0 ? (
-				<>
-					<p class="muted">No projects yet. Create one below or open the bundled demo.</p>
-					<p><a href="/projects/demo/characters" class="btn">Open demo project</a></p>
-				</>
-			) : (
-				<div class="card-grid">
-					{projects.map((project) => (
-						<ProjectCard project={project} />
-					))}
-				</div>
-			)}
-		</section>
-
-		<section>
-			<h2>Create project</h2>
-			<CreateProjectForm client:load />
+			<ProjectHome client:load />
 		</section>
 	</div>
 </BaseLayout>
@@ -58,16 +38,8 @@ const projects = await listProjects();
 		margin: 0;
 	}
 
-	section {
-		margin-bottom: 2.5rem;
-	}
-
 	section h2 {
 		font-size: 1.1rem;
 		margin-bottom: 1rem;
-	}
-
-	.muted {
-		color: var(--text-muted);
 	}
 </style>

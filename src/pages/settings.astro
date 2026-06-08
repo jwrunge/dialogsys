@@ -1,17 +1,25 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import SettingsEditor from '../islands/SettingsEditor.svelte';
-import { getProjectsRootInfo } from '../lib/server/settings';
+import { getAppSettingsInfo } from '../lib/server/settings';
 
-const info = getProjectsRootInfo();
+const info = getAppSettingsInfo();
 ---
 
 <BaseLayout title="Settings · Dialogsys">
 	<div class="container">
 		<h1>Settings</h1>
 		<p class="lead">
-			Projects are stored as folders on disk. The default location is
-			<code>{info.resolvedPath}</code>.
+			Configure local project storage or connect to a self-hosted Dialogsys sync server.
+			{info.storageMode === 'remote' && info.syncServerUrl ? (
+				<>
+					Currently using remote storage at <code>{info.syncServerUrl}</code>.
+				</>
+			) : (
+				<>
+					Local projects folder: <code>{info.resolvedPath}</code>.
+				</>
+			)}
 		</p>
 		<SettingsEditor client:load />
 	</div>

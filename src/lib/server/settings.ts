@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
-import { appSettingsSchema, type AppSettings } from '../schema/settings';
+import {
+	appSettingsSchema,
+	type AppSettings,
+	type StorageMode,
+} from '../schema/settings';
+import { isValidSyncServerUrl } from '../sync/client';
 
 const DEFAULT_ROOT = './projects';
 const CONFIG_FILENAME = 'dialogsys.config.json';
@@ -9,13 +14,19 @@ const CONFIG_FILENAME = 'dialogsys.config.json';
 export type ProjectsRootSource = 'env' | 'config' | 'default';
 
 export type ProjectsRootInfo = {
-	/** Path stored in config (or default) — may be relative */
 	configuredPath: string;
-	/** Resolved absolute path used on disk */
 	resolvedPath: string;
 	source: ProjectsRootSource;
-	/** True when DIALOGSYS_PROJECTS_ROOT is set */
 	envOverride: boolean;
+};
+
+export type AppSettingsInfo = {
+	projectsRoot: string;
+	resolvedPath: string;
+	source: ProjectsRootSource;
+	envOverride: boolean;
+	storageMode: StorageMode;
+	syncServerUrl: string;
 };
 
 export function getConfigFilePath(): string {
@@ -62,6 +73,19 @@ export function getProjectsRootInfo(): ProjectsRootInfo {
 	return resolveProjectsRoot();
 }
 
+export function getAppSettingsInfo(): AppSettingsInfo {
+	const config = readConfigSync();
+	const root = resolveProjectsRoot(config);
+	return {
+		projectsRoot: root.configuredPath,
+		resolvedPath: root.resolvedPath,
+		source: root.source,
+		envOverride: root.envOverride,
+		storageMode: config.storageMode ?? 'local',
+		syncServerUrl: config.syncServerUrl?.trim() ?? '',
+	};
+}
+
 export async function loadSettings(): Promise<AppSettings> {
 	const file = getConfigFilePath();
 	try {
@@ -73,24 +97,41 @@ export async function loadSettings(): Promise<AppSettings> {
 	}
 }
 
-export async function saveSettings(input: AppSettings): Promise<ProjectsRootInfo> {
-	const parsed = appSettingsSchema.parse(input);
-	if (!parsed.projectsRoot?.trim()) {
-		throw new Error('Projects path is required');
+function normalizeSettingsInput(input: AppSettings): AppSettings {
+	const storageMode = input.storageMode ?? 'local';
+	const projectsRoot = input.projectsRoot?.trim() || DEFAULT_ROOT;
+	const syncServerUrl = input.syncServerUrl?.trim().replace(/\/+$/, '') ?? '';
+
+	if (storageMode === 'remote') {
+		if (!syncServerUrl) {
+			throw new Error('Sync server URL is required for remote storage');
+		}
+		if (!isValidSyncServerUrl(syncServerUrl)) {
+			throw new Error('Sync server URL must start with http:// or https://');
+		}
 	}
 
-	const projectsRoot = parsed.projectsRoot.trim();
-	if (path.isAbsolute(projectsRoot) && projectsRoot.includes('\0')) {
+	if (projectsRoot.includes('\0')) {
 		throw new Error('Invalid projects path');
 	}
 
+	return {
+		projectsRoot,
+		storageMode,
+		syncServerUrl: syncServerUrl || undefined,
+	};
+}
+
+export async function saveSettings(input: AppSettings): Promise<AppSettingsInfo> {
+	const parsed = appSettingsSchema.parse(input);
+	const data = normalizeSettingsInput(parsed);
+
 	const file = getConfigFilePath();
-	const data: AppSettings = { projectsRoot };
 	const tmp = `${file}.${Date.now()}.tmp`;
 	await fsPromises.writeFile(tmp, JSON.stringify(data, null, 2) + '\n', 'utf-8');
 	await fsPromises.rename(tmp, file);
 
-	await fsPromises.mkdir(path.resolve(process.cwd(), projectsRoot), { recursive: true });
+	await fsPromises.mkdir(path.resolve(process.cwd(), data.projectsRoot!), { recursive: true });
 
-	return resolveProjectsRoot(data);
+	return getAppSettingsInfo();
 }

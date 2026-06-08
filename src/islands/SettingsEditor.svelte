@@ -1,24 +1,34 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '../lib/api';
+	import { testSyncConnection } from '../lib/sync/client';
+	import type { StorageMode } from '../lib/schema/settings';
 
 	type SettingsResponse = {
 		projectsRoot: string;
 		resolvedPath: string;
 		source: 'env' | 'config' | 'default';
 		envOverride: boolean;
+		storageMode: StorageMode;
+		syncServerUrl: string;
 		configFile: string | null;
 	};
 
 	let projectsRoot = $state('./projects');
+	let storageMode = $state<StorageMode>('local');
+	let syncServerUrl = $state('');
 	let resolvedPath = $state('');
 	let source = $state<SettingsResponse['source']>('default');
 	let envOverride = $state(false);
 	let configFile = $state<string | null>(null);
 	let ready = $state(false);
 	let saving = $state(false);
+	let testing = $state(false);
 	let error = $state('');
 	let saved = $state(false);
+	let connectionStatus = $state<'idle' | 'ok' | 'error'>('idle');
+	let connectionMessage = $state('');
+	let connectionProjectCount = $state(0);
 
 	const sourceLabel = $derived.by(() => {
 		switch (source) {
@@ -37,6 +47,8 @@
 		try {
 			const res = await api<SettingsResponse>('/api/settings');
 			projectsRoot = res.projectsRoot;
+			storageMode = res.storageMode ?? 'local';
+			syncServerUrl = res.syncServerUrl ?? '';
 			resolvedPath = res.resolvedPath;
 			source = res.source;
 			envOverride = res.envOverride;
@@ -44,6 +56,44 @@
 			ready = true;
 		} catch (e) {
 			error = (e as Error).message;
+		}
+	}
+
+	async function testConnection() {
+		if (!syncServerUrl.trim()) {
+			connectionStatus = 'error';
+			connectionMessage = 'Enter a sync server URL first.';
+			return;
+		}
+		testing = true;
+		connectionStatus = 'idle';
+		connectionMessage = '';
+		try {
+			const browserResult = await testSyncConnection(syncServerUrl.trim());
+			if (browserResult.ok) {
+				connectionStatus = 'ok';
+				connectionProjectCount = browserResult.projectCount;
+				connectionMessage = `Connected — ${browserResult.projectCount} project${browserResult.projectCount === 1 ? '' : 's'} found.`;
+				return;
+			}
+
+			const serverResult = await api<{ ok: boolean; projectCount: number }>('/api/settings', {
+				method: 'POST',
+				body: JSON.stringify({ syncServerUrl: syncServerUrl.trim() }),
+			});
+			if (serverResult.ok) {
+				connectionStatus = 'ok';
+				connectionProjectCount = serverResult.projectCount;
+				connectionMessage = `Connected via app server — ${serverResult.projectCount} project${serverResult.projectCount === 1 ? '' : 's'} found.`;
+			} else {
+				connectionStatus = 'error';
+				connectionMessage = browserResult.error ?? 'Connection failed';
+			}
+		} catch (e) {
+			connectionStatus = 'error';
+			connectionMessage = (e as Error).message;
+		} finally {
+			testing = false;
 		}
 	}
 
@@ -56,9 +106,15 @@
 		try {
 			const res = await api<SettingsResponse>('/api/settings', {
 				method: 'PUT',
-				body: JSON.stringify({ projectsRoot: projectsRoot.trim() }),
+				body: JSON.stringify({
+					projectsRoot: projectsRoot.trim(),
+					storageMode,
+					syncServerUrl: syncServerUrl.trim(),
+				}),
 			});
 			projectsRoot = res.projectsRoot;
+			storageMode = res.storageMode ?? 'local';
+			syncServerUrl = res.syncServerUrl ?? '';
 			resolvedPath = res.resolvedPath;
 			source = res.source;
 			configFile = res.configFile;
@@ -81,39 +137,117 @@
 			<p class="error">{error}</p>
 		{/if}
 		{#if saved}
-			<p class="success">Settings saved. New projects will use this path.</p>
+			<p class="success">Settings saved.</p>
 		{/if}
 
-		<div class="field">
-			<label for="projects-root">Projects folder</label>
-			<input
-				id="projects-root"
-				bind:value={projectsRoot}
-				required
-				autocomplete="off"
-				placeholder="./projects"
-				disabled={envOverride}
-			/>
+		<section class="settings-section">
+			<h2>Project storage</h2>
 			<p class="hint">
-				Relative paths are resolved from the app directory. Each project is a subfolder with
-				<code>project.json</code>, scenes, sequences, and more.
+				Choose where the home page loads projects from. Local folder is always used for saves
+				on this machine unless you run the app against a remote data directory.
 			</p>
-		</div>
 
-		{#if resolvedPath}
-			<div class="info-card">
-				<p><strong>Current location:</strong> <code>{resolvedPath}</code></p>
-				<p class="hint">Active source: {sourceLabel}</p>
-				{#if configFile}
-					<p class="hint">Saved in <code>{configFile}</code></p>
+			<div class="mode-toggle" role="radiogroup" aria-label="Storage mode">
+				<label class="mode-option">
+					<input
+						type="radio"
+						name="storage-mode"
+						value="local"
+						bind:group={storageMode}
+						disabled={envOverride}
+					/>
+					<span>
+						<strong>Local folder</strong>
+						<span class="mode-desc">Projects on this computer</span>
+					</span>
+				</label>
+				<label class="mode-option">
+					<input
+						type="radio"
+						name="storage-mode"
+						value="remote"
+						bind:group={storageMode}
+						disabled={envOverride}
+					/>
+					<span>
+						<strong>Remote sync server</strong>
+						<span class="mode-desc">Self-hosted Dialogsys Server</span>
+					</span>
+				</label>
+			</div>
+		</section>
+
+		{#if storageMode === 'local'}
+			<div class="field">
+				<label for="projects-root">Projects folder</label>
+				<input
+					id="projects-root"
+					bind:value={projectsRoot}
+					required
+					autocomplete="off"
+					placeholder="./projects"
+					disabled={envOverride}
+				/>
+				<p class="hint">
+					Relative paths resolve from the app directory. Each project is a subfolder with
+					<code>project.json</code>, scenes, sequences, and more.
+				</p>
+			</div>
+
+			{#if resolvedPath}
+				<div class="info-card">
+					<p><strong>Current location:</strong> <code>{resolvedPath}</code></p>
+					<p class="hint">Active source: {sourceLabel}</p>
+					{#if configFile}
+						<p class="hint">Saved in <code>{configFile}</code></p>
+					{/if}
+				</div>
+			{/if}
+		{:else}
+			<div class="field">
+				<label for="sync-server-url">Sync server URL</label>
+				<input
+					id="sync-server-url"
+					bind:value={syncServerUrl}
+					required
+					autocomplete="off"
+					placeholder="http://127.0.0.1:3210"
+					disabled={envOverride}
+				/>
+				<p class="hint">
+					Base URL of your self-hosted server from <code>sync-server/</code>. Use HTTPS behind a
+					reverse proxy when accessing from other devices.
+				</p>
+			</div>
+
+			<div class="test-row">
+				<button
+					type="button"
+					class="btn"
+					onclick={testConnection}
+					disabled={testing || envOverride || !syncServerUrl.trim()}
+				>
+					{testing ? 'Testing…' : 'Test connection'}
+				</button>
+				{#if connectionStatus === 'ok'}
+					<span class="status-ok">{connectionMessage}</span>
+				{:else if connectionStatus === 'error'}
+					<span class="status-error">{connectionMessage}</span>
 				{/if}
+			</div>
+
+			<div class="info-card">
+				<p class="hint">
+					Start the server with
+					<code>cd sync-server && cargo run -- --root ./projects --bind 127.0.0.1:3210</code>
+				</p>
 			</div>
 		{/if}
 
 		{#if envOverride}
 			<p class="warning">
-				<code>DIALOGSYS_PROJECTS_ROOT</code> is set in the environment, so it overrides this
-				setting. Remove that variable to control the path from here.
+				<code>DIALOGSYS_PROJECTS_ROOT</code> is set in the environment, so the local folder path
+				is overridden. Remove that variable to control it from here.
 			</p>
 		{/if}
 
@@ -128,7 +262,56 @@
 
 <style>
 	.settings-form {
-		max-width: 36rem;
+		max-width: 40rem;
+	}
+
+	.settings-section {
+		margin-bottom: 1.5rem;
+	}
+
+	.settings-section h2 {
+		margin: 0 0 0.35rem;
+		font-size: 1.05rem;
+	}
+
+	.mode-toggle {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+	}
+
+	.mode-option {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.6rem;
+		padding: 0.75rem 0.9rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--bg-elevated);
+		cursor: pointer;
+	}
+
+	.mode-option:has(input:checked) {
+		border-color: var(--accent-dim);
+		background: var(--bg-hover);
+	}
+
+	.mode-option input {
+		width: auto;
+		margin-top: 0.2rem;
+	}
+
+	.mode-option strong {
+		display: block;
+		font-size: 0.95rem;
+	}
+
+	.mode-desc {
+		display: block;
+		font-size: 0.8rem;
+		color: var(--text-muted);
+		margin-top: 0.1rem;
 	}
 
 	.field {
@@ -162,6 +345,24 @@
 
 	.info-card p:last-child {
 		margin-bottom: 0;
+	}
+
+	.test-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.status-ok {
+		color: var(--success);
+		font-size: 0.85rem;
+	}
+
+	.status-error {
+		color: var(--error);
+		font-size: 0.85rem;
 	}
 
 	.warning {
