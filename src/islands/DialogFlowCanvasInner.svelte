@@ -12,6 +12,7 @@ import {
 import { setContext } from 'svelte';
 import '@xyflow/svelte/dist/style.css';
 import { DIALOG_CHARACTERS_KEY, type DialogCharactersContext } from '../lib/graph/dialogContext';
+import { liveGraphNodeSelect } from '../lib/graph/liveNodeSelect';
 import type { Character } from '../lib/schema/characters';
 import DialogNode from './DialogNode.svelte';
 
@@ -110,7 +111,7 @@ const handleConnectEnd: OnConnectEnd = (event, connectionState) => {
 		colorMode="dark"
 		connectionRadius={80}
 		fitView
-		onnodeclick={({ node }) => onNodeSelect(node.id)}
+		onnodeclick={({ node }) => liveGraphNodeSelect(node.id)}
 		onconnect={(params) => {
 			pushToParent();
 			onConnect(params);

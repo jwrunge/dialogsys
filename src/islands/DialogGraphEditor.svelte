@@ -20,6 +20,7 @@ import {
 	unlinkNode,
 } from '../lib/graph/graphEdit';
 import { findEntryNode, singleNextTarget } from '../lib/graph/graphUtils';
+import { bindLiveGraphNodeSelect } from '../lib/graph/liveNodeSelect';
 import { createBlankNode } from '../lib/graph/nodeFactory';
 import type { Character, CharactersFile } from '../lib/schema/characters';
 import type { GameStateFile, GameStateProperty } from '../lib/schema/gameState';
@@ -181,6 +182,8 @@ function selectNode(id: string) {
 		}
 	}
 }
+
+$effect(() => bindLiveGraphNodeSelect(selectNode));
 
 function selectFromHash() {
 	if (typeof window === 'undefined') return;

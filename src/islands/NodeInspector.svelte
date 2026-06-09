@@ -27,12 +27,12 @@ interface Props {
 
 let {
 	slug,
-	node,
-	edges,
-	nodes,
-	characters,
-	gameStateProperties,
-	dialogIds,
+	node: nodeProp,
+	edges: edgesProp,
+	nodes: nodesProp,
+	characters: charactersProp,
+	gameStateProperties: gameStatePropertiesProp,
+	dialogIds: dialogIdsProp,
 	onchange,
 	onedgechange,
 	onSetBranchTarget,
@@ -40,6 +40,13 @@ let {
 	oncharacterschange,
 	ondelete,
 }: Props = $props();
+
+const node = $derived(nodeProp);
+const edges = $derived(edgesProp);
+const nodes = $derived(nodesProp);
+const characters = $derived(charactersProp);
+const gameStateProperties = $derived(gameStatePropertiesProp);
+const dialogIds = $derived(dialogIdsProp);
 
 const optionCount = $derived(node?.type === 'choice' ? (node.data.options?.length ?? 0) : 0);
 
@@ -123,7 +130,8 @@ function branchLabel(edge: GraphEdge): string {
 }
 </script>
 
-<div data-transmut="include">
+<div data-transmut-skip>
+{#key node?.id ?? 'none'}
 {#if !node}
 	<p class="muted">Click a node on the canvas to edit its properties.</p>
 {:else}
@@ -317,6 +325,7 @@ function branchLabel(edge: GraphEdge): string {
 		</div>
 	{/if}
 {/if}
+{/key}
 </div>
 
 {#snippet BranchEdgeList(nodeEdges: GraphEdge[], branchLabel: (e: GraphEdge) => string, updateEdge: (id: string, patch: Partial<GraphEdge['data']>) => void)}
