@@ -2,8 +2,7 @@ import { nanoid } from 'nanoid';
 import type { Character } from '../schema/characters';
 import type { DialogGraph, GraphEdge, GraphNode } from '../schema/graph';
 import { insertNodeAfter } from '../graph/graphEdit';
-import { flattenActivePathWithDepth } from '../graph/pathTree';
-import { getStartNodeId, nodeById } from '../graph/graphUtils';
+import { getEdgeForHandle, getOutgoing, getStartNodeId, nodeById } from '../graph/graphUtils';
 
 const CHOICE_START = /^\[\[choice(?::([a-zA-Z0-9_-]+))?\]\]$/;
 const CHOICE_END = /^\[\[\/choice\]\]$/;
@@ -57,17 +56,57 @@ export function resolveSpeaker(label: string, characters: Character[]): string {
 	return byName?.id ?? trimmed;
 }
 
+/** Walk all branches so text view includes every reachable line/direction/choice. */
+export function documentOrderNodes(graph: DialogGraph): GraphNode[] {
+	const result: GraphNode[] = [];
+	const visited = new Set<string>();
+	const start = getStartNodeId(graph.nodes, graph.edges);
+	if (!start) return result;
+
+	function walk(nodeId: string) {
+		if (visited.has(nodeId)) return;
+		const node = nodeById(graph.nodes, nodeId);
+		if (!node || node.type === 'entry') return;
+		if (node.type === 'end') return;
+
+		visited.add(nodeId);
+		if (['line', 'direction', 'choice', 'set_var', 'condition', 'jump'].includes(node.type)) {
+			result.push(node);
+		}
+
+		if (node.type === 'choice') {
+			for (const opt of node.data.options ?? []) {
+				const edge = getEdgeForHandle(graph.edges, node.id, opt.id);
+				if (edge?.target) walk(edge.target);
+			}
+			return;
+		}
+
+		if (node.type === 'condition') {
+			for (const handle of ['true', 'false'] as const) {
+				const edge = getEdgeForHandle(graph.edges, node.id, handle);
+				if (edge?.target) walk(edge.target);
+			}
+			return;
+		}
+
+		for (const edge of getOutgoing(graph.edges, nodeId)) {
+			walk(edge.target);
+		}
+	}
+
+	walk(start);
+	return result;
+}
+
 export function graphToSceneTextBlocks(
 	graph: DialogGraph,
 	characters: Character[],
-	activeBranches: Record<string, string> = {},
+	_activeBranches: Record<string, string> = {},
 ): SceneTextBlock[] {
-	const path = flattenActivePathWithDepth(graph.nodes, graph.edges, activeBranches);
 	const blocks: SceneTextBlock[] = [];
 
-	for (const step of path) {
-		const node = nodeById(graph.nodes, step.id);
-		if (!node) continue;
+	for (const node of documentOrderNodes(graph)) {
 
 		if (node.type === 'line') {
 			blocks.push({
@@ -211,17 +250,19 @@ function markerLabel(node: GraphNode): string {
 	return node.type;
 }
 
-function pathContentNodes(
-	graph: DialogGraph,
-	activeBranches: Record<string, string>,
-): GraphNode[] {
-	const path = flattenActivePathWithDepth(graph.nodes, graph.edges, activeBranches);
-	return path
-		.map((step) => nodeById(graph.nodes, step.id))
-		.filter((node): node is GraphNode => !!node)
-		.filter((node) =>
-			['line', 'direction', 'choice', 'set_var', 'condition', 'jump'].includes(node.type),
-		);
+function resolveAnchorNodeId(
+	nodes: GraphNode[],
+	edges: GraphEdge[],
+	blocks: SceneTextBlock[],
+	blockIndex: number,
+): string | undefined {
+	for (let i = blockIndex - 1; i >= 0; i--) {
+		const prev = blocks[i];
+		if (prev?.type === 'marker') continue;
+		const id = prev?.nodeId;
+		if (id && nodeById(nodes, id)) return id;
+	}
+	return findEntryId(nodes) ?? getStartNodeId(nodes, edges) ?? undefined;
 }
 
 function createLineNode(speaker: string, text: string): GraphNode {
@@ -257,16 +298,6 @@ function createChoiceNode(options: { id: string; text: string }[]): GraphNode {
 	};
 }
 
-function anchorBeforeEnd(nodes: GraphNode[], edges: GraphEdge[]): string {
-	const end = nodes.find((n) => n.type === 'end');
-	if (end) {
-		const incoming = edges.filter((e) => e.target === end.id);
-		if (incoming[0]) return incoming[0].source;
-	}
-	const start = getStartNodeId(nodes, edges);
-	return start ?? findEntryId(nodes) ?? end?.id ?? nodes[0]?.id ?? 'entry';
-}
-
 function findEntryId(nodes: GraphNode[]): string | undefined {
 	return nodes.find((n) => n.type === 'entry')?.id;
 }
@@ -275,17 +306,32 @@ export function applySceneTextBlocks(
 	graph: DialogGraph,
 	blocks: SceneTextBlock[],
 	characters: Character[],
-	activeBranches: Record<string, string> = {},
+	_activeBranches: Record<string, string> = {},
 ): DialogGraph {
 	let nodes = [...graph.nodes];
 	let edges = [...graph.edges];
-	const pathNodes = pathContentNodes({ ...graph, nodes, edges }, activeBranches);
-	let pathIndex = 0;
 
-	const syncBlock = (block: SceneTextBlock, existing?: GraphNode) => {
-		if (block.type === 'marker' && existing) {
-			return;
+	const docNodes = documentOrderNodes({ ...graph, nodes, edges });
+
+	const blockIndexByType = (blockIndex: number, type: SceneTextBlock['type']) =>
+		blocks
+			.slice(0, blockIndex)
+			.filter((entry) => entry.type === type && entry.type !== 'marker').length;
+
+	const resolveExisting = (block: SceneTextBlock, blockIndex: number): GraphNode | undefined => {
+		if (block.type === 'marker') return undefined;
+		if (block.nodeId) {
+			const explicit = nodeById(nodes, block.nodeId);
+			if (explicit) return explicit;
 		}
+		const candidates = docNodes.filter((node) => node.type === block.type);
+		return candidates[blockIndexByType(blockIndex, block.type)];
+	};
+
+	const syncBlock = (block: SceneTextBlock, blockIndex: number) => {
+		if (block.type === 'marker') return;
+
+		const existing = resolveExisting(block, blockIndex);
 
 		if (block.type === 'line') {
 			const speaker = resolveSpeaker(block.speaker, characters);
@@ -298,7 +344,8 @@ export function applySceneTextBlocks(
 				return;
 			}
 			const newNode = createLineNode(speaker, block.text);
-			const afterId = pathIndex === 0 ? findEntryId(nodes) ?? anchorBeforeEnd(nodes, edges) : pathNodes[pathIndex - 1]?.id;
+			if (block.nodeId) newNode.id = block.nodeId;
+			const afterId = resolveAnchorNodeId(nodes, edges, blocks, blockIndex);
 			if (afterId) {
 				const inserted = insertNodeAfter(nodes, edges, afterId, newNode);
 				nodes = inserted.nodes;
@@ -317,10 +364,8 @@ export function applySceneTextBlocks(
 				return;
 			}
 			const newNode = createDirectionNode(block.text);
-			const afterId =
-				pathIndex === 0
-					? (findEntryId(nodes) ?? anchorBeforeEnd(nodes, edges))
-					: pathNodes[pathIndex - 1]?.id;
+			if (block.nodeId) newNode.id = block.nodeId;
+			const afterId = resolveAnchorNodeId(nodes, edges, blocks, blockIndex);
 			if (afterId) {
 				const inserted = insertNodeAfter(nodes, edges, afterId, newNode);
 				nodes = inserted.nodes;
@@ -353,10 +398,8 @@ export function applySceneTextBlocks(
 				return;
 			}
 			const newNode = createChoiceNode(options);
-			const afterId =
-				pathIndex === 0
-					? (findEntryId(nodes) ?? anchorBeforeEnd(nodes, edges))
-					: pathNodes[pathIndex - 1]?.id;
+			if (block.nodeId) newNode.id = block.nodeId;
+			const afterId = resolveAnchorNodeId(nodes, edges, blocks, blockIndex);
 			if (afterId) {
 				const inserted = insertNodeAfter(nodes, edges, afterId, newNode);
 				nodes = inserted.nodes;
@@ -365,23 +408,8 @@ export function applySceneTextBlocks(
 		}
 	};
 
-	for (const block of blocks) {
-		if (block.type === 'marker') {
-			const existing = nodeById(nodes, block.nodeId);
-			if (existing) {
-				pathIndex += 1;
-			}
-			continue;
-		}
-
-		const existing = pathNodes[pathIndex];
-		if (block.nodeId) {
-			const explicit = nodeById(nodes, block.nodeId);
-			syncBlock({ ...block, nodeId: block.nodeId }, explicit ?? existing);
-		} else {
-			syncBlock(block, existing);
-		}
-		pathIndex += 1;
+	for (let index = 0; index < blocks.length; index++) {
+		syncBlock(blocks[index]!, index);
 	}
 
 	return { ...graph, nodes, edges };

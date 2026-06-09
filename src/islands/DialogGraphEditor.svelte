@@ -78,6 +78,8 @@ let clientId = $state('');
 let applyingRemotePatch = $state(false);
 let editorView = $state<'graph' | 'text'>('graph');
 let previewOpen = $state(false);
+let previewGraph = $state<DialogGraph | null>(null);
+let textRevision = $state(0);
 
 let canvasNodes = $state.raw<CanvasNode[]>([]);
 let canvasEdges = $state.raw<CanvasEdge[]>([]);
@@ -129,8 +131,22 @@ function onTextBlocksChange(blocks: SceneTextBlock[]) {
 	if (!savedGraph || applyingRemotePatch) return;
 	const next = applySceneTextBlocks(savedGraph, blocks, characters);
 	savedGraph = { ...next, displayName: graphMeta.displayName, description: graphMeta.description };
-	toCanvas(savedGraph);
 	scheduleSave();
+}
+
+function setEditorView(view: 'graph' | 'text') {
+	if (view === 'graph' && savedGraph) {
+		toCanvas(savedGraph);
+	}
+	if (view === 'text') {
+		textRevision += 1;
+	}
+	editorView = view;
+}
+
+function openPreview() {
+	previewGraph = editorView === 'text' && savedGraph ? savedGraph : fromCanvas();
+	previewOpen = true;
 }
 
 const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
@@ -153,7 +169,7 @@ async function syncGraphFromServer() {
 
 async function save() {
 	if (!savedGraph) return;
-	const next = fromCanvas();
+	const next = editorView === 'text' ? savedGraph : fromCanvas();
 	const ops = computeGraphPatch(savedGraph, next);
 	if (ops.length === 0) {
 		markClean();
@@ -215,7 +231,11 @@ async function applyRemotePatch(patch: CoauthorGraphPatch) {
 			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
 		}
 		graphMeta = { displayName: next.displayName, description: next.description };
-		toCanvas(next);
+		if (editorView === 'graph') {
+			toCanvas(next);
+		} else {
+			textRevision += 1;
+		}
 	} finally {
 		applyingRemotePatch = false;
 	}
@@ -238,6 +258,7 @@ async function load() {
 		if (!Array.isArray(graph.nodes)) throw new Error('Scene has no nodes array');
 		if (!Array.isArray(graph.edges)) throw new Error('Scene has no edges array');
 		toCanvas(graph);
+		textRevision += 1;
 		characters = Array.isArray(chars.characters) ? chars.characters : [];
 		gameStateProperties = Array.isArray(gameState.properties) ? gameState.properties : [];
 		dialogIds = dialogs.dialogs.map((d) => d.id);
@@ -525,7 +546,7 @@ onMount(async () => {
 					type="button"
 					class="btn"
 					class:btn-primary={editorView === 'graph'}
-					onclick={() => (editorView = 'graph')}
+					onclick={() => setEditorView('graph')}
 				>
 					Graph
 				</button>
@@ -533,12 +554,12 @@ onMount(async () => {
 					type="button"
 					class="btn"
 					class:btn-primary={editorView === 'text'}
-					onclick={() => (editorView = 'text')}
+					onclick={() => setEditorView('text')}
 				>
 					Text
 				</button>
 			</div>
-			<button type="button" class="btn btn-primary" onclick={() => (previewOpen = true)}>
+			<button type="button" class="btn btn-primary" onclick={openPreview}>
 				Play
 			</button>
 		</div>
@@ -546,7 +567,7 @@ onMount(async () => {
 			<SceneTextEditor
 				graph={savedGraph}
 				{characters}
-				revision={`${contentHash}:${syncKey}`}
+				revision={`text-${textRevision}`}
 				onchange={onTextBlocksChange}
 			/>
 		{:else}
@@ -599,11 +620,11 @@ onMount(async () => {
 			</aside>
 		</div>
 		{/if}
-		{#if savedGraph}
+		{#if previewGraph}
 			<DialoguePreviewPanel
 				mode="scene"
 				{slug}
-				graph={fromCanvas()}
+				graph={previewGraph}
 				{characters}
 				title={graphMeta.displayName}
 				open={previewOpen}

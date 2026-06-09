@@ -4,10 +4,10 @@ import type { FlowGraph, FlowNode } from '../schema/flow';
 import type { GameStateProperty } from '../schema/gameState';
 import { getOutgoing, nodeById, singleNextTarget } from '../graph/graphUtils';
 import {
-	createDialoguePlayer,
+	advanceDialogue,
+	startDialoguePreview,
 	type DialoguePlayer,
 	type DialogueStep,
-	advanceDialogue,
 } from './dialoguePlayer';
 import { defaultPlaytestState, type PlaytestState } from './evaluateConditions';
 
@@ -106,14 +106,13 @@ export function beginSceneDialogue(
 	}
 	const graph = player.dialogs[seqStep.dialogId];
 	if (!graph) return { player, step: null };
-	const dialogPlayer = createDialoguePlayer(graph, player.characters, player.gameState);
-	const result = advanceDialogue(dialogPlayer);
+	const begun = startDialoguePreview(graph, player.characters, player.gameState);
 	return {
 		player: {
 			...player,
-			dialogPlayer: result.player,
+			dialogPlayer: begun.player,
 		},
-		step: result.step,
+		step: begun.step,
 	};
 }
 

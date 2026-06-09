@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DialogGraph } from '../schema/graph';
-import { advanceDialogue, createDialoguePlayer } from './dialoguePlayer';
+import { advanceDialogue, getDialogueStep, startDialoguePreview } from './dialoguePlayer';
 
 const graph: DialogGraph = {
 	id: 'test',
@@ -43,17 +43,28 @@ const graph: DialogGraph = {
 };
 
 describe('dialoguePlayer', () => {
+	it('shows the first line without skipping it', () => {
+		const { player, step } = startDialoguePreview(graph);
+		expect(step?.kind).toBe('line');
+		expect(step && 'text' in step ? step.text : '').toBe('Hi');
+		expect(getDialogueStep(player)?.kind).toBe('line');
+	});
+
 	it('plays lines and choices in order', () => {
-		let player = createDialoguePlayer(graph);
+		let { player, step } = startDialoguePreview(graph);
 		let result = advanceDialogue(player);
-		expect(result.step?.kind).toBe('line');
-		expect(result.step && 'text' in result.step ? result.step.text : '').toBe('Hi');
+		player = result.player;
+		step = result.step;
+		expect(step?.kind).toBe('choice');
 
-		result = advanceDialogue(result.player);
-		expect(result.step?.kind).toBe('choice');
+		result = advanceDialogue(player, 'yes');
+		player = result.player;
+		step = result.step;
+		expect(step?.kind).toBe('line');
+		expect(step && 'text' in step ? step.text : '').toBe('Done');
 
-		result = advanceDialogue(result.player, 'yes');
-		expect(result.step?.kind).toBe('line');
-		expect(result.step && 'text' in result.step ? result.step.text : '').toBe('Done');
+		result = advanceDialogue(player);
+		expect(result.step).toBeNull();
+		expect(result.player.finished).toBe(true);
 	});
 });

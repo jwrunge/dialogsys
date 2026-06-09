@@ -60,6 +60,7 @@ let editorTitle = $state('Edit scene');
 let analyzing = $state(false);
 let sequenceDisplayName = $state('Main sequence');
 let previewOpen = $state(false);
+let previewFlow = $state<FlowGraph | null>(null);
 let previewDialogs = $state<Record<string, DialogGraph>>({});
 let previewCharacters = $state<Character[]>([]);
 let previewLoading = $state(false);
@@ -221,6 +222,7 @@ async function openSequencePreview() {
 		});
 		previewDialogs = dialogMap;
 		previewCharacters = chars.characters;
+		previewFlow = graph;
 		previewOpen = true;
 	} catch (e) {
 		saveStatus = (e as Error).message;
@@ -566,17 +568,19 @@ onMount(() => {
 				/>
 			</aside>
 		</div>
-		<DialoguePreviewPanel
-			mode="sequence"
-			{slug}
-			flow={fromCanvas()}
-			dialogs={previewDialogs}
-			characters={previewCharacters}
-			{gameStateProperties}
-			title={sequenceDisplayName}
-			open={previewOpen}
-			onclose={() => (previewOpen = false)}
-		/>
+		{#if previewFlow}
+			<DialoguePreviewPanel
+				mode="sequence"
+				{slug}
+				flow={previewFlow}
+				dialogs={previewDialogs}
+				characters={previewCharacters}
+				{gameStateProperties}
+				title={sequenceDisplayName}
+				open={previewOpen}
+				onclose={() => (previewOpen = false)}
+			/>
+		{/if}
 	{/if}
 
 	{#if saveStatus || loading}

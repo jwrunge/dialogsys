@@ -110,29 +110,67 @@ function resolveConditionTarget(
 	);
 }
 
+/** Skip set_var / condition nodes until a playable node or end. */
+export function skipStructuralNodes(player: DialoguePlayer): DialoguePlayer {
+	let current: DialoguePlayer = { ...player };
+
+	while (current.nodeId && !current.finished) {
+		const node = nodeById(current.graph.nodes, current.nodeId);
+		if (!node) {
+			return { ...current, finished: true, nodeId: null };
+		}
+
+		if (node.type === 'set_var') {
+			current = { ...current, state: applySetOps(node, current.state) };
+			current = {
+				...current,
+				nodeId: singleNextTarget(current.graph.edges, current.nodeId),
+			};
+			continue;
+		}
+
+		if (node.type === 'condition') {
+			current = {
+				...current,
+				nodeId: resolveConditionTarget(node, current.graph.edges, current.state),
+			};
+			continue;
+		}
+
+		break;
+	}
+
+	if (!current.nodeId) {
+		return { ...current, finished: true, nodeId: null };
+	}
+
+	return current;
+}
+
 export function createDialoguePlayer(
 	graph: DialogGraph,
 	characters: Character[] = [],
 	initialState: PlaytestState = defaultPlaytestState(),
 ): DialoguePlayer {
 	const start = getStartNodeId(graph.nodes, graph.edges);
-	return {
+	return skipStructuralNodes({
 		graph,
 		characters,
 		state: initialState,
 		nodeId: start,
 		finished: !start,
-	};
+	});
 }
 
 export function getDialogueStep(player: DialoguePlayer): DialogueStep | null {
-	if (!player.nodeId || player.finished) return null;
-	const node = nodeById(player.graph.nodes, player.nodeId);
+	const current = skipStructuralNodes(player);
+	if (!current.nodeId || current.finished) return null;
+	const node = nodeById(current.graph.nodes, current.nodeId);
 	if (!node) return null;
 
 	if (node.type === 'line') {
 		const speaker = node.data.speaker ?? '';
-		const char = characterById(player.characters, speaker);
+		const char = characterById(current.characters, speaker);
 		const stateId = node.data.characterState?.trim() || char?.defaultStateId;
 		const portrait = resolvePortraitPath(char, stateId, node.data.portraitPath);
 		return {
@@ -155,7 +193,7 @@ export function getDialogueStep(player: DialoguePlayer): DialogueStep | null {
 
 	if (node.type === 'choice') {
 		const options = (node.data.options ?? [])
-			.filter((opt) => evaluateConditions(player.state, opt.conditions ?? []))
+			.filter((opt) => evaluateConditions(current.state, opt.conditions ?? []))
 			.map((opt) => ({ id: opt.id, text: opt.text }));
 		return { kind: 'choice', nodeId: node.id, options };
 	}
@@ -176,105 +214,72 @@ export function getDialogueStep(player: DialoguePlayer): DialogueStep | null {
 	return null;
 }
 
-function nextNodeId(player: DialoguePlayer, choiceOptionId?: string): string | null {
-	const node = nodeById(player.graph.nodes, player.nodeId!);
+function stepAfterNode(player: DialoguePlayer, nodeId: string, choiceOptionId?: string): string | null {
+	const node = nodeById(player.graph.nodes, nodeId);
 	if (!node) return null;
-	const { nodes, edges } = player.graph;
 
 	if (node.type === 'choice') {
 		if (!choiceOptionId) return null;
-		return getEdgeForHandle(edges, node.id, choiceOptionId)?.target ?? null;
+		return getEdgeForHandle(player.graph.edges, node.id, choiceOptionId)?.target ?? null;
 	}
 
-	if (node.type === 'condition') {
-		return resolveConditionTarget(node, edges, player.state);
-	}
-
-	if (node.type === 'set_var') {
-		return singleNextTarget(edges, node.id);
-	}
-
-	if (node.type === 'line' || node.type === 'direction' || node.type === 'blank') {
-		return singleNextTarget(edges, node.id);
-	}
-
-	if (node.type === 'end' || node.type === 'jump') return null;
-	return singleNextTarget(edges, node.id);
+	return singleNextTarget(player.graph.edges, nodeId);
 }
 
+/** Advance past the current beat and return the next one to display. */
 export function advanceDialogue(
 	player: DialoguePlayer,
 	choiceOptionId?: string,
-): { player: DialoguePlayer; step: DialogueStep | null; autoSteps: DialogueStep[] } {
-	if (!player.nodeId || player.finished) {
-		return { player, step: null, autoSteps: [] };
+): { player: DialoguePlayer; step: DialogueStep | null } {
+	let current = skipStructuralNodes(player);
+	if (!current.nodeId || current.finished) {
+		return { player: { ...current, finished: true, nodeId: null }, step: null };
 	}
 
-	let current = player;
-	const autoSteps: DialogueStep[] = [];
-	let node = nodeById(current.graph.nodes, current.nodeId);
+	const node = nodeById(current.graph.nodes, current.nodeId);
 	if (!node) {
-		return { player: { ...current, finished: true, nodeId: null }, step: null, autoSteps };
+		return { player: { ...current, finished: true, nodeId: null }, step: null };
 	}
 
-	// Auto-pass through structural nodes before showing the next beat.
-	while (node && (node.type === 'set_var' || node.type === 'condition')) {
-		if (node.type === 'set_var') {
-			current = { ...current, state: applySetOps(node, current.state) };
-		}
-		const nextId = nextNodeId(current);
-		if (!nextId) {
-			return {
-				player: { ...current, finished: true, nodeId: null },
-				step: { kind: 'end', nodeId: node.id },
-				autoSteps,
-			};
-		}
-		current = { ...current, nodeId: nextId };
-		node = nodeById(current.graph.nodes, current.nodeId);
-	}
-
-	const step = getDialogueStep(current);
-	if (!step) {
-		return { player: { ...current, finished: true, nodeId: null }, step: null, autoSteps };
-	}
-
-	if (step.kind === 'end' || step.kind === 'jump') {
-		return { player: { ...current, finished: true, nodeId: null }, step, autoSteps };
-	}
-
-	if (step.kind === 'choice') {
+	if (node.type === 'choice') {
 		if (!choiceOptionId) {
-			return { player: current, step, autoSteps };
+			return { player: current, step: getDialogueStep(current) };
 		}
-		const nextId = nextNodeId(current, choiceOptionId);
+		const nextId = stepAfterNode(current, current.nodeId, choiceOptionId);
 		if (!nextId) {
-			return {
-				player: { ...current, finished: true, nodeId: null },
-				step: { kind: 'end', nodeId: current.nodeId! },
-				autoSteps,
-			};
+			return { player: { ...current, finished: true, nodeId: null }, step: null };
 		}
-		current = { ...current, nodeId: nextId };
-		return advanceDialogue(current);
+		const nextPlayer = skipStructuralNodes({ ...current, nodeId: nextId });
+		return { player: nextPlayer, step: getDialogueStep(nextPlayer) };
 	}
 
-	// line / direction — advance pointer for the next call after user continues
-	const nextId = nextNodeId(current);
+	if (node.type === 'end' || node.type === 'jump') {
+		return {
+			player: { ...current, finished: true, nodeId: null },
+			step: getDialogueStep(current),
+		};
+	}
+
+	const nextId = stepAfterNode(current, current.nodeId);
 	if (!nextId) {
-		return {
-			player: { ...current, finished: true, nodeId: null },
-			step,
-			autoSteps,
-		};
+		return { player: { ...current, finished: true, nodeId: null }, step: null };
 	}
-	const endNode = nodeById(current.graph.nodes, nextId);
-	if (endNode?.type === 'end') {
-		return {
-			player: { ...current, finished: true, nodeId: null },
-			step,
-			autoSteps,
-		};
+
+	const nextNode = nodeById(current.graph.nodes, nextId);
+	if (nextNode?.type === 'end') {
+		return { player: { ...current, finished: true, nodeId: null }, step: null };
 	}
-	return { player: { ...current, nodeId: nextId }, step, autoSteps };
+
+	const nextPlayer = skipStructuralNodes({ ...current, nodeId: nextId });
+	return { player: nextPlayer, step: getDialogueStep(nextPlayer) };
+}
+
+/** First beat to show when preview starts. */
+export function startDialoguePreview(
+	graph: DialogGraph,
+	characters: Character[] = [],
+	initialState: PlaytestState = defaultPlaytestState(),
+): { player: DialoguePlayer; step: DialogueStep | null } {
+	const player = createDialoguePlayer(graph, characters, initialState);
+	return { player, step: getDialogueStep(player) };
 }
