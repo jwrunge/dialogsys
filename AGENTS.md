@@ -76,7 +76,7 @@ The graph editor should show Entry, Direction, Line, Condition, Set var, and End
 ### Collaboration (async + live presence)
 
 - Per-device **origin threads** on sync server; `CollaborationPanel` in project layout
-- **Live coauthors** — SSE on sync server (`GET /projects/:slug/realtime/events`); `CoauthorPresence` shows who is editing which file and prompts reload when another thread updates your open scene
+- **Live coauthors** — SSE on sync server (`GET /projects/:slug/realtime/events`); `CoauthorPresence` shows who is editing which file; scene and sequence editors apply incoming `graphPatch` ops without full-page reload (`PATCH …/dialogs/{id}/graph`, `PATCH …/sequences/{id}/graph`)
 - Read-only tokens (`readAuthToken` on sync server) → `ReadOnlyBanner` + write blocking
 - File-level conflicts (409) with reload / force-keep-mine; offline write queue when network drops
 

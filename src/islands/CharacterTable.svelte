@@ -2,13 +2,17 @@
 import Fuse from 'fuse.js';
 import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
-import { api } from '../lib/api';
+import { api, apiValidated } from '../lib/api';
+import { computeCharactersPatch } from '../lib/characters/patch';
 import { defaultPortraitPath, portraitPreviewUrl } from '../lib/characters';
+import { applyCharactersPatch, isCharactersPath } from '../lib/client/apply-doc-patch';
 import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { uploadPortrait } from '../lib/client/download';
 import { isProjectReadOnly } from '../lib/client/project-access';
+import { settingsResponseSchema } from '../lib/schema/api-responses';
 import type { Character, CharacterState, CharactersFile } from '../lib/schema/characters';
+import { COAUTHOR_GRAPH_PATCH_EVENT, type CoauthorGraphPatch } from '../lib/sync/realtime';
 
 interface Props {
 	slug: string;
@@ -17,6 +21,10 @@ interface Props {
 let { slug }: Props = $props();
 
 let characters = $state<Character[]>([]);
+let savedCharacters = $state<CharactersFile>({ characters: [] });
+let contentHash = $state('');
+let clientId = $state('');
+let applyingRemotePatch = $state(false);
 let ready = $state(false);
 let loadError = $state('');
 let saveStatus = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -119,25 +127,46 @@ async function load() {
 	ready = false;
 	loadError = '';
 	try {
-		const data = await api<CharactersFile>(`/api/projects/${slug}/characters`);
-		characters = Array.isArray(data.characters) ? data.characters : [];
+		const data = await api<CharactersFile & { contentHash: string }>(`/api/projects/${slug}/characters`);
+		const list = Array.isArray(data.characters) ? data.characters : [];
+		characters = list;
+		savedCharacters = { characters: list };
+		contentHash = data.contentHash;
 		ready = true;
 	} catch (e) {
 		loadError = (e as Error).message;
 		characters = [];
+		savedCharacters = { characters: [] };
+		contentHash = '';
 	}
 }
 
 async function persistCharacters() {
-	if (isProjectReadOnly()) return;
+	if (isProjectReadOnly() || applyingRemotePatch) return;
+	const next: CharactersFile = { characters };
+	const ops = computeCharactersPatch(savedCharacters, next);
+	if (ops.length === 0) {
+		markClean();
+		if (saveStatus === 'saving') {
+			saveStatus = 'idle';
+			saveMessage = '';
+		}
+		return;
+	}
 	saveStatus = 'saving';
 	saveMessage = 'Saving…';
 	markDirty();
 	try {
-		await api(`/api/projects/${slug}/characters`, {
-			method: 'PUT',
-			body: JSON.stringify({ characters }),
-		});
+		const res = await api<{ characters: CharactersFile; contentHash: string }>(
+			`/api/projects/${slug}/characters`,
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+			},
+		);
+		savedCharacters = res.characters;
+		characters = res.characters.characters;
+		contentHash = res.contentHash;
 		saveStatus = 'saved';
 		saveMessage = 'Saved';
 		markClean();
@@ -151,6 +180,27 @@ async function persistCharacters() {
 		notifySaveConflict(e);
 		saveStatus = 'error';
 		saveMessage = (e as Error).message;
+	}
+}
+
+async function applyRemotePatch(patch: CoauthorGraphPatch) {
+	if (!isCharactersPath(patch.path)) return;
+	if (patch.deviceId === clientId) return;
+	if (applyingRemotePatch) return;
+
+	applyingRemotePatch = true;
+	try {
+		const staleBase = patch.baseContentHash !== contentHash;
+		const next = applyCharactersPatch(savedCharacters, patch);
+		savedCharacters = next;
+		characters = next.characters;
+		contentHash = patch.contentHash;
+		if (staleBase) {
+			saveMessage = `${patch.displayName || 'Teammate'} merged remote edits`;
+			saveStatus = 'saved';
+		}
+	} finally {
+		applyingRemotePatch = false;
 	}
 }
 
@@ -282,8 +332,28 @@ function onStateLabelBlur() {
 
 onMount(() => {
 	setCoauthorFocusPath('characters.json');
-	void load();
-	return () => setCoauthorFocusPath(null);
+
+	function onGraphPatch(e: Event) {
+		const patch = (e as CustomEvent<CoauthorGraphPatch>).detail;
+		void applyRemotePatch(patch);
+	}
+
+	window.addEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
+
+	void (async () => {
+		try {
+			const settings = await apiValidated('/api/settings', settingsResponseSchema);
+			clientId = settings.clientId;
+		} catch {
+			clientId = '';
+		}
+		await load();
+	})();
+
+	return () => {
+		window.removeEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
+		setCoauthorFocusPath(null);
+	};
 });
 </script>
 

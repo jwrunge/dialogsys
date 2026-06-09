@@ -1,6 +1,13 @@
 import { createDefaultFlowGraph } from '../../flow/flowFactory';
+import { applyFlowPatchOps } from '../../flow/patch';
+import { hashFlowGraph } from '../../graph/content-hash';
 import { type FlowGraph, flowGraphSchema, type SequenceListItem } from '../../schema/flow';
+import type { FlowPatchOp } from '../../schema/flow-patch';
+import { getActiveOriginId } from '../client';
+import { publishGraphPatch } from '../collaboration/realtime-publish';
+import { getClientId } from '../config-file';
 import { assertSafeRelative } from '../paths';
+import { getDeviceDisplayName } from '../settings';
 import {
 	deleteFile,
 	ensureDir,
@@ -9,6 +16,7 @@ import {
 	readJsonFile,
 	writeJsonFile,
 } from '../storage';
+import { GraphPatchConflictError } from './dialogs';
 import { touchProject } from './meta';
 
 function assertSequenceId(id: string): void {
@@ -76,6 +84,39 @@ export async function getSequence(slug: string, id: string): Promise<FlowGraph> 
 	const graph = createDefaultFlowGraph(id);
 	await saveSequence(slug, id, graph);
 	return graph;
+}
+
+export async function applySequenceGraphPatch(
+	slug: string,
+	id: string,
+	baseContentHash: string,
+	ops: FlowPatchOp[],
+): Promise<{ graph: FlowGraph; contentHash: string }> {
+	const current = await getSequence(slug, id);
+	const currentHash = hashFlowGraph(current);
+	if (baseContentHash !== currentHash) {
+		throw new GraphPatchConflictError(
+			'Sequence changed since baseContentHash',
+			currentHash,
+			current,
+		);
+	}
+
+	const patched = flowGraphSchema.parse(applyFlowPatchOps(current, ops));
+	const saved = await saveSequence(slug, id, patched);
+	const contentHash = hashFlowGraph(saved);
+
+	await publishGraphPatch(slug, {
+		deviceId: getClientId(),
+		displayName: getDeviceDisplayName() || 'This device',
+		originId: getActiveOriginId(slug),
+		path: `sequences/${id}.graph.json`,
+		baseContentHash,
+		contentHash,
+		ops,
+	});
+
+	return { graph: saved, contentHash };
 }
 
 export async function saveSequence(

@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { hashFlowGraph } from '../../../../../lib/graph/content-hash';
 import { flowGraphSchema } from '../../../../../lib/schema/flow';
 import {
 	deleteSequence,
@@ -12,7 +13,7 @@ import {
 export const GET: APIRoute = async ({ params }) => {
 	try {
 		const graph = await getSequence(params.slug!, params.id!);
-		return jsonResponse({ graph });
+		return jsonResponse({ graph, contentHash: hashFlowGraph(graph) });
 	} catch (e) {
 		return toErrorResponse(e, 404);
 	}

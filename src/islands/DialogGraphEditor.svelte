@@ -2,7 +2,8 @@
 import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
-import { api } from '../lib/api';
+import { api, apiValidated } from '../lib/api';
+import { applyScenePatch, isSceneGraphPath } from '../lib/client/apply-doc-patch';
 import { sceneGraphPath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
@@ -23,9 +24,12 @@ import {
 import { findEntryNode, singleNextTarget } from '../lib/graph/graphUtils';
 import { bindLiveGraphNodeSelect } from '../lib/graph/liveNodeSelect';
 import { createBlankNode } from '../lib/graph/nodeFactory';
+import { computeGraphPatch } from '../lib/graph/patch';
+import { settingsResponseSchema } from '../lib/schema/api-responses';
 import type { Character, CharactersFile } from '../lib/schema/characters';
 import type { GameStateFile, GameStateProperty } from '../lib/schema/gameState';
 import type { DialogGraph, GraphEdge, GraphNode } from '../lib/schema/graph';
+import { COAUTHOR_GRAPH_PATCH_EVENT, type CoauthorGraphPatch } from '../lib/sync/realtime';
 import DialogFlowCanvas from './DialogFlowCanvas.svelte';
 import NodeInspector from './NodeInspector.svelte';
 import SceneTitle from './SceneTitle.svelte';
@@ -64,6 +68,10 @@ let confirmDialogEl = $state<HTMLDialogElement | null>(null);
 let confirmMode = $state<'node' | 'edge'>('node');
 let confirmMessage = $state('');
 let pendingEdge = $state<CanvasEdge | null>(null);
+let savedGraph = $state.raw<DialogGraph | null>(null);
+let contentHash = $state('');
+let clientId = $state('');
+let applyingRemotePatch = $state(false);
 
 let canvasNodes = $state.raw<CanvasNode[]>([]);
 let canvasEdges = $state.raw<CanvasEdge[]>([]);
@@ -114,18 +122,42 @@ function fromCanvas(): DialogGraph {
 const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
 
 function scheduleSave() {
-	if (loading || !ready || isProjectReadOnly()) return;
+	if (loading || !ready || isProjectReadOnly() || applyingRemotePatch) return;
 	markDirty();
 	saveTask.schedule();
 }
 
+async function syncGraphFromServer() {
+	const res = await api<{ graph: DialogGraph; contentHash: string }>(
+		`/api/projects/${slug}/dialogs/${dialogId}`,
+	);
+	savedGraph = res.graph;
+	contentHash = res.contentHash;
+	graphMeta = { displayName: res.graph.displayName, description: res.graph.description };
+	toCanvas(res.graph);
+}
+
 async function save() {
+	if (!savedGraph) return;
+	const next = fromCanvas();
+	const ops = computeGraphPatch(savedGraph, next);
+	if (ops.length === 0) {
+		markClean();
+		if (saveStatus === 'Saving…') saveStatus = '';
+		return;
+	}
 	saveStatus = 'Saving…';
 	try {
-		await api(`/api/projects/${slug}/dialogs/${dialogId}`, {
-			method: 'PUT',
-			body: JSON.stringify({ graph: fromCanvas() }),
-		});
+		const res = await api<{ graph: DialogGraph; contentHash: string }>(
+			`/api/projects/${slug}/dialogs/${dialogId}/graph`,
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+			},
+		);
+		savedGraph = res.graph;
+		contentHash = res.contentHash;
+		graphMeta = { displayName: res.graph.displayName, description: res.graph.description };
 		saveStatus = 'Saved';
 		markClean();
 		setTimeout(() => {
@@ -137,18 +169,41 @@ async function save() {
 	}
 }
 
+async function applyRemotePatch(patch: CoauthorGraphPatch) {
+	if (!isSceneGraphPath(patch.path, dialogId)) return;
+	if (patch.deviceId === clientId) return;
+	if (!savedGraph || applyingRemotePatch) return;
+
+	applyingRemotePatch = true;
+	try {
+		const staleBase = patch.baseContentHash !== contentHash;
+		const next = applyScenePatch(savedGraph, patch);
+		savedGraph = next;
+		contentHash = patch.contentHash;
+		graphMeta = { displayName: next.displayName, description: next.description };
+		toCanvas(next);
+		if (staleBase) {
+			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
+		}
+	} finally {
+		applyingRemotePatch = false;
+	}
+}
+
 async function load() {
 	loading = true;
 	ready = false;
 	loadError = '';
 	try {
-		const [{ graph }, chars, gameState, dialogs] = await Promise.all([
-			api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${dialogId}`),
+		const [{ graph, contentHash: loadedHash }, chars, gameState, dialogs] = await Promise.all([
+			api<{ graph: DialogGraph; contentHash: string }>(`/api/projects/${slug}/dialogs/${dialogId}`),
 			api<CharactersFile>(`/api/projects/${slug}/characters`),
 			api<GameStateFile>(`/api/projects/${slug}/game-state`),
 			api<{ dialogs: { id: string }[] }>(`/api/projects/${slug}/dialogs`),
 		]);
 		graphMeta = { displayName: graph.displayName, description: graph.description };
+		savedGraph = graph;
+		contentHash = loadedHash;
 		if (!Array.isArray(graph.nodes)) throw new Error('Scene has no nodes array');
 		if (!Array.isArray(graph.edges)) throw new Error('Scene has no edges array');
 		toCanvas(graph);
@@ -403,14 +458,29 @@ onMount(async () => {
 		const detail = (e as CustomEvent<{ displayName: string; description: string }>).detail;
 		if (!detail) return;
 		graphMeta = { displayName: detail.displayName, description: detail.description };
+		void syncGraphFromServer();
 	}
+	function onGraphPatch(e: Event) {
+		const patch = (e as CustomEvent<CoauthorGraphPatch>).detail;
+		void applyRemotePatch(patch);
+	}
+
+	try {
+		const settings = await apiValidated('/api/settings', settingsResponseSchema);
+		clientId = settings.clientId;
+	} catch {
+		clientId = '';
+	}
+
 	window.addEventListener('scene-meta-updated', onMetaUpdated);
 	window.addEventListener('keydown', onKeyDown);
+	window.addEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
 	await load();
 	ensureFirstStep();
 	return () => {
 		window.removeEventListener('scene-meta-updated', onMetaUpdated);
 		window.removeEventListener('keydown', onKeyDown);
+		window.removeEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
 	};
 });
 </script>

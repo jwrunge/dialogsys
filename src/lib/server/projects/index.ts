@@ -3,13 +3,21 @@ export { errorResponse, jsonResponse, parseJsonBody, toErrorResponse } from '../
 export { projectDir, projectFilePath } from '../paths';
 export { getProjectsRoot } from '../settings';
 
-export { getCharacters, saveCharacters } from './characters';
 export {
+	applyCharactersPatch,
+	getCharacters,
+	getCharactersWithHash,
+	saveCharacters,
+} from './characters';
+export {
+	applyDialogGraphPatch,
 	clearDialogFromSequences,
 	createDialog,
 	type DialogListItem,
 	deleteDialog,
+	GraphPatchConflictError,
 	getDialog,
+	getDialogWithHash,
 	getSceneSequenceUsage,
 	getSceneUsageStats,
 	listDialogs,
@@ -17,7 +25,12 @@ export {
 	saveDialog,
 	updateDialogMeta,
 } from './dialogs';
-export { getGameState, saveGameState } from './game-state';
+export {
+	applyGameStatePatch,
+	getGameState,
+	getGameStateWithHash,
+	saveGameState,
+} from './game-state';
 export {
 	createProject,
 	getProject,
@@ -25,7 +38,7 @@ export {
 	updateProject,
 	writeJsonAtomic,
 } from './meta';
-export { readNote, writeNote } from './notes';
+export { applyNotePatch, readNote, readNoteWithHash, writeNote } from './notes';
 export {
 	portraitExists,
 	portraitMimeType,
@@ -34,6 +47,7 @@ export {
 	savePortraitUpload,
 } from './portraits';
 export {
+	applySequenceGraphPatch,
 	createSequence,
 	deleteSequence,
 	getSequence,

@@ -18,7 +18,7 @@ pub struct PeerInfo {
     pub role: AuthRole,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ServerMessage {
     #[serde(rename = "presence")]
@@ -28,6 +28,16 @@ pub enum ServerMessage {
         origin_id: String,
         path: String,
         content_hash: String,
+    },
+    #[serde(rename = "graphPatch")]
+    GraphPatch {
+        device_id: String,
+        display_name: String,
+        origin_id: String,
+        path: String,
+        base_content_hash: String,
+        content_hash: String,
+        ops: serde_json::Value,
     },
 }
 
@@ -126,6 +136,11 @@ impl RealtimeHub {
         let peers = self.presence_snapshot(project).await;
         self.publish(project, &ServerMessage::Presence { peers })
             .await;
+    }
+
+    pub async fn publish_raw(&self, project: &str, json: &str) {
+        let sender = self.room_sender(project).await;
+        let _ = sender.send(json.to_string());
     }
 
     pub async fn publish_file_updated(

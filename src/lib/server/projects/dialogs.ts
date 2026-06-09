@@ -1,6 +1,15 @@
-import type { SceneSequenceUsage } from '../../schema/flow';
+import { hashDialogGraph } from '../../graph/content-hash';
+import { applyGraphPatchOps } from '../../graph/patch';
+import type { FlowGraph, SceneSequenceUsage } from '../../schema/flow';
+import type { CharactersFile } from '../../schema/characters';
 import { type DialogGraph, dialogGraphSchema } from '../../schema/graph';
+import type { GameStateFile } from '../../schema/gameState';
+import type { GraphPatchOp } from '../../schema/graph-patch';
+import { getActiveOriginId } from '../client';
+import { publishGraphPatch } from '../collaboration/realtime-publish';
+import { getClientId } from '../config-file';
 import { assertSafeRelative } from '../paths';
+import { getDeviceDisplayName } from '../settings';
 import {
 	deleteFile,
 	ensureDir,
@@ -66,6 +75,57 @@ export async function getDialog(slug: string, id: string): Promise<DialogGraph> 
 	const raw = await readJsonFile(slug, ['dialogs', `${id}.graph.json`], null);
 	if (!raw) throw new Error('Scene not found');
 	return dialogGraphSchema.parse(raw);
+}
+
+export class GraphPatchConflictError extends Error {
+	constructor(
+		message: string,
+		readonly currentContentHash: string,
+		readonly graph?: DialogGraph | FlowGraph,
+		readonly characters?: CharactersFile,
+		readonly noteContent?: string,
+		readonly gameState?: GameStateFile,
+	) {
+		super(message);
+		this.name = 'GraphPatchConflictError';
+	}
+}
+
+export async function applyDialogGraphPatch(
+	slug: string,
+	id: string,
+	baseContentHash: string,
+	ops: GraphPatchOp[],
+): Promise<{ graph: DialogGraph; contentHash: string }> {
+	const current = await getDialog(slug, id);
+	const currentHash = hashDialogGraph(current);
+	if (baseContentHash !== currentHash) {
+		throw new GraphPatchConflictError('Scene changed since baseContentHash', currentHash, current);
+	}
+
+	const patched = dialogGraphSchema.parse(applyGraphPatchOps(current, ops));
+	const saved = await saveDialog(slug, id, patched);
+	const contentHash = hashDialogGraph(saved);
+
+	await publishGraphPatch(slug, {
+		deviceId: getClientId(),
+		displayName: getDeviceDisplayName() || 'This device',
+		originId: getActiveOriginId(slug),
+		path: `dialogs/${id}.graph.json`,
+		baseContentHash,
+		contentHash,
+		ops,
+	});
+
+	return { graph: saved, contentHash };
+}
+
+export async function getDialogWithHash(
+	slug: string,
+	id: string,
+): Promise<{ graph: DialogGraph; contentHash: string }> {
+	const graph = await getDialog(slug, id);
+	return { graph, contentHash: hashDialogGraph(graph) };
 }
 
 export async function saveDialog(

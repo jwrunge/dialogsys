@@ -58,9 +58,13 @@ function onFileUpdated(event: Event) {
 	const update = (event as CustomEvent<CoauthorFileUpdate>).detail;
 	if (update.originId === activeOriginId) return;
 	const current = getCoauthorFocusPath();
-	if (current && update.path === current) {
-		remoteUpdate = update;
-	}
+	if (!current || update.path !== current) return;
+	// Doc patches apply live in editors; full-file reload is for other assets.
+	if (current.endsWith('.graph.json')) return;
+	if (current === 'characters.json') return;
+	if (current === 'gameState.json') return;
+	if (current.startsWith('notes/')) return;
+	remoteUpdate = update;
 }
 
 async function reloadRemoteFile() {

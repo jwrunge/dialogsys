@@ -2,12 +2,16 @@
 import Fuse from 'fuse.js';
 import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
-import { api } from '../lib/api';
+import { api, apiValidated } from '../lib/api';
+import { applyGameStatePatch, isGameStatePath } from '../lib/client/apply-doc-patch';
 import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { isProjectReadOnly } from '../lib/client/project-access';
 import { defaultValidValues } from '../lib/flow/branchState';
+import { computeGameStatePatch } from '../lib/game-state/patch';
+import { settingsResponseSchema } from '../lib/schema/api-responses';
+import { COAUTHOR_GRAPH_PATCH_EVENT, type CoauthorGraphPatch } from '../lib/sync/realtime';
 import {
 	defaultUseValidValues,
 	type GameStateFile,
@@ -24,6 +28,10 @@ interface Props {
 let { slug }: Props = $props();
 
 let properties = $state<GameStateProperty[]>([]);
+let savedGameState = $state<GameStateFile>({ properties: [] });
+let contentHash = $state('');
+let clientId = $state('');
+let applyingRemotePatch = $state(false);
 let ready = $state(false);
 let loadError = $state('');
 let saveStatus = $state('');
@@ -87,19 +95,32 @@ function slugifyLabel(label: string): string {
 const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
 
 function scheduleSave() {
-	if (isProjectReadOnly()) return;
+	if (isProjectReadOnly() || applyingRemotePatch) return;
 	markDirty();
 	saveTask.schedule();
 }
 
 async function save() {
+	const next: GameStateFile = { properties };
+	const ops = computeGameStatePatch(savedGameState, next);
+	if (ops.length === 0) {
+		markClean();
+		if (saveStatus === 'Saving…') saveStatus = '';
+		return;
+	}
 	saveStatus = 'Saving…';
+	markDirty();
 	try {
-		const res = await api<GameStateFile>(`/api/projects/${slug}/game-state`, {
-			method: 'PUT',
-			body: JSON.stringify({ properties }),
-		});
-		properties = res.properties;
+		const res = await api<{ gameState: GameStateFile; contentHash: string }>(
+			`/api/projects/${slug}/game-state`,
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+			},
+		);
+		savedGameState = res.gameState;
+		properties = res.gameState.properties;
+		contentHash = res.contentHash;
 		saveStatus = 'Saved';
 		markClean();
 		setTimeout(() => {
@@ -111,15 +132,40 @@ async function save() {
 	}
 }
 
+async function applyRemotePatch(patch: CoauthorGraphPatch) {
+	if (!isGameStatePath(patch.path)) return;
+	if (patch.deviceId === clientId) return;
+	if (applyingRemotePatch) return;
+
+	applyingRemotePatch = true;
+	try {
+		const staleBase = patch.baseContentHash !== contentHash;
+		const next = applyGameStatePatch(savedGameState, patch);
+		savedGameState = next;
+		properties = next.properties;
+		contentHash = patch.contentHash;
+		if (staleBase) {
+			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
+		}
+	} finally {
+		applyingRemotePatch = false;
+	}
+}
+
 async function load() {
 	ready = false;
 	loadError = '';
 	try {
-		const res = await api<GameStateFile>(`/api/projects/${slug}/game-state`);
+		const res = await api<GameStateFile & { contentHash: string }>(`/api/projects/${slug}/game-state`);
 		properties = res.properties;
+		savedGameState = { properties: res.properties };
+		contentHash = res.contentHash;
 		ready = true;
 	} catch (e) {
 		loadError = (e as Error).message;
+		properties = [];
+		savedGameState = { properties: [] };
+		contentHash = '';
 	}
 }
 
@@ -272,8 +318,28 @@ function metaLabel(prop: GameStateProperty): string {
 
 onMount(() => {
 	setCoauthorFocusPath('gameState.json');
-	void load();
-	return () => setCoauthorFocusPath(null);
+
+	function onGraphPatch(e: Event) {
+		const patch = (e as CustomEvent<CoauthorGraphPatch>).detail;
+		void applyRemotePatch(patch);
+	}
+
+	window.addEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
+
+	void (async () => {
+		try {
+			const settings = await apiValidated('/api/settings', settingsResponseSchema);
+			clientId = settings.clientId;
+		} catch {
+			clientId = '';
+		}
+		await load();
+	})();
+
+	return () => {
+		window.removeEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
+		setCoauthorFocusPath(null);
+	};
 });
 </script>
 

@@ -2,15 +2,21 @@
 import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { onMount } from 'svelte';
-import { api } from '../lib/api';
+import { api, apiValidated } from '../lib/api';
+import { applyNotePatch, isNotePath } from '../lib/client/apply-doc-patch';
 import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { isProjectReadOnly } from '../lib/client/project-access';
+import { computeNotePatch } from '../lib/notes/patch';
+import { settingsResponseSchema } from '../lib/schema/api-responses';
+import { COAUTHOR_GRAPH_PATCH_EVENT, type CoauthorGraphPatch } from '../lib/sync/realtime';
 
 interface Props {
 	slug: string;
 }
+
+const NOTE_PATH = 'overview.md';
 
 let { slug }: Props = $props();
 
@@ -30,6 +36,9 @@ How should scenes feel? (e.g. cozy, tense, comic)
 
 let overview = $state('');
 let loadedContent = $state('');
+let contentHash = $state('');
+let clientId = $state('');
+let applyingRemotePatch = $state(false);
 let editing = $state(false);
 let status = $state('');
 let loadError = $state('');
@@ -51,24 +60,63 @@ const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => {
 });
 
 async function loadOverview() {
-	const res = await api<{ content: string }>(`/api/projects/${slug}/notes/overview.md`);
+	const res = await api<{ content: string; contentHash: string }>(
+		`/api/projects/${slug}/notes/${NOTE_PATH}`,
+	);
 	overview = res.content;
 	loadedContent = res.content;
+	contentHash = res.contentHash;
 }
 
 async function saveNow(content: string) {
+	if (isProjectReadOnly() || applyingRemotePatch) return;
+	const ops = computeNotePatch(loadedContent, content);
+	if (ops.length === 0) {
+		markClean();
+		if (status === 'Saving…') status = '';
+		return;
+	}
+	status = 'Saving…';
+	markDirty();
 	try {
-		await api(`/api/projects/${slug}/notes/overview.md`, {
-			method: 'PUT',
-			body: JSON.stringify({ content }),
-		});
-		loadedContent = content;
+		const res = await api<{ content: string; contentHash: string }>(
+			`/api/projects/${slug}/notes/${NOTE_PATH}`,
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+			},
+		);
+		overview = res.content;
+		loadedContent = res.content;
+		contentHash = res.contentHash;
 		status = 'Saved';
 		markClean();
-		setTimeout(() => (status = ''), 1500);
+		setTimeout(() => {
+			if (status === 'Saved') status = '';
+		}, 1500);
 	} catch (e) {
 		notifySaveConflict(e);
 		throw e;
+	}
+}
+
+async function applyRemotePatch(patch: CoauthorGraphPatch) {
+	if (!isNotePath(patch.path, NOTE_PATH)) return;
+	if (patch.deviceId === clientId) return;
+	if (applyingRemotePatch) return;
+
+	applyingRemotePatch = true;
+	try {
+		const staleBase = patch.baseContentHash !== contentHash;
+		const next = applyNotePatch(loadedContent, patch);
+		overview = next;
+		loadedContent = next;
+		contentHash = patch.contentHash;
+		if (staleBase) {
+			status = `${patch.displayName || 'Teammate'} merged remote edits`;
+		}
+	} finally {
+		applyingRemotePatch = false;
 	}
 }
 
@@ -85,7 +133,7 @@ function enterEditMode() {
 
 async function exitEditMode() {
 	editing = false;
-	clearTimeout(saveTimer);
+	saveTask.cancel();
 	if (overview !== loadedContent) {
 		try {
 			await saveNow(overview);
@@ -96,13 +144,31 @@ async function exitEditMode() {
 }
 
 onMount(async () => {
-	setCoauthorFocusPath('notes/overview.md');
+	setCoauthorFocusPath(`notes/${NOTE_PATH}`);
+
+	function onGraphPatch(e: Event) {
+		const patch = (e as CustomEvent<CoauthorGraphPatch>).detail;
+		void applyRemotePatch(patch);
+	}
+
+	try {
+		const settings = await apiValidated('/api/settings', settingsResponseSchema);
+		clientId = settings.clientId;
+	} catch {
+		clientId = '';
+	}
+
+	window.addEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
 	try {
 		await loadOverview();
 	} catch (e) {
 		loadError = (e as Error).message;
 	}
-	return () => setCoauthorFocusPath(null);
+
+	return () => {
+		window.removeEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
+		setCoauthorFocusPath(null);
+	};
 });
 </script>
 

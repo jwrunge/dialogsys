@@ -1,3 +1,16 @@
+import type { CharactersPatchOp } from '../schema/characters-patch';
+import type { FlowPatchOp } from '../schema/flow-patch';
+import type { GameStatePatchOp } from '../schema/game-state-patch';
+import type { GraphPatchOp } from '../schema/graph-patch';
+import type { NotePatchOp } from '../schema/note-patch';
+
+export type DocPatchOp =
+	| GraphPatchOp
+	| FlowPatchOp
+	| CharactersPatchOp
+	| NotePatchOp
+	| GameStatePatchOp;
+
 import { normalizeSyncCredentials, type SyncCredentials } from './credentials';
 
 export type CoauthorRole = 'read' | 'write';
@@ -18,10 +31,22 @@ export type CoauthorFileUpdate = {
 
 export const COAUTHOR_PRESENCE_EVENT = 'dialogsys:coauthor-presence';
 export const COAUTHOR_FILE_UPDATED_EVENT = 'dialogsys:coauthor-file-updated';
+export const COAUTHOR_GRAPH_PATCH_EVENT = 'dialogsys:coauthor-graph-patch';
+
+export type CoauthorGraphPatch = {
+	deviceId: string;
+	displayName: string;
+	originId: string;
+	path: string;
+	baseContentHash: string;
+	contentHash: string;
+	ops: DocPatchOp[];
+};
 
 type ServerMessage =
 	| { type: 'presence'; peers: CoauthorPeer[] }
-	| { type: 'fileUpdated'; originId: string; path: string; contentHash: string };
+	| { type: 'fileUpdated'; originId: string; path: string; contentHash: string }
+	| (CoauthorGraphPatch & { type: 'graphPatch' });
 
 export function syncHttpToWsUrl(httpUrl: string): string {
 	const url = new URL(httpUrl);
@@ -93,6 +118,15 @@ export function connectCoauthorSession(options: CoauthorSessionOptions): Coautho
 		);
 	}
 
+	function dispatchGraphPatch(patch: CoauthorGraphPatch) {
+		if (typeof window === 'undefined') return;
+		window.dispatchEvent(
+			new CustomEvent(COAUTHOR_GRAPH_PATCH_EVENT, {
+				detail: patch,
+			}),
+		);
+	}
+
 	function dispatchFileUpdated(update: CoauthorFileUpdate) {
 		if (typeof window === 'undefined') return;
 		window.dispatchEvent(
@@ -103,12 +137,18 @@ export function connectCoauthorSession(options: CoauthorSessionOptions): Coautho
 	}
 
 	async function publishPresence() {
-		await postPresence(baseUrl, slug, token, {
-			deviceId,
-			displayName,
-			originId,
-			focusPath,
-		}, 'presence');
+		await postPresence(
+			baseUrl,
+			slug,
+			token,
+			{
+				deviceId,
+				displayName,
+				originId,
+				focusPath,
+			},
+			'presence',
+		);
 	}
 
 	function connectEvents() {
@@ -126,6 +166,16 @@ export function connectCoauthorSession(options: CoauthorSessionOptions): Coautho
 					originId: data.originId,
 					path: data.path,
 					contentHash: data.contentHash,
+				});
+			} else if (data.type === 'graphPatch') {
+				dispatchGraphPatch({
+					deviceId: data.deviceId,
+					displayName: data.displayName,
+					originId: data.originId,
+					path: data.path,
+					baseContentHash: data.baseContentHash,
+					contentHash: data.contentHash,
+					ops: data.ops ?? [],
 				});
 			}
 		};

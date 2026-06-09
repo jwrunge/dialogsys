@@ -2,13 +2,15 @@
 import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
-import { api } from '../lib/api';
+import { api, apiValidated } from '../lib/api';
+import { applySequencePatch, isSequenceGraphPath } from '../lib/client/apply-doc-patch';
 import { sequenceGraphPath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { isProjectReadOnly } from '../lib/client/project-access';
 import { analyzeFlowBranches, applyFirstMeetings } from '../lib/flow/branchAnalyzer';
 import { createSceneNode } from '../lib/flow/flowFactory';
+import { computeFlowPatch } from '../lib/flow/patch';
 import {
 	type CanvasEdge,
 	type CanvasNode,
@@ -16,11 +18,13 @@ import {
 	canvasToFlowGraph,
 	flowGraphToCanvas,
 } from '../lib/graph/canvasBridge';
+import { settingsResponseSchema } from '../lib/schema/api-responses';
 import type { CharactersFile } from '../lib/schema/characters';
-import type { FlowEdge, FlowGraph, FlowNode } from '../lib/schema/flow';
 import type { GameStateProperty } from '../lib/schema/gameState';
 import type { DialogGraph } from '../lib/schema/graph';
 import type { DialogListItem } from '../lib/server/projects';
+import { COAUTHOR_GRAPH_PATCH_EVENT, type CoauthorGraphPatch } from '../lib/sync/realtime';
+import type { FlowEdge, FlowGraph, FlowNode } from '../schema/flow';
 import DialogEditorModal from './DialogEditorModal.svelte';
 import FlowNodeInspector from './FlowNodeInspector.svelte';
 import GameFlowCanvas from './GameFlowCanvas.svelte';
@@ -44,6 +48,10 @@ let confirmDialogEl = $state<HTMLDialogElement | null>(null);
 let confirmMode = $state<'node' | 'edge'>('node');
 let confirmMessage = $state('');
 let pendingEdge = $state<CanvasEdge | null>(null);
+let savedGraph = $state.raw<FlowGraph | null>(null);
+let contentHash = $state('');
+let clientId = $state('');
+let applyingRemotePatch = $state(false);
 let editorDialogId = $state<string | null>(null);
 let editorTitle = $state('Edit scene');
 let analyzing = $state(false);
@@ -80,7 +88,7 @@ const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
 let analyzeTimer: ReturnType<typeof setTimeout> | undefined;
 
 function scheduleSave() {
-	if (loading || !ready || isProjectReadOnly()) return;
+	if (loading || !ready || isProjectReadOnly() || applyingRemotePatch) return;
 	markDirty();
 	flowNodes = fromCanvas().nodes;
 	flowEdges = fromCanvas().edges;
@@ -94,14 +102,39 @@ function scheduleAnalyze() {
 	analyzeTimer = setTimeout(runBranchAnalyzer, 500);
 }
 
+async function syncGraphFromServer() {
+	const res = await api<{ graph: FlowGraph; contentHash: string }>(
+		`/api/projects/${slug}/sequences/${sequenceId}`,
+	);
+	savedGraph = res.graph;
+	contentHash = res.contentHash;
+	sequenceDisplayName = res.graph.displayName || sequenceId;
+	flowNodes = res.graph.nodes;
+	flowEdges = res.graph.edges;
+	toCanvas(res.graph);
+}
+
 async function save() {
+	if (!savedGraph) return;
+	const next = fromCanvas();
+	const ops = computeFlowPatch(savedGraph, next);
+	if (ops.length === 0) {
+		markClean();
+		if (saveStatus === 'Saving…') saveStatus = '';
+		return;
+	}
 	saveStatus = 'Saving…';
 	try {
-		const graph = fromCanvas();
-		const res = await api<{ graph: FlowGraph }>(`/api/projects/${slug}/sequences/${sequenceId}`, {
-			method: 'PUT',
-			body: JSON.stringify({ graph }),
-		});
+		const res = await api<{ graph: FlowGraph; contentHash: string }>(
+			`/api/projects/${slug}/sequences/${sequenceId}/graph`,
+			{
+				method: 'PATCH',
+				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+			},
+		);
+		savedGraph = res.graph;
+		contentHash = res.contentHash;
+		sequenceDisplayName = res.graph.displayName || sequenceId;
 		flowNodes = res.graph.nodes;
 		flowEdges = res.graph.edges;
 		saveStatus = 'Saved';
@@ -112,6 +145,30 @@ async function save() {
 	} catch (e) {
 		notifySaveConflict(e);
 		saveStatus = (e as Error).message;
+	}
+}
+
+async function applyRemotePatch(patch: CoauthorGraphPatch) {
+	if (!isSequenceGraphPath(patch.path, sequenceId)) return;
+	if (patch.deviceId === clientId) return;
+	if (!savedGraph || applyingRemotePatch) return;
+
+	applyingRemotePatch = true;
+	try {
+		const staleBase = patch.baseContentHash !== contentHash;
+		const next = applySequencePatch(savedGraph, patch);
+		savedGraph = next;
+		contentHash = patch.contentHash;
+		sequenceDisplayName = next.displayName || sequenceId;
+		flowNodes = next.nodes;
+		flowEdges = next.edges;
+		toCanvas(next);
+		scheduleAnalyze();
+		if (staleBase) {
+			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
+		}
+	} finally {
+		applyingRemotePatch = false;
 	}
 }
 
@@ -130,12 +187,16 @@ async function load() {
 	ready = false;
 	loadError = '';
 	try {
-		const [{ graph }] = await Promise.all([
-			api<{ graph: FlowGraph }>(`/api/projects/${slug}/sequences/${sequenceId}`),
+		const [{ graph, contentHash: loadedHash }] = await Promise.all([
+			api<{ graph: FlowGraph; contentHash: string }>(
+				`/api/projects/${slug}/sequences/${sequenceId}`,
+			),
 			loadDialogs(),
 			loadGameState(),
 		]);
 		sequenceDisplayName = graph.displayName || sequenceId;
+		savedGraph = graph;
+		contentHash = loadedHash;
 		flowNodes = graph.nodes;
 		flowEdges = graph.edges;
 		toCanvas(graph);
@@ -387,9 +448,26 @@ $effect(() => {
 });
 
 onMount(() => {
+	function onGraphPatch(e: Event) {
+		const patch = (e as CustomEvent<CoauthorGraphPatch>).detail;
+		void applyRemotePatch(patch);
+	}
+
+	void apiValidated('/api/settings', settingsResponseSchema)
+		.then((settings) => {
+			clientId = settings.clientId;
+		})
+		.catch(() => {
+			clientId = '';
+		});
+
 	load();
 	window.addEventListener('keydown', onKeyDown);
-	return () => window.removeEventListener('keydown', onKeyDown);
+	window.addEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
+	return () => {
+		window.removeEventListener('keydown', onKeyDown);
+		window.removeEventListener(COAUTHOR_GRAPH_PATCH_EVENT, onGraphPatch);
+	};
 });
 </script>
 

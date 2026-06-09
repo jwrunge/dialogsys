@@ -1,5 +1,6 @@
 /** @deprecated Prefer `/api/projects/{slug}/scenes/{id}` — aliases the same handlers. */
 import type { APIRoute } from 'astro';
+import { hashDialogGraph } from '../../../../../lib/graph/content-hash';
 import { dialogGraphSchema } from '../../../../../lib/schema/graph';
 import { updateDialogMetaPatchSchema } from '../../../../../lib/schema/patches';
 import {
@@ -15,7 +16,7 @@ import {
 export const GET: APIRoute = async ({ params }) => {
 	try {
 		const graph = await getDialog(params.slug!, params.id!);
-		return jsonResponse({ graph });
+		return jsonResponse({ graph, contentHash: hashDialogGraph(graph) });
 	} catch (e) {
 		return toErrorResponse(e, 404);
 	}

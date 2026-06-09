@@ -31,3 +31,15 @@ export function sceneGraphPath(sceneId: string): string {
 export function sequenceGraphPath(sequenceId: string): string {
 	return `sequences/${sequenceId}.graph.json`;
 }
+
+export function charactersFilePath(): string {
+	return 'characters.json';
+}
+
+export function noteFilePath(notePath: string): string {
+	return `notes/${notePath}`;
+}
+
+export function gameStateFilePath(): string {
+	return 'gameState.json';
+}

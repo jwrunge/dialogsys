@@ -532,6 +532,27 @@ async fn realtime_presence(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+async fn realtime_publish(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+    Query(query): Query<RealtimeQuery>,
+    Extension(auth): Extension<RequestAuth>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    validate_slug(&slug)?;
+    resolve_ws_auth_role(&state, query.token.as_deref())?;
+    if auth.0 != AuthRole::Write {
+        return Err(AppError::new(
+            StatusCode::FORBIDDEN,
+            "Read-only token cannot publish realtime events",
+        ));
+    }
+    let json = serde_json::to_string(&body)
+        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, format!("Invalid publish body: {e}")))?;
+    state.realtime.publish_raw(&slug, &json).await;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 async fn realtime_leave(
     State(state): State<AppState>,
     AxumPath(slug): AxumPath<String>,
@@ -560,6 +581,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/projects/{slug}/realtime/events", get(realtime_events))
         .route("/projects/{slug}/realtime/presence", post(realtime_presence))
         .route("/projects/{slug}/realtime/leave", post(realtime_leave))
+        .route("/projects/{slug}/realtime/publish", post(realtime_publish))
         .route("/projects/{slug}/origins", get(list_origins))
         .route(
             "/projects/{slug}/origins/{origin_id}/files",

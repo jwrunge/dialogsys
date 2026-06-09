@@ -52,6 +52,7 @@ Example hook script: `hooks/example.mjs` (reject writes under `.git/`).
 - `GET /projects/:slug/realtime/events?token=<bearer>` — Server-Sent Events stream
 - `POST /projects/:slug/realtime/presence?token=<bearer>` — register/update presence (`deviceId`, `displayName`, `originId`, `focusPath`)
 - `POST /projects/:slug/realtime/leave?token=<bearer>` — `{ "deviceId": "…" }`
+- `POST /projects/:slug/realtime/publish?token=<bearer>` — broadcast a JSON realtime event (write token only; used for `graphPatch`)
 
 SSE event payloads (JSON `data:`):
 
