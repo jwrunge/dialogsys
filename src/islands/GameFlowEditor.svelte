@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
 import { api, apiValidated } from '../lib/api';
-import { applySequencePatch, isSequenceGraphPath } from '../lib/client/apply-doc-patch';
+import { applySequencePatchWithMerge, isSequenceGraphPath } from '../lib/client/apply-doc-patch';
 import { sequenceGraphPath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
@@ -165,18 +165,23 @@ async function applyRemotePatch(patch: CoauthorGraphPatch) {
 
 	applyingRemotePatch = true;
 	try {
-		const staleBase = patch.baseContentHash !== contentHash;
-		const next = applySequencePatch(savedGraph, patch);
-		savedGraph = next;
-		contentHash = patch.contentHash;
+		const { value: next, staleBase } = applySequencePatchWithMerge(
+			savedGraph,
+			fromCanvas(),
+			patch,
+			contentHash,
+		);
+		if (!staleBase) {
+			savedGraph = next;
+			contentHash = patch.contentHash;
+		} else {
+			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
+		}
 		sequenceDisplayName = next.displayName || sequenceId;
 		flowNodes = next.nodes;
 		flowEdges = next.edges;
 		toCanvas(next);
 		scheduleAnalyze();
-		if (staleBase) {
-			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
-		}
 	} finally {
 		applyingRemotePatch = false;
 	}

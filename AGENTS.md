@@ -86,6 +86,7 @@ The graph editor should show Entry, Direction, Line, Condition, Set var, and End
 - Read-only tokens (`readAuthToken` on sync server) → `ReadOnlyBanner` + write blocking
 - Project-scoped tokens (`scopedAuthTokens` on sync server) → `syncAllowedProjects` in settings; project list filtered server-side
 - File-level conflicts (409) with reload / force-keep-mine; offline write queue when network drops
+- **Concurrent field merge** — when a remote patch has a stale `baseContentHash`, editors three-way-merge (ancestor = last saved, local = current UI, remote = patch applied to ancestor) so non-overlapping edits on the same entity converge; `contentHash` stays stale until the next local save/rebase (`src/lib/collaboration/three-way-merge.ts`, `patch-merge.ts`)
 
 ### Writer lines
 

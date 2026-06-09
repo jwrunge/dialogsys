@@ -3,7 +3,7 @@ import Fuse from 'fuse.js';
 import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import { api, apiValidated } from '../lib/api';
-import { applyGameStatePatch, isGameStatePath } from '../lib/client/apply-doc-patch';
+import { applyGameStatePatchWithMerge, isGameStatePath } from '../lib/client/apply-doc-patch';
 import { gameStateFilePath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
@@ -149,12 +149,17 @@ async function applyRemotePatch(patch: CoauthorGraphPatch) {
 
 	applyingRemotePatch = true;
 	try {
-		const staleBase = patch.baseContentHash !== contentHash;
-		const next = applyGameStatePatch(savedGameState, patch);
-		savedGameState = next;
+		const { value: next, staleBase } = applyGameStatePatchWithMerge(
+			savedGameState,
+			{ properties },
+			patch,
+			contentHash,
+		);
 		properties = next.properties;
-		contentHash = patch.contentHash;
-		if (staleBase) {
+		if (!staleBase) {
+			savedGameState = next;
+			contentHash = patch.contentHash;
+		} else {
 			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
 		}
 	} finally {

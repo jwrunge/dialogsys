@@ -14,12 +14,29 @@ import type { GraphPatchOp } from '../schema/graph-patch';
 import type { NotePatchOp } from '../schema/note-patch';
 import type { CoauthorGraphPatch } from '../sync/realtime';
 import {
+	applyCharactersPatchWithMerge,
+	applyGameStatePatchWithMerge,
+	applyNotePatchWithMerge,
+	applyScenePatchWithMerge,
+	applySequencePatchWithMerge,
+	type MergedPatchResult,
+} from '../collaboration/patch-merge';
+import {
 	charactersFilePath,
 	gameStateFilePath,
 	noteFilePath,
 	sceneGraphPath,
 	sequenceGraphPath,
 } from './coauthor-focus';
+
+export {
+	applyCharactersPatchWithMerge,
+	applyGameStatePatchWithMerge,
+	applyNotePatchWithMerge,
+	applyScenePatchWithMerge,
+	applySequencePatchWithMerge,
+	type MergedPatchResult,
+};
 
 export function isSceneGraphPath(path: string, sceneId: string): boolean {
 	return path === sceneGraphPath(sceneId);

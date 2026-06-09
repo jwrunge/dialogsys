@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
 import { api, apiValidated } from '../lib/api';
-import { applyScenePatch, isSceneGraphPath } from '../lib/client/apply-doc-patch';
+import { applyScenePatchWithMerge, isSceneGraphPath } from '../lib/client/apply-doc-patch';
 import { sceneGraphPath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
@@ -189,15 +189,20 @@ async function applyRemotePatch(patch: CoauthorGraphPatch) {
 
 	applyingRemotePatch = true;
 	try {
-		const staleBase = patch.baseContentHash !== contentHash;
-		const next = applyScenePatch(savedGraph, patch);
-		savedGraph = next;
-		contentHash = patch.contentHash;
-		graphMeta = { displayName: next.displayName, description: next.description };
-		toCanvas(next);
-		if (staleBase) {
+		const { value: next, staleBase } = applyScenePatchWithMerge(
+			savedGraph,
+			fromCanvas(),
+			patch,
+			contentHash,
+		);
+		if (!staleBase) {
+			savedGraph = next;
+			contentHash = patch.contentHash;
+		} else {
 			saveStatus = `${patch.displayName || 'Teammate'} merged remote edits`;
 		}
+		graphMeta = { displayName: next.displayName, description: next.description };
+		toCanvas(next);
 	} finally {
 		applyingRemotePatch = false;
 	}

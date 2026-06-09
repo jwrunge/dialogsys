@@ -3,7 +3,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { onMount } from 'svelte';
 import { api, apiValidated } from '../lib/api';
-import { applyNotePatch, isNotePath } from '../lib/client/apply-doc-patch';
+import { applyNotePatchWithMerge, isNotePath } from '../lib/client/apply-doc-patch';
 import { noteFilePath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
@@ -117,12 +117,17 @@ async function applyRemotePatch(patch: CoauthorGraphPatch) {
 
 	applyingRemotePatch = true;
 	try {
-		const staleBase = patch.baseContentHash !== contentHash;
-		const next = applyNotePatch(loadedContent, patch);
+		const { value: next, staleBase } = applyNotePatchWithMerge(
+			loadedContent,
+			overview,
+			patch,
+			contentHash,
+		);
 		overview = next;
-		loadedContent = next;
-		contentHash = patch.contentHash;
-		if (staleBase) {
+		if (!staleBase) {
+			loadedContent = next;
+			contentHash = patch.contentHash;
+		} else {
 			status = `${patch.displayName || 'Teammate'} merged remote edits`;
 		}
 	} finally {

@@ -5,7 +5,7 @@ import { onMount, tick } from 'svelte';
 import { api, apiValidated } from '../lib/api';
 import { computeCharactersPatch } from '../lib/characters/patch';
 import { defaultPortraitPath, portraitPreviewUrl } from '../lib/characters';
-import { applyCharactersPatch, isCharactersPath } from '../lib/client/apply-doc-patch';
+import { applyCharactersPatchWithMerge, isCharactersPath } from '../lib/client/apply-doc-patch';
 import { charactersFilePath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { savePatchWithRebase } from '../lib/client/patch-save';
@@ -200,12 +200,17 @@ async function applyRemotePatch(patch: CoauthorGraphPatch) {
 
 	applyingRemotePatch = true;
 	try {
-		const staleBase = patch.baseContentHash !== contentHash;
-		const next = applyCharactersPatch(savedCharacters, patch);
-		savedCharacters = next;
+		const { value: next, staleBase } = applyCharactersPatchWithMerge(
+			savedCharacters,
+			{ characters },
+			patch,
+			contentHash,
+		);
 		characters = next.characters;
-		contentHash = patch.contentHash;
-		if (staleBase) {
+		if (!staleBase) {
+			savedCharacters = next;
+			contentHash = patch.contentHash;
+		} else {
 			saveMessage = `${patch.displayName || 'Teammate'} merged remote edits`;
 			saveStatus = 'saved';
 		}
