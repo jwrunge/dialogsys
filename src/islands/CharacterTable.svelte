@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import { api } from '../lib/api';
 import { defaultPortraitPath, portraitPreviewUrl } from '../lib/characters';
+import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { uploadPortrait } from '../lib/client/download';
 import { isProjectReadOnly } from '../lib/client/project-access';
@@ -279,7 +280,11 @@ function onStateLabelBlur() {
 	}
 }
 
-onMount(load);
+onMount(() => {
+	setCoauthorFocusPath('characters.json');
+	void load();
+	return () => setCoauthorFocusPath(null);
+});
 </script>
 
 <div data-transmut="include">

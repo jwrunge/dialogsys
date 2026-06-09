@@ -3,6 +3,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import { marked } from 'marked';
 import { onMount } from 'svelte';
 import { api } from '../lib/api';
+import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { isProjectReadOnly } from '../lib/client/project-access';
@@ -95,11 +96,13 @@ async function exitEditMode() {
 }
 
 onMount(async () => {
+	setCoauthorFocusPath('notes/overview.md');
 	try {
 		await loadOverview();
 	} catch (e) {
 		loadError = (e as Error).message;
 	}
+	return () => setCoauthorFocusPath(null);
 });
 </script>
 

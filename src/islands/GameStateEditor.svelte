@@ -3,6 +3,7 @@ import Fuse from 'fuse.js';
 import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import { api } from '../lib/api';
+import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { isProjectReadOnly } from '../lib/client/project-access';
@@ -269,7 +270,11 @@ function metaLabel(prop: GameStateProperty): string {
 	return `${typeLabel} · comparisons`;
 }
 
-onMount(load);
+onMount(() => {
+	setCoauthorFocusPath('gameState.json');
+	void load();
+	return () => setCoauthorFocusPath(null);
+});
 </script>
 
 <div data-transmut="include">

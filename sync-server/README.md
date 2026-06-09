@@ -47,6 +47,19 @@ Example hook script: `hooks/example.mjs` (reject writes under `.git/`).
 
 `GET /auth/capabilities` (authenticated) returns `{ "role": "read" | "write" }`.
 
+### Realtime coauthoring (SSE)
+
+- `GET /projects/:slug/realtime/events?token=<bearer>` — Server-Sent Events stream
+- `POST /projects/:slug/realtime/presence?token=<bearer>` — register/update presence (`deviceId`, `displayName`, `originId`, `focusPath`)
+- `POST /projects/:slug/realtime/leave?token=<bearer>` — `{ "deviceId": "…" }`
+
+SSE event payloads (JSON `data:`):
+
+- `{ "type": "presence", "peers": [ … ] }` — who is connected and what file they are editing
+- `{ "type": "fileUpdated", "originId": "…", "path": "…", "contentHash": "…" }` — after a file write or delete on any origin thread
+
+The app connects when **remote storage** is enabled; async file sync and thread switching remain the source of truth for saved data.
+
 Use HTTPS behind a reverse proxy when the server is reachable outside your LAN.
 
 ## API

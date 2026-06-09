@@ -11,7 +11,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Path as AxumPath, State},
+    extract::{Path as AxumPath, Query, State},
     http::{header::AUTHORIZATION, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -30,11 +30,15 @@ use tokio::{
 };
 use tower_http::cors::{Any, CorsLayer};
 
+mod realtime;
+
+pub use realtime::RealtimeHub;
+
 const DEFAULT_BIND: &str = "127.0.0.1:3210";
 const HOOK_TIMEOUT_SECONDS: u64 = 30;
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthRole {
     Read,
@@ -55,6 +59,7 @@ pub struct AppState {
     root: Arc<PathBuf>,
     hooks: Arc<HookConfig>,
     auth_entries: Arc<Vec<AuthEntry>>,
+    realtime: Arc<RealtimeHub>,
 }
 
 impl AppState {
@@ -83,7 +88,12 @@ impl AppState {
             root: Arc::new(root),
             hooks: Arc::new(hooks),
             auth_entries: Arc::new(auth_entries),
+            realtime: Arc::new(RealtimeHub::new()),
         }
+    }
+
+    pub fn realtime(&self) -> &RealtimeHub {
+        &self.realtime
     }
 
     pub fn root(&self) -> &Path {
@@ -471,11 +481,85 @@ async fn auth_capabilities(Extension(auth): Extension<RequestAuth>) -> Json<Auth
     Json(AuthCapabilitiesResponse { role: auth.0 })
 }
 
+#[derive(Debug, Deserialize)]
+struct RealtimeQuery {
+    token: Option<String>,
+}
+
+fn resolve_ws_auth_role(state: &AppState, token: Option<&str>) -> Result<AuthRole, AppError> {
+    if state.auth_entries.is_empty() {
+        return Ok(AuthRole::Write);
+    }
+    let provided = token
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
+    resolve_auth_role(state.auth_entries.as_ref(), provided)
+        .ok_or_else(|| AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized"))
+}
+
+async fn realtime_events(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+    Query(query): Query<RealtimeQuery>,
+) -> Result<Response, AppError> {
+    validate_slug(&slug)?;
+    resolve_ws_auth_role(&state, query.token.as_deref())?;
+    let rx = state.realtime.subscribe(&slug).await;
+    Ok(realtime::sse_response(rx).into_response())
+}
+
+async fn realtime_presence(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+    Query(query): Query<RealtimeQuery>,
+    Extension(auth): Extension<RequestAuth>,
+    Json(body): Json<realtime::PresenceUpdate>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    validate_slug(&slug)?;
+    resolve_ws_auth_role(&state, query.token.as_deref())?;
+    if body.device_id.trim().is_empty() {
+        return Err(AppError::new(
+            StatusCode::BAD_REQUEST,
+            "deviceId is required",
+        ));
+    }
+    state
+        .realtime
+        .upsert_peer(&slug, body, auth.0)
+        .await;
+    state.realtime.publish_presence(&slug).await;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn realtime_leave(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+    Query(query): Query<RealtimeQuery>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    validate_slug(&slug)?;
+    resolve_ws_auth_role(&state, query.token.as_deref())?;
+    let device_id = body
+        .get("deviceId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    if !device_id.is_empty() {
+        state.realtime.remove_peer(&slug, device_id).await;
+        state.realtime.publish_presence(&slug).await;
+    }
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 pub fn build_router(state: AppState) -> Router {
     let read_routes = Router::new()
         .route("/auth/capabilities", get(auth_capabilities))
         .route("/projects", get(list_projects))
         .route("/projects/{slug}", get(get_project))
+        .route("/projects/{slug}/realtime/events", get(realtime_events))
+        .route("/projects/{slug}/realtime/presence", post(realtime_presence))
+        .route("/projects/{slug}/realtime/leave", post(realtime_leave))
         .route("/projects/{slug}/origins", get(list_origins))
         .route(
             "/projects/{slug}/origins/{origin_id}/files",
@@ -788,6 +872,11 @@ async fn write_origin_file(
     };
     run_after_hook(state.hooks.after_write.as_deref(), &state, &payload).await;
 
+    state
+        .realtime
+        .publish_file_updated(&slug, &origin_id, &response.path, &response.content_hash)
+        .await;
+
     Ok(Json(response))
 }
 
@@ -802,6 +891,11 @@ async fn delete_origin_file(
         fs::remove_file(&path).await.map_err(internal_error)?;
         touch_origin(&state, &slug, &origin_id).await?;
         touch_project(&state, &slug).await?;
+        let path_string = rel_to_string(&rel);
+        state
+            .realtime
+            .publish_file_updated(&slug, &origin_id, &path_string, "deleted")
+            .await;
     }
     Ok(StatusCode::NO_CONTENT)
 }

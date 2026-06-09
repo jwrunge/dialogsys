@@ -1,5 +1,6 @@
 ---
 import ProjectNav from '../components/ProjectNav.astro';
+import CoauthorPresence from '../islands/CoauthorPresence.svelte';
 import CollaborationPanel from '../islands/CollaborationPanel.svelte';
 import OfflineSyncBanner from '../islands/OfflineSyncBanner.svelte';
 import ProjectTitle from '../islands/ProjectTitle.svelte';
@@ -42,6 +43,7 @@ const pageTitle = title ? `${title} · ${project.displayName}` : project.display
 			<ProjectNav slug={slug} current={current} />
 			<ReadOnlyBanner client:load />
 			<OfflineSyncBanner client:load />
+			<CoauthorPresence client:load slug={slug} />
 			<CollaborationPanel client:load slug={slug} />
 			{variant !== 'flow' && <slot />}
 		</div>

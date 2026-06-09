@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import EditorStatusBanner from '../components/EditorStatusBanner.svelte';
 import { api } from '../lib/api';
+import { sequenceGraphPath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
 import { isProjectReadOnly } from '../lib/client/project-access';
@@ -379,6 +380,11 @@ function onKeyDown(event: KeyboardEvent) {
 	event.preventDefault();
 	openDeleteNodeConfirm();
 }
+
+$effect(() => {
+	setCoauthorFocusPath(sequenceGraphPath(sequenceId));
+	return () => setCoauthorFocusPath(null);
+});
 
 onMount(() => {
 	load();

@@ -73,9 +73,10 @@ The graph editor should show Entry, Direction, Line, Condition, Set var, and End
 - Default projects root: `./projects`
 - Override via **Settings** (`/settings`) or env var `DIALOGSYS_PROJECTS_ROOT` (see `.env.example`)
 
-### Collaboration (async)
+### Collaboration (async + live presence)
 
 - Per-device **origin threads** on sync server; `CollaborationPanel` in project layout
+- **Live coauthors** — SSE on sync server (`GET /projects/:slug/realtime/events`); `CoauthorPresence` shows who is editing which file and prompts reload when another thread updates your open scene
 - Read-only tokens (`readAuthToken` on sync server) → `ReadOnlyBanner` + write blocking
 - File-level conflicts (409) with reload / force-keep-mine; offline write queue when network drops
 
