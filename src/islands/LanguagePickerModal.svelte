@@ -109,7 +109,7 @@ function onKeydown(e: KeyboardEvent) {
 						</ul>
 						{#if filteredOther.length > 0}
 							<h3>More languages</h3>
-							<p class="hint">Untranslated parts of the interface stay in English.</p>
+							<p class="hint">Translated automatically on first use; quality may vary.</p>
 							<ul class="language-list">
 								{#each filteredOther as option (option.tag)}
 									{@render languageRow(option)}
@@ -129,7 +129,7 @@ function onKeydown(e: KeyboardEvent) {
 				</section>
 				<section>
 					<h3>More languages</h3>
-					<p class="hint">Untranslated parts of the interface stay in English.</p>
+					<p class="hint">Translated automatically on first use; quality may vary.</p>
 					<ul class="language-list">
 						{#each other as option (option.tag)}
 							{@render languageRow(option)}
@@ -258,6 +258,9 @@ function onKeydown(e: KeyboardEvent) {
 		border: 1px solid transparent;
 		border-radius: var(--radius);
 		background: transparent;
+		color: var(--text);
+		font: inherit;
+		appearance: none;
 		cursor: pointer;
 	}
 

@@ -19,9 +19,7 @@ declare module 'sql.js' {
 		Database: new (data?: Uint8Array) => Database;
 	}
 
-	type InitSqlJs = (config?: {
-		locateFile?: (file: string) => string;
-	}) => Promise<SqlJsStatic>;
+	type InitSqlJs = (config?: { locateFile?: (file: string) => string }) => Promise<SqlJsStatic>;
 
 	const initSqlJs: InitSqlJs;
 	export default initSqlJs;

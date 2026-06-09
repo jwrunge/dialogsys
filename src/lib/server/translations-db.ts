@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { GetTransMapFn } from '@jwrunge/transmut/observer/types';
 import type { Database, SqlJsStatic } from 'sql.js';
 import { parseLocaleTag } from '../i18n/locales';
+import { isMachineTranslateEnabled, machineTranslateKeys } from './machine-translate';
 import { resolveInitSqlJs } from './sqljs';
 
 const require = createRequire(import.meta.url);
@@ -19,6 +20,22 @@ async function loadSqlJs(): Promise<SqlJsStatic> {
 		});
 	}
 	return sqlJsInstancePromise;
+}
+
+function ensureSchema(db: Database): void {
+	db.exec(`
+		CREATE TABLE IF NOT EXISTS translations (
+			lang TEXT NOT NULL,
+			region TEXT NOT NULL DEFAULT '',
+			locale TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			edited INTEGER NOT NULL DEFAULT 0,
+			metadata TEXT,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (lang, region, key)
+		);
+	`);
 }
 
 async function readDatabase(SQL: SqlJsStatic, databasePath: string): Promise<Database> {
@@ -62,6 +79,56 @@ function collectTranslations(
 	return result;
 }
 
+async function upsertTranslations(
+	databasePath: string,
+	localeTag: string,
+	translations: Record<string, string>,
+): Promise<void> {
+	const entries = Object.entries(translations).filter(
+		([key, value]) => key.trim() && typeof value === 'string' && value.trim(),
+	);
+	if (entries.length === 0) return;
+
+	const { langCode, region } = parseLocaleTag(localeTag);
+	const tag = region ? `${langCode}-${region}` : langCode;
+	const SQL = await loadSqlJs();
+	const db = await readDatabase(SQL, databasePath);
+	ensureSchema(db);
+
+	const statement = db.prepare(`
+		INSERT INTO translations (lang, region, locale, key, value, edited, metadata, updated_at)
+		VALUES ($lang, $region, $locale, $key, $value, 0, NULL, $updated_at)
+		ON CONFLICT(lang, region, key) DO UPDATE SET
+			value = excluded.value,
+			updated_at = excluded.updated_at;
+	`);
+
+	const updatedAt = Date.now();
+	db.exec('BEGIN IMMEDIATE TRANSACTION;');
+	try {
+		for (const [key, value] of entries) {
+			statement.run({
+				$lang: langCode,
+				$region: region,
+				$locale: tag,
+				$key: key,
+				$value: value,
+				$updated_at: updatedAt,
+			});
+		}
+		db.exec('COMMIT;');
+	} catch (error) {
+		db.exec('ROLLBACK;');
+		throw error;
+	} finally {
+		statement.free();
+	}
+
+	await fs.mkdir(path.dirname(databasePath), { recursive: true });
+	await fs.writeFile(databasePath, Buffer.from(db.export()));
+	db.close();
+}
+
 export async function loadTranslationsFromDatabase(
 	databasePath: string,
 	localeTag: string,
@@ -90,6 +157,16 @@ export async function loadTranslationsFromDatabase(
 export function createDatabaseTranslationProvider(databasePath: string): GetTransMapFn {
 	return async ({ langCode, region }, keys) => {
 		const localeTag = region ? `${langCode}-${region}` : langCode;
-		return loadTranslationsFromDatabase(databasePath, localeTag, keys);
+		const fromDb = await loadTranslationsFromDatabase(databasePath, localeTag, keys);
+		const missing = keys.filter((key) => !(key in fromDb));
+		if (missing.length === 0 || !isMachineTranslateEnabled()) {
+			return fromDb;
+		}
+
+		const machine = await machineTranslateKeys(missing, langCode);
+		if (Object.keys(machine).length > 0) {
+			await upsertTranslations(databasePath, localeTag, machine);
+		}
+		return { ...fromDb, ...machine };
 	};
 }
