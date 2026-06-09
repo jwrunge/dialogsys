@@ -154,19 +154,67 @@ export async function loadTranslationsFromDatabase(
 	}
 }
 
+type MachineTranslateQueue = { keys: Set<string>; draining: boolean };
+
+const machineTranslateQueues = new Map<string, MachineTranslateQueue>();
+
+function queueMachineTranslations(
+	databasePath: string,
+	localeTag: string,
+	langCode: string,
+	missing: string[],
+): void {
+	if (missing.length === 0 || !isMachineTranslateEnabled()) return;
+
+	let queue = machineTranslateQueues.get(localeTag);
+	if (!queue) {
+		queue = { keys: new Set(), draining: false };
+		machineTranslateQueues.set(localeTag, queue);
+	}
+	for (const key of missing) queue.keys.add(key);
+
+	if (!queue.draining) {
+		queue.draining = true;
+		void drainMachineTranslateQueue(databasePath, localeTag, langCode, queue);
+	}
+}
+
+async function drainMachineTranslateQueue(
+	databasePath: string,
+	localeTag: string,
+	langCode: string,
+	queue: MachineTranslateQueue,
+): Promise<void> {
+	try {
+		while (queue.keys.size > 0) {
+			const batch = Array.from(queue.keys).slice(0, 24);
+			for (const key of batch) queue.keys.delete(key);
+
+			try {
+				const machine = await machineTranslateKeys(batch, langCode);
+				if (Object.keys(machine).length > 0) {
+					await upsertTranslations(databasePath, localeTag, machine);
+				}
+			} catch {
+				for (const key of batch) queue.keys.add(key);
+				break;
+			}
+		}
+	} finally {
+		queue.draining = false;
+		if (queue.keys.size > 0) {
+			queue.draining = true;
+			void drainMachineTranslateQueue(databasePath, localeTag, langCode, queue);
+		}
+	}
+}
+
 export function createDatabaseTranslationProvider(databasePath: string): GetTransMapFn {
 	return async ({ langCode, region }, keys) => {
 		const localeTag = region ? `${langCode}-${region}` : langCode;
 		const fromDb = await loadTranslationsFromDatabase(databasePath, localeTag, keys);
 		const missing = keys.filter((key) => !(key in fromDb));
-		if (missing.length === 0 || !isMachineTranslateEnabled()) {
-			return fromDb;
-		}
-
-		const machine = await machineTranslateKeys(missing, langCode);
-		if (Object.keys(machine).length > 0) {
-			await upsertTranslations(databasePath, localeTag, machine);
-		}
-		return { ...fromDb, ...machine };
+		queueMachineTranslations(databasePath, localeTag, langCode, missing);
+		return fromDb;
 	};
 }

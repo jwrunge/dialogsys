@@ -168,6 +168,8 @@ function onKeydown(e: KeyboardEvent) {
 		max-width: min(32rem, 96vw);
 		width: 100%;
 		background: transparent;
+		color-scheme: dark;
+		color: var(--text);
 	}
 
 	.language-picker-dialog::backdrop {
@@ -183,6 +185,7 @@ function onKeydown(e: KeyboardEvent) {
 		border-radius: var(--radius);
 		overflow: hidden;
 		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+		color: var(--text);
 	}
 
 	.language-picker-header {
@@ -198,6 +201,7 @@ function onKeydown(e: KeyboardEvent) {
 	.language-picker-header h2 {
 		margin: 0;
 		font-size: 1.05rem;
+		color: var(--text);
 	}
 
 	.icon-close {
@@ -283,6 +287,7 @@ function onKeydown(e: KeyboardEvent) {
 		font-size: 0.95rem;
 		font-weight: 600;
 		grid-column: 1;
+		color: var(--text);
 	}
 
 	.english {

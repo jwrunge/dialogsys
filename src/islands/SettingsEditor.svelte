@@ -475,6 +475,7 @@ onMount(load);
 		display: block;
 		margin-bottom: 0.35rem;
 		font-size: 0.9rem;
+		color: var(--text-muted);
 	}
 
 	.locale-picker-row {
@@ -496,6 +497,10 @@ onMount(load);
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
 		background: var(--bg-elevated);
+		color-scheme: dark;
+		color: var(--text);
+		font: inherit;
+		appearance: none;
 		cursor: pointer;
 	}
 
@@ -512,6 +517,7 @@ onMount(load);
 	.locale-native {
 		font-weight: 600;
 		font-size: 0.95rem;
+		color: var(--text);
 	}
 
 	.locale-english {

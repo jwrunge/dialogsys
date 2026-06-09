@@ -38,16 +38,23 @@ export function isMachineTranslateEnabled(): boolean {
 export async function machineTranslateKeys(
 	keys: string[],
 	langCode: string,
+	concurrency = 4,
 ): Promise<Record<string, string>> {
 	if (keys.length === 0) return {};
 
 	const result: Record<string, string> = {};
-	for (const key of keys) {
-		try {
-			result[key] = await translateOne(key, langCode);
-		} catch {
-			// Leave key untranslated on failure
+	const queue = [...keys];
+	const workers = Array.from({ length: Math.min(concurrency, keys.length) }, async () => {
+		while (queue.length > 0) {
+			const key = queue.shift();
+			if (!key) break;
+			try {
+				result[key] = await translateOne(key, langCode);
+			} catch {
+				// Leave key untranslated on failure
+			}
 		}
-	}
+	});
+	await Promise.all(workers);
 	return result;
 }

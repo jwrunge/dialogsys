@@ -63,7 +63,16 @@ export async function initTranslationObserver(localeTag: string): Promise<Transl
 }
 
 export async function applyAppLocale(localeTag: string): Promise<void> {
-	await initTranslationObserver(localeTag);
+	if (typeof document !== 'undefined') {
+		document.body.classList.add('transmut-translating');
+	}
+	try {
+		await initTranslationObserver(localeTag);
+	} finally {
+		if (typeof document !== 'undefined') {
+			document.body.classList.remove('transmut-translating');
+		}
+	}
 }
 
 export function bindLocaleChangeListener(): () => void {
