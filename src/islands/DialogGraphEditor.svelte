@@ -31,8 +31,11 @@ import type { Character, CharactersFile } from '../lib/schema/characters';
 import type { GameStateFile, GameStateProperty } from '../lib/schema/gameState';
 import type { DialogGraph, GraphEdge, GraphNode } from '../lib/schema/graph';
 import { COAUTHOR_GRAPH_PATCH_EVENT, type CoauthorGraphPatch } from '../lib/sync/realtime';
+import { applySceneTextBlocks, type SceneTextBlock } from '../lib/writer/sceneText';
+import DialoguePreviewPanel from './DialoguePreviewPanel.svelte';
 import DialogFlowCanvas from './DialogFlowCanvas.svelte';
 import NodeInspector from './NodeInspector.svelte';
+import SceneTextEditor from './SceneTextEditor.svelte';
 import SceneTitle from './SceneTitle.svelte';
 
 interface Props {
@@ -73,6 +76,8 @@ let savedGraph = $state.raw<DialogGraph | null>(null);
 let contentHash = $state('');
 let clientId = $state('');
 let applyingRemotePatch = $state(false);
+let editorView = $state<'graph' | 'text'>('graph');
+let previewOpen = $state(false);
 
 let canvasNodes = $state.raw<CanvasNode[]>([]);
 let canvasEdges = $state.raw<CanvasEdge[]>([]);
@@ -118,6 +123,14 @@ function fromCanvas(): DialogGraph {
 		nodes: canvasNodes,
 		edges: canvasEdges,
 	});
+}
+
+function onTextBlocksChange(blocks: SceneTextBlock[]) {
+	if (!savedGraph || applyingRemotePatch) return;
+	const next = applySceneTextBlocks(savedGraph, blocks, characters);
+	savedGraph = { ...next, displayName: graphMeta.displayName, description: graphMeta.description };
+	toCanvas(savedGraph);
+	scheduleSave();
 }
 
 const saveTask = new DebouncedTask(SAVE_DEBOUNCE_MS, () => void save());
@@ -506,6 +519,37 @@ onMount(async () => {
 <div class="scene-editor" class:embedded class:editor-shell={embedded} data-transmut="include">
 	<EditorStatusBanner {loadError} />
 	{#if !loadError && ready}
+		<div class="editor-toolbar">
+			<div class="view-toggle" role="group" aria-label="Editor view">
+				<button
+					type="button"
+					class="btn"
+					class:btn-primary={editorView === 'graph'}
+					onclick={() => (editorView = 'graph')}
+				>
+					Graph
+				</button>
+				<button
+					type="button"
+					class="btn"
+					class:btn-primary={editorView === 'text'}
+					onclick={() => (editorView = 'text')}
+				>
+					Text
+				</button>
+			</div>
+			<button type="button" class="btn btn-primary" onclick={() => (previewOpen = true)}>
+				Play
+			</button>
+		</div>
+		{#if editorView === 'text' && savedGraph}
+			<SceneTextEditor
+				graph={savedGraph}
+				{characters}
+				revision={`${contentHash}:${syncKey}`}
+				onchange={onTextBlocksChange}
+			/>
+		{:else}
 		<div class="editor-layout flow-layout">
 			<div class="editor-canvas">
 				<DialogFlowCanvas
@@ -554,6 +598,18 @@ onMount(async () => {
 				/>
 			</aside>
 		</div>
+		{/if}
+		{#if savedGraph}
+			<DialoguePreviewPanel
+				mode="scene"
+				{slug}
+				graph={fromCanvas()}
+				{characters}
+				title={graphMeta.displayName}
+				open={previewOpen}
+				onclose={() => (previewOpen = false)}
+			/>
+		{/if}
 	{/if}
 
 	{#if saveStatus || loading}
@@ -601,6 +657,20 @@ onMount(async () => {
 
 	.scene-editor.embedded {
 		height: 100%;
+	}
+
+	.editor-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.5rem 1rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.view-toggle {
+		display: flex;
+		gap: 0.35rem;
 	}
 
 	.flow-layout {

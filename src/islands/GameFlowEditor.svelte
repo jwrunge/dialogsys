@@ -26,9 +26,11 @@ import type { DialogGraph } from '../lib/schema/graph';
 import type { DialogListItem } from '../lib/server/projects';
 import { COAUTHOR_GRAPH_PATCH_EVENT, type CoauthorGraphPatch } from '../lib/sync/realtime';
 import type { FlowEdge, FlowGraph, FlowNode } from '../schema/flow';
+import DialoguePreviewPanel from './DialoguePreviewPanel.svelte';
 import DialogEditorModal from './DialogEditorModal.svelte';
 import FlowNodeInspector from './FlowNodeInspector.svelte';
 import GameFlowCanvas from './GameFlowCanvas.svelte';
+import type { Character } from '../lib/schema/characters';
 
 interface Props {
 	slug: string;
@@ -57,6 +59,10 @@ let editorDialogId = $state<string | null>(null);
 let editorTitle = $state('Edit scene');
 let analyzing = $state(false);
 let sequenceDisplayName = $state('Main sequence');
+let previewOpen = $state(false);
+let previewDialogs = $state<Record<string, DialogGraph>>({});
+let previewCharacters = $state<Character[]>([]);
+let previewLoading = $state(false);
 
 let flowNodes = $state<FlowNode[]>([]);
 let flowEdges = $state<FlowEdge[]>([]);
@@ -190,6 +196,37 @@ async function applyRemotePatch(patch: CoauthorGraphPatch) {
 async function loadDialogs() {
 	const res = await api<{ dialogs: DialogListItem[] }>(`/api/projects/${slug}/dialogs`);
 	dialogs = res.dialogs;
+}
+
+async function openSequencePreview() {
+	previewLoading = true;
+	try {
+		const graph = fromCanvas();
+		const sceneIds = [
+			...new Set(
+				graph.nodes
+					.filter((n) => n.type === 'scene' && n.data.dialogId)
+					.map((n) => n.data.dialogId!),
+			),
+		];
+		const [chars, ...dialogResults] = await Promise.all([
+			api<CharactersFile>(`/api/projects/${slug}/characters`),
+			...sceneIds.map((id) =>
+				api<{ graph: DialogGraph }>(`/api/projects/${slug}/dialogs/${id}`),
+			),
+		]);
+		const dialogMap: Record<string, DialogGraph> = {};
+		sceneIds.forEach((id, index) => {
+			dialogMap[id] = dialogResults[index]!.graph;
+		});
+		previewDialogs = dialogMap;
+		previewCharacters = chars.characters;
+		previewOpen = true;
+	} catch (e) {
+		saveStatus = (e as Error).message;
+	} finally {
+		previewLoading = false;
+	}
 }
 
 async function loadGameState() {
@@ -489,6 +526,17 @@ onMount(() => {
 <div class="flow-editor" data-transmut="include">
 	<EditorStatusBanner {loadError} />
 	{#if !loadError && ready}
+		<div class="editor-toolbar">
+			<h2 class="sequence-title">{sequenceDisplayName}</h2>
+			<button
+				type="button"
+				class="btn btn-primary"
+				disabled={previewLoading}
+				onclick={() => void openSequencePreview()}
+			>
+				{previewLoading ? 'Loading…' : 'Play sequence'}
+			</button>
+		</div>
 		<div class="editor-layout flow-layout">
 			<div class="editor-canvas">
 				<GameFlowCanvas
@@ -518,6 +566,17 @@ onMount(() => {
 				/>
 			</aside>
 		</div>
+		<DialoguePreviewPanel
+			mode="sequence"
+			{slug}
+			flow={fromCanvas()}
+			dialogs={previewDialogs}
+			characters={previewCharacters}
+			{gameStateProperties}
+			title={sequenceDisplayName}
+			open={previewOpen}
+			onclose={() => (previewOpen = false)}
+		/>
 	{/if}
 
 	{#if saveStatus || loading}
@@ -569,6 +628,20 @@ onMount(() => {
 		display: flex;
 		flex-direction: column;
 		width: 100%;
+	}
+
+	.editor-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.5rem 1rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.sequence-title {
+		margin: 0;
+		font-size: 1rem;
 	}
 
 	.flow-layout {
