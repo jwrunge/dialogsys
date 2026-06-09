@@ -49,10 +49,14 @@ pub enum AuthRole {
 struct AuthEntry {
     token: Arc<str>,
     role: AuthRole,
+    projects: Option<Arc<[String]>>,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct RequestAuth(AuthRole);
+#[derive(Clone, Debug)]
+struct RequestAuth {
+    role: AuthRole,
+    projects: Option<Arc<[String]>>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -73,6 +77,7 @@ impl AppState {
             auth_entries.push(AuthEntry {
                 token: Arc::<str>::from(token.trim()),
                 role: AuthRole::Write,
+                projects: None,
             });
         }
         for token in &auth.read_tokens {
@@ -81,8 +86,30 @@ impl AppState {
                 auth_entries.push(AuthEntry {
                     token: Arc::<str>::from(trimmed),
                     role: AuthRole::Read,
+                    projects: None,
                 });
             }
+        }
+        for scoped in &auth.scoped_tokens {
+            let trimmed = scoped.token.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let projects = scoped
+                .projects
+                .iter()
+                .map(|slug| slug.trim().to_string())
+                .filter(|slug| !slug.is_empty())
+                .collect::<Vec<_>>();
+            auth_entries.push(AuthEntry {
+                token: Arc::<str>::from(trimmed),
+                role: scoped.role,
+                projects: if projects.is_empty() {
+                    None
+                } else {
+                    Some(Arc::from(projects.into_boxed_slice()))
+                },
+            });
         }
         Self {
             root: Arc::new(root),
@@ -116,6 +143,16 @@ impl AppState {
 pub struct AuthConfig {
     pub write_token: Option<String>,
     pub read_tokens: Vec<String>,
+    pub scoped_tokens: Vec<ScopedAuthToken>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedAuthToken {
+    pub token: String,
+    pub role: AuthRole,
+    #[serde(default)]
+    pub projects: Vec<String>,
 }
 
 impl AuthConfig {
@@ -123,6 +160,7 @@ impl AuthConfig {
         Self {
             write_token: token,
             read_tokens: Vec::new(),
+            scoped_tokens: Vec::new(),
         }
     }
 
@@ -137,6 +175,7 @@ impl AuthConfig {
         Self {
             write_token: config.auth_token.clone(),
             read_tokens,
+            scoped_tokens: config.scoped_auth_tokens.clone().unwrap_or_default(),
         }
     }
 
@@ -148,6 +187,7 @@ impl AuthConfig {
                 .read_tokens
                 .iter()
                 .any(|token| !token.trim().is_empty())
+            || self.scoped_tokens.iter().any(|entry| !entry.token.trim().is_empty())
     }
 }
 
@@ -161,6 +201,8 @@ pub struct ServerConfig {
     pub read_auth_token: Option<String>,
     #[serde(default)]
     pub read_auth_tokens: Option<Vec<String>>,
+    #[serde(default)]
+    pub scoped_auth_tokens: Option<Vec<ScopedAuthToken>>,
     #[serde(default)]
     pub hooks: HookConfig,
 }
@@ -313,6 +355,8 @@ pub struct HealthResponse {
 #[serde(rename_all = "camelCase")]
 pub struct AuthCapabilitiesResponse {
     pub role: AuthRole,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projects: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -434,13 +478,34 @@ fn verify_auth_token(expected: &str, provided: &str) -> bool {
     expected.as_bytes().ct_eq(provided.as_bytes()).into()
 }
 
-fn resolve_auth_role(entries: &[AuthEntry], provided: &str) -> Option<AuthRole> {
+fn resolve_auth(entries: &[AuthEntry], provided: &str) -> Option<RequestAuth> {
     for entry in entries {
         if verify_auth_token(entry.token.as_ref(), provided) {
-            return Some(entry.role);
+            return Some(RequestAuth {
+                role: entry.role,
+                projects: entry.projects.clone(),
+            });
         }
     }
     None
+}
+
+fn allows_project(auth: &RequestAuth, slug: &str) -> bool {
+    match &auth.projects {
+        None => true,
+        Some(list) => list.iter().any(|project| project == slug),
+    }
+}
+
+fn ensure_project_access(auth: &RequestAuth, slug: &str) -> Result<(), AppError> {
+    if allows_project(auth, slug) {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            StatusCode::FORBIDDEN,
+            "Token not authorized for this project",
+        ))
+    }
 }
 
 async fn require_auth(
@@ -449,17 +514,20 @@ async fn require_auth(
     next: Next,
 ) -> Result<Response, AppError> {
     if state.auth_entries.is_empty() {
-        request.extensions_mut().insert(RequestAuth(AuthRole::Write));
+        request.extensions_mut().insert(RequestAuth {
+            role: AuthRole::Write,
+            projects: None,
+        });
         return Ok(next.run(request).await);
     }
 
-    let role = match bearer_token(request.headers()) {
-        Some(provided) => resolve_auth_role(state.auth_entries.as_ref(), provided)
+    let auth = match bearer_token(request.headers()) {
+        Some(provided) => resolve_auth(state.auth_entries.as_ref(), provided)
             .ok_or_else(|| AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized"))?,
         None => return Err(AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized")),
     };
 
-    request.extensions_mut().insert(RequestAuth(role));
+    request.extensions_mut().insert(auth);
     Ok(next.run(request).await)
 }
 
@@ -468,7 +536,7 @@ async fn require_write(
     request: Request<Body>,
     next: Next,
 ) -> Result<Response, AppError> {
-    if auth.0 == AuthRole::Write {
+    if auth.role == AuthRole::Write {
         return Ok(next.run(request).await);
     }
     Err(AppError::new(
@@ -478,7 +546,10 @@ async fn require_write(
 }
 
 async fn auth_capabilities(Extension(auth): Extension<RequestAuth>) -> Json<AuthCapabilitiesResponse> {
-    Json(AuthCapabilitiesResponse { role: auth.0 })
+    Json(AuthCapabilitiesResponse {
+        role: auth.role,
+        projects: auth.projects.as_ref().map(|list| list.iter().cloned().collect()),
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -486,15 +557,18 @@ struct RealtimeQuery {
     token: Option<String>,
 }
 
-fn resolve_ws_auth_role(state: &AppState, token: Option<&str>) -> Result<AuthRole, AppError> {
+fn resolve_ws_auth(state: &AppState, token: Option<&str>) -> Result<RequestAuth, AppError> {
     if state.auth_entries.is_empty() {
-        return Ok(AuthRole::Write);
+        return Ok(RequestAuth {
+            role: AuthRole::Write,
+            projects: None,
+        });
     }
     let provided = token
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
-    resolve_auth_role(state.auth_entries.as_ref(), provided)
+    resolve_auth(state.auth_entries.as_ref(), provided)
         .ok_or_else(|| AppError::new(StatusCode::UNAUTHORIZED, "Unauthorized"))
 }
 
@@ -504,7 +578,8 @@ async fn realtime_events(
     Query(query): Query<RealtimeQuery>,
 ) -> Result<Response, AppError> {
     validate_slug(&slug)?;
-    resolve_ws_auth_role(&state, query.token.as_deref())?;
+    let auth = resolve_ws_auth(&state, query.token.as_deref())?;
+    ensure_project_access(&auth, &slug)?;
     let rx = state.realtime.subscribe(&slug).await;
     Ok(realtime::sse_response(rx).into_response())
 }
@@ -517,7 +592,8 @@ async fn realtime_presence(
     Json(body): Json<realtime::PresenceUpdate>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     validate_slug(&slug)?;
-    resolve_ws_auth_role(&state, query.token.as_deref())?;
+    let ws_auth = resolve_ws_auth(&state, query.token.as_deref())?;
+    ensure_project_access(&ws_auth, &slug)?;
     if body.device_id.trim().is_empty() {
         return Err(AppError::new(
             StatusCode::BAD_REQUEST,
@@ -526,7 +602,7 @@ async fn realtime_presence(
     }
     state
         .realtime
-        .upsert_peer(&slug, body, auth.0)
+        .upsert_peer(&slug, body, auth.role)
         .await;
     state.realtime.publish_presence(&slug).await;
     Ok(Json(serde_json::json!({ "ok": true })))
@@ -540,8 +616,9 @@ async fn realtime_publish(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     validate_slug(&slug)?;
-    resolve_ws_auth_role(&state, query.token.as_deref())?;
-    if auth.0 != AuthRole::Write {
+    let ws_auth = resolve_ws_auth(&state, query.token.as_deref())?;
+    ensure_project_access(&ws_auth, &slug)?;
+    if auth.role != AuthRole::Write {
         return Err(AppError::new(
             StatusCode::FORBIDDEN,
             "Read-only token cannot publish realtime events",
@@ -560,7 +637,8 @@ async fn realtime_leave(
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     validate_slug(&slug)?;
-    resolve_ws_auth_role(&state, query.token.as_deref())?;
+    let auth = resolve_ws_auth(&state, query.token.as_deref())?;
+    ensure_project_access(&auth, &slug)?;
     let device_id = body
         .get("deviceId")
         .and_then(|v| v.as_str())
@@ -653,6 +731,7 @@ async fn health() -> Json<HealthResponse> {
 
 async fn list_projects(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
 ) -> Result<Json<ProjectListResponse>, AppError> {
     fs::create_dir_all(state.root())
         .await
@@ -668,7 +747,9 @@ async fn list_projects(
         }
         let slug = entry.file_name().to_string_lossy().to_string();
         if let Ok(project) = read_project_meta(&state, &slug).await {
-            projects.push(project);
+            if allows_project(&auth, &slug) {
+                projects.push(project);
+            }
         }
     }
 
@@ -678,9 +759,11 @@ async fn list_projects(
 
 async fn create_project(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     Json(input): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<ProjectResponse>), AppError> {
     validate_slug(&input.slug)?;
+    ensure_project_access(&auth, &input.slug)?;
     if input.display_name.trim().is_empty() {
         return Err(AppError::new(
             StatusCode::BAD_REQUEST,
@@ -719,16 +802,20 @@ async fn create_project(
 
 async fn get_project(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     AxumPath(slug): AxumPath<String>,
 ) -> Result<Json<ProjectResponse>, AppError> {
+    ensure_project_access(&auth, &slug)?;
     let project = read_project_meta(&state, &slug).await?;
     Ok(Json(ProjectResponse { project }))
 }
 
 async fn list_origins(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     AxumPath(slug): AxumPath<String>,
 ) -> Result<Json<OriginsResponse>, AppError> {
+    ensure_project_access(&auth, &slug)?;
     let dir = project_dir(&state, &slug)?;
     ensure_project_exists(&dir).await?;
     let origins = read_origins_index(&dir).await?;
@@ -737,8 +824,10 @@ async fn list_origins(
 
 async fn ensure_origin(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     AxumPath((slug, origin_id)): AxumPath<(String, String)>,
 ) -> Result<Json<OriginResponse>, AppError> {
+    ensure_project_access(&auth, &slug)?;
     validate_origin_id(&origin_id)?;
     let dir = project_dir(&state, &slug)?;
     ensure_project_exists(&dir).await?;
@@ -748,8 +837,10 @@ async fn ensure_origin(
 
 async fn list_origin_files(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     AxumPath((slug, origin_id)): AxumPath<(String, String)>,
 ) -> Result<Json<ManifestResponse>, AppError> {
+    ensure_project_access(&auth, &slug)?;
     validate_origin_id(&origin_id)?;
     let dir = origin_dir(&state, &slug, &origin_id)?;
     ensure_origin_exists(&dir).await?;
@@ -759,8 +850,10 @@ async fn list_origin_files(
 
 async fn read_origin_file(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     AxumPath((slug, origin_id, file_path)): AxumPath<(String, String, String)>,
 ) -> Result<Json<FileReadResponse>, AppError> {
+    ensure_project_access(&auth, &slug)?;
     validate_origin_id(&origin_id)?;
     let request_id = request_id();
     let rel = safe_relative_path(&file_path)?;
@@ -821,9 +914,11 @@ async fn read_origin_file(
 
 async fn write_origin_file(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     AxumPath((slug, origin_id, file_path)): AxumPath<(String, String, String)>,
     Json(input): Json<WriteFileRequest>,
 ) -> Result<Json<FileWriteResponse>, AppError> {
+    ensure_project_access(&auth, &slug)?;
     validate_origin_id(&origin_id)?;
     let request_id = request_id();
     let rel = safe_relative_path(&file_path)?;
@@ -904,8 +999,10 @@ async fn write_origin_file(
 
 async fn delete_origin_file(
     State(state): State<AppState>,
+    Extension(auth): Extension<RequestAuth>,
     AxumPath((slug, origin_id, file_path)): AxumPath<(String, String, String)>,
 ) -> Result<StatusCode, AppError> {
+    ensure_project_access(&auth, &slug)?;
     validate_origin_id(&origin_id)?;
     let rel = safe_relative_path(&file_path)?;
     let path = origin_dir(&state, &slug, &origin_id)?.join(&rel);
@@ -1383,6 +1480,7 @@ mod tests {
             &AuthConfig {
                 write_token: Some(write.to_string()),
                 read_tokens: vec![read.to_string()],
+                scoped_tokens: Vec::new(),
             },
         )
     }
@@ -1634,5 +1732,76 @@ mod tests {
         )
         .unwrap();
         assert_eq!(written, "hooked");
+    }
+
+    fn test_state_with_scoped_auth(root: &Path, scoped: ScopedAuthToken) -> AppState {
+        AppState::with_auth_config(
+            root.to_path_buf(),
+            HookConfig::default(),
+            &AuthConfig {
+                write_token: Some("write-secret".to_string()),
+                read_tokens: Vec::new(),
+                scoped_tokens: vec![scoped],
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn scoped_read_token_limits_project_access() {
+        let temp = TestDir::new();
+        let router = build_router(test_state_with_scoped_auth(
+            temp.path(),
+            ScopedAuthToken {
+                token: "demo-read".to_string(),
+                role: AuthRole::Read,
+                projects: vec!["demo".to_string()],
+            },
+        ));
+
+        for slug in ["demo", "other"] {
+            let (status, _) = json_request_with_auth(
+                router.clone(),
+                "POST",
+                "/projects",
+                serde_json::json!({ "slug": slug, "displayName": slug }),
+                Some("write-secret"),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CREATED);
+        }
+
+        let (status, caps) = json_request_with_auth(
+            router.clone(),
+            "GET",
+            "/auth/capabilities",
+            serde_json::json!({}),
+            Some("demo-read"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(caps["role"], "read");
+        assert_eq!(caps["projects"], serde_json::json!(["demo"]));
+
+        let (status, list) = json_request_with_auth(
+            router.clone(),
+            "GET",
+            "/projects",
+            serde_json::json!({}),
+            Some("demo-read"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(list["projects"].as_array().unwrap().len(), 1);
+        assert_eq!(list["projects"][0]["slug"], "demo");
+
+        let (status, _) = json_request_with_auth(
+            router.clone(),
+            "GET",
+            "/projects/other",
+            serde_json::json!({}),
+            Some("demo-read"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 }

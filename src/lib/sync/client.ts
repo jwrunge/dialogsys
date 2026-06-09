@@ -19,6 +19,7 @@ export type SyncAccessRole = 'read' | 'write';
 
 export type SyncAuthCapabilities = {
 	role: SyncAccessRole;
+	projects?: string[];
 };
 
 export type SyncFileInfo = {

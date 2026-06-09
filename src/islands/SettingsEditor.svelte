@@ -39,6 +39,7 @@ let connectionProjectCount = $state(0);
 let locale = $state('en');
 let deviceDisplayName = $state('');
 let syncAccessRole = $state<'read' | 'write'>('write');
+let syncAllowedProjects = $state<string[]>([]);
 let languagePickerOpen = $state(false);
 
 const selectedLocale = $derived(getLocaleOption(locale));
@@ -62,6 +63,7 @@ async function load() {
 		locale = res.locale ?? 'en';
 		deviceDisplayName = res.deviceDisplayName ?? '';
 		syncAccessRole = res.syncAccessRole ?? 'write';
+		syncAllowedProjects = res.syncAllowedProjects ?? [];
 		ready = true;
 	} catch (e) {
 		error = (e as Error).message;
@@ -157,6 +159,7 @@ async function save(e: Event) {
 		locale = res.locale ?? locale;
 		deviceDisplayName = res.deviceDisplayName ?? deviceDisplayName;
 		syncAccessRole = res.syncAccessRole ?? syncAccessRole;
+		syncAllowedProjects = res.syncAllowedProjects ?? syncAllowedProjects;
 		dispatchLocaleChange(locale);
 		saved = true;
 	} catch (e) {
@@ -307,6 +310,15 @@ onMount(load);
 		{:else}
 			{#if syncAccessRole === 'read'}
 				<p class="warning">Connected with a read-only token. Saving is disabled.</p>
+			{/if}
+			{#if syncAllowedProjects.length > 0}
+				<p class="hint">
+					This token is limited to:
+					{#each syncAllowedProjects as project, index}
+						<code data-transmut-skip>{project}</code>{#if index < syncAllowedProjects.length - 1},
+						{/if}
+					{/each}
+				</p>
 			{/if}
 
 			<div class="field">

@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { api, apiValidated } from '../lib/api';
+import { isSharedOrigin, SHARED_ORIGIN_ID } from '../lib/collaboration/shared-origin';
 import { DIRTY_CHANGE_EVENT, SYNC_CONFLICT_EVENT } from '../lib/client/dirty-state';
 import { formatDateTime } from '../lib/i18n/format';
 import { settingsResponseSchema } from '../lib/schema/api-responses';
@@ -45,10 +46,14 @@ let renameLabel = $state('');
 let confirmSwitchId = $state<string | null>(null);
 let conflictPath = $state('');
 let conflictOpen = $state(false);
+let sharedBusy = $state(false);
 
 const POLL_MS = 30_000;
 
+const onSharedThread = $derived(isSharedOrigin(activeOriginId));
+
 function labelFor(origin: OriginMeta): string {
+	if (origin.isShared || isSharedOrigin(origin.originId)) return 'Shared coauthoring';
 	if (origin.label?.trim()) return origin.label.trim();
 	if (origin.isSelf) return 'This device';
 	return `${origin.originId.slice(0, 8)}…`;
@@ -122,6 +127,40 @@ async function switchTo(originId: string) {
 	} catch (e) {
 		error = (e as Error).message;
 		switching = false;
+	}
+}
+
+async function joinSharedThread() {
+	if (readOnly || sharedBusy || onSharedThread) return;
+	if (dirty) {
+		error = 'Save or discard edits before joining shared coauthoring.';
+		return;
+	}
+	sharedBusy = true;
+	error = '';
+	try {
+		await api(`/api/projects/${slug}/origins/shared`, { method: 'POST' });
+		window.location.reload();
+	} catch (e) {
+		error = (e as Error).message;
+		sharedBusy = false;
+	}
+}
+
+async function leaveSharedThread() {
+	if (readOnly || sharedBusy || !onSharedThread) return;
+	if (dirty) {
+		error = 'Save or discard edits before returning to your thread.';
+		return;
+	}
+	sharedBusy = true;
+	error = '';
+	try {
+		await api(`/api/projects/${slug}/origins/shared`, { method: 'DELETE' });
+		window.location.reload();
+	} catch (e) {
+		error = (e as Error).message;
+		sharedBusy = false;
 	}
 }
 
@@ -201,6 +240,29 @@ $effect(() => {
 			<p class="remote-banner">{remoteBanner}</p>
 		{/if}
 
+		<div class="shared-actions">
+			{#if onSharedThread}
+				<p class="shared-active">Live coauthoring on the shared thread. Saves sync for all teammates here.</p>
+				<button
+					type="button"
+					class="btn"
+					disabled={sharedBusy || readOnly}
+					onclick={() => leaveSharedThread()}
+				>
+					{sharedBusy ? 'Switching…' : 'Return to my thread'}
+				</button>
+			{:else}
+				<button
+					type="button"
+					class="btn btn-primary"
+					disabled={sharedBusy || readOnly}
+					onclick={() => joinSharedThread()}
+				>
+					{sharedBusy ? 'Joining…' : 'Join shared coauthoring'}
+				</button>
+			{/if}
+		</div>
+
 		<div class="origin-list">
 			{#each origins as origin (origin.originId)}
 				<div class="origin-card" class:active={origin.originId === activeOriginId}>
@@ -217,7 +279,7 @@ $effect(() => {
 							{#if origin.originId === activeOriginId} · active{/if}
 						</span>
 					</button>
-					{#if !readOnly}
+					{#if !readOnly && !origin.isShared && origin.originId !== SHARED_ORIGIN_ID}
 						<button
 							type="button"
 							class="btn-icon"
@@ -268,8 +330,8 @@ $effect(() => {
 		{/if}
 
 		<p class="hint">
-			Each device keeps its own thread on the sync server. Switch to continue from a teammate&apos;s
-			latest save. Future text authoring will sync the same JSON scene files underneath.
+			Join <strong>shared coauthoring</strong> so everyone saves to one thread with live patch sync.
+			Otherwise each device keeps its own thread — switch threads to pull a teammate&apos;s snapshot.
 		</p>
 
 		{#if error}
@@ -375,6 +437,19 @@ $effect(() => {
 		background: var(--bg-hover);
 		border: 1px solid var(--border);
 		color: var(--text-muted);
+	}
+
+	.shared-actions {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.shared-active {
+		margin: 0;
+		font-size: 0.82rem;
+		color: var(--accent-dim);
 	}
 
 	.remote-banner {

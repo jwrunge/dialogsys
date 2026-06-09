@@ -6,6 +6,7 @@ export const originMetaSchema = z.object({
 	label: z.string().optional(),
 	isSelf: z.boolean().optional(),
 	isActive: z.boolean().optional(),
+	isShared: z.boolean().optional(),
 });
 
 export type OriginMeta = z.infer<typeof originMetaSchema>;

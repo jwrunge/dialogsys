@@ -22,6 +22,7 @@ export const GET: APIRoute = async () => {
 			clientId: info.clientId,
 			locale: info.locale,
 			syncAccessRole: info.syncAccessRole,
+			syncAllowedProjects: info.syncAllowedProjects,
 			deviceDisplayName: info.deviceDisplayName,
 			configFile: info.envOverride ? null : getConfigFilePath(),
 		});
@@ -57,6 +58,7 @@ export const PUT: APIRoute = async ({ request }) => {
 			clientId: saved.clientId,
 			locale: refreshed.locale,
 			syncAccessRole: refreshed.syncAccessRole,
+			syncAllowedProjects: refreshed.syncAllowedProjects,
 			deviceDisplayName: refreshed.deviceDisplayName,
 			configFile: getConfigFilePath(),
 		});

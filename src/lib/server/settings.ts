@@ -36,6 +36,7 @@ export type AppSettingsInfo = {
 	clientId: string;
 	locale: string;
 	syncAccessRole: SyncAccessRole;
+	syncAllowedProjects?: string[];
 	deviceDisplayName: string;
 };
 
@@ -152,10 +153,13 @@ export async function getAppSettingsInfoAsync(): Promise<AppSettingsInfo> {
 	if (info.storageMode !== 'remote' || !info.syncServerUrl) {
 		return info;
 	}
-	const { resolveSyncAccessRole } = await import('./collaboration/access');
+	const { resolveSyncAccessRole, resolveSyncAllowedProjects } = await import(
+		'./collaboration/access'
+	);
 	return {
 		...info,
 		syncAccessRole: await resolveSyncAccessRole(),
+		syncAllowedProjects: await resolveSyncAllowedProjects(),
 	};
 }
 

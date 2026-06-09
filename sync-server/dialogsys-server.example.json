@@ -3,6 +3,13 @@
 	"bind": "127.0.0.1:3210",
 	"authToken": "replace-with-openssl-rand-hex-32",
 	"readAuthToken": "replace-with-separate-read-only-token",
+	"scopedAuthTokens": [
+		{
+			"token": "replace-with-demo-reviewer-token",
+			"role": "read",
+			"projects": ["demo"]
+		}
+	],
 	"hooks": {
 		"beforeWrite": ["node", "./hooks/before-write.js"],
 		"afterWrite": ["node", "./hooks/after-write.js"]

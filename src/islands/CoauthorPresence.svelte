@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { api, apiValidated } from '../lib/api';
+import { isSharedOrigin } from '../lib/collaboration/shared-origin';
 import {
 	getCoauthorFocusPath,
 	registerCoauthorFocusHandler,
@@ -60,6 +61,8 @@ function onPresence(event: Event) {
 function onFileUpdated(event: Event) {
 	const update = (event as CustomEvent<CoauthorFileUpdate>).detail;
 	if (update.originId === activeOriginId) return;
+	// On the shared thread, ignore saves that landed on a teammate's private thread.
+	if (isSharedOrigin(activeOriginId) && !isSharedOrigin(update.originId)) return;
 	const current = getCoauthorFocusPath();
 	if (!current || update.path !== current) return;
 	// Doc patches apply live in editors; full-file reload is for other assets.

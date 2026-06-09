@@ -1,20 +1,32 @@
-import { getSyncCapabilities, type SyncAccessRole } from '../../sync/client';
+import {
+	getSyncCapabilities,
+	type SyncAccessRole,
+	type SyncAuthCapabilities,
+} from '../../sync/client';
 import { getAppSettingsInfo } from '../settings';
 import { getSyncCredentials } from '../sync-credentials';
 
-export async function resolveSyncAccessRole(): Promise<SyncAccessRole> {
+export async function resolveSyncCapabilities(): Promise<SyncAuthCapabilities> {
 	const info = getAppSettingsInfo();
 	if (info.storageMode !== 'remote' || !info.syncServerUrl) {
-		return 'write';
+		return { role: 'write' };
 	}
 
 	try {
-		const capabilities = await getSyncCapabilities(getSyncCredentials());
-		return capabilities.role;
+		return await getSyncCapabilities(getSyncCredentials());
 	} catch {
-		// Fail closed when remote — treat unknown as read-only.
-		return 'read';
+		return { role: 'read' };
 	}
+}
+
+export async function resolveSyncAccessRole(): Promise<SyncAccessRole> {
+	const capabilities = await resolveSyncCapabilities();
+	return capabilities.role;
+}
+
+export async function resolveSyncAllowedProjects(): Promise<string[] | undefined> {
+	const capabilities = await resolveSyncCapabilities();
+	return capabilities.projects?.length ? capabilities.projects : undefined;
 }
 
 export function assertWritable(role: SyncAccessRole): void {

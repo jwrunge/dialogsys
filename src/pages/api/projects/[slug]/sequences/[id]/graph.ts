@@ -20,6 +20,7 @@ export const PATCH: APIRoute = async ({ params, request }) => {
 			return jsonResponse(
 				{
 					error: e.message,
+					path: e.path,
 					currentContentHash: e.currentContentHash,
 					graph: e.graph,
 				},

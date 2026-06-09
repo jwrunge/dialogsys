@@ -4,9 +4,10 @@ import { nanoid } from 'nanoid';
 import { onMount, tick } from 'svelte';
 import { api, apiValidated } from '../lib/api';
 import { applyGameStatePatch, isGameStatePath } from '../lib/client/apply-doc-patch';
-import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
+import { gameStateFilePath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { savePatchWithRebase } from '../lib/client/patch-save';
 import { isProjectReadOnly } from '../lib/client/project-access';
 import { defaultValidValues } from '../lib/flow/branchState';
 import { computeGameStatePatch } from '../lib/game-state/patch';
@@ -111,17 +112,26 @@ async function save() {
 	saveStatus = 'Saving…';
 	markDirty();
 	try {
-		const res = await api<{ gameState: GameStateFile; contentHash: string }>(
-			`/api/projects/${slug}/game-state`,
-			{
-				method: 'PATCH',
-				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+		const result = await savePatchWithRebase({
+			url: `/api/projects/${slug}/game-state`,
+			path: gameStateFilePath(),
+			saved: savedGameState,
+			next,
+			contentHash,
+			ops,
+			computeOps: computeGameStatePatch,
+			parseSuccess: (res) => ({ saved: res.gameState, contentHash: res.contentHash }),
+			parseConflict: (body) => {
+				const gameState = body.gameState as GameStateFile | undefined;
+				const hash = body.currentContentHash;
+				if (!gameState || typeof hash !== 'string') return null;
+				return { saved: gameState, contentHash: hash };
 			},
-		);
-		savedGameState = res.gameState;
-		properties = res.gameState.properties;
-		contentHash = res.contentHash;
-		saveStatus = 'Saved';
+		});
+		savedGameState = result.saved;
+		properties = result.saved.properties;
+		contentHash = result.contentHash;
+		saveStatus = result.rebased ? 'Merged teammate edits and saved' : 'Saved';
 		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'Saved') saveStatus = '';

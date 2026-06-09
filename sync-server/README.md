@@ -43,6 +43,17 @@ Authorization: Bearer <authToken>
 
 Optional **read-only** tokens (`readAuthToken` or `readAuthTokens` in config) can list and download project files but cannot create projects or write/delete files. Use them for reviewers or hosted subscription viewers.
 
+**Project-scoped tokens** (`scopedAuthTokens`) limit a token to specific project slugs:
+
+```json
+"scopedAuthTokens": [
+  { "token": "demo-reviewer", "role": "read", "projects": ["demo"] },
+  { "token": "my-game-editor", "role": "write", "projects": ["my-game"] }
+]
+```
+
+`GET /auth/capabilities` returns `{ "role": "read" | "write", "projects": ["demo"] }` when scoped. Omit `projects` for full-server access.
+
 Example hook script: `hooks/example.mjs` (reject writes under `.git/`).
 
 `GET /auth/capabilities` (authenticated) returns `{ "role": "read" | "write" }`.

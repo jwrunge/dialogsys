@@ -1,10 +1,12 @@
 import type { APIRoute } from 'astro';
+import { isSharedOrigin } from '../../../../../lib/collaboration/shared-origin';
 import {
 	getActiveOriginId,
 	getClientId,
 	getOriginLabel,
 	setActiveOriginId,
 } from '../../../../../lib/server/client';
+import { decorateOriginLabel } from '../../../../../lib/server/collaboration/shared-origin';
 import {
 	assertWritable,
 	resolveSyncAccessRole,
@@ -31,11 +33,14 @@ export const GET: APIRoute = async ({ params }) => {
 		return jsonResponse({
 			origins: origins.map((origin) => ({
 				...origin,
-				label:
+				label: decorateOriginLabel(
+					origin.originId,
 					getOriginLabel(origin.originId) ??
-					(origin.originId === clientId && selfLabel ? selfLabel : origin.label),
+						(origin.originId === clientId && selfLabel ? selfLabel : origin.label),
+				),
 				isSelf: origin.originId === clientId,
 				isActive: origin.originId === activeOriginId,
+				isShared: isSharedOrigin(origin.originId),
 			})),
 			clientId,
 			activeOriginId,

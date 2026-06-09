@@ -42,6 +42,9 @@ export async function applyCharactersPatch(
 			currentHash,
 			undefined,
 			current,
+			undefined,
+			undefined,
+			'characters.json',
 		);
 	}
 

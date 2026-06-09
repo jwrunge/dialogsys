@@ -28,6 +28,7 @@ export const settingsResponseSchema = z.object({
 	configFile: z.string().nullable(),
 	locale: z.string(),
 	syncAccessRole: z.enum(['read', 'write']),
+	syncAllowedProjects: z.array(z.string()).optional(),
 	deviceDisplayName: z.string(),
 });
 

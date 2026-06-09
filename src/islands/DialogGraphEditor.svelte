@@ -7,6 +7,7 @@ import { applyScenePatch, isSceneGraphPath } from '../lib/client/apply-doc-patch
 import { sceneGraphPath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { savePatchWithRebase } from '../lib/client/patch-save';
 import { isProjectReadOnly } from '../lib/client/project-access';
 import {
 	type CanvasEdge,
@@ -148,17 +149,29 @@ async function save() {
 	}
 	saveStatus = 'Saving…';
 	try {
-		const res = await api<{ graph: DialogGraph; contentHash: string }>(
-			`/api/projects/${slug}/dialogs/${dialogId}/graph`,
-			{
-				method: 'PATCH',
-				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+		const result = await savePatchWithRebase({
+			url: `/api/projects/${slug}/dialogs/${dialogId}/graph`,
+			path: sceneGraphPath(dialogId),
+			saved: savedGraph,
+			next,
+			contentHash,
+			ops,
+			computeOps: computeGraphPatch,
+			parseSuccess: (res) => ({ saved: res.graph, contentHash: res.contentHash }),
+			parseConflict: (body) => {
+				const graph = body.graph as DialogGraph | undefined;
+				const hash = body.currentContentHash;
+				if (!graph || typeof hash !== 'string') return null;
+				return { saved: graph, contentHash: hash };
 			},
-		);
-		savedGraph = res.graph;
-		contentHash = res.contentHash;
-		graphMeta = { displayName: res.graph.displayName, description: res.graph.description };
-		saveStatus = 'Saved';
+		});
+		savedGraph = result.saved;
+		contentHash = result.contentHash;
+		graphMeta = {
+			displayName: result.saved.displayName,
+			description: result.saved.description,
+		};
+		saveStatus = result.rebased ? 'Merged teammate edits and saved' : 'Saved';
 		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'Saved') saveStatus = '';

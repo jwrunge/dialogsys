@@ -99,6 +99,10 @@ export async function applySequenceGraphPatch(
 			'Sequence changed since baseContentHash',
 			currentHash,
 			current,
+			undefined,
+			undefined,
+			undefined,
+			`sequences/${id}.graph.json`,
 		);
 	}
 

@@ -48,6 +48,7 @@ export async function applyGameStatePatch(
 			undefined,
 			undefined,
 			current,
+			'gameState.json',
 		);
 	}
 

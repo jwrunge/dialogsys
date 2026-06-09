@@ -4,9 +4,10 @@ import { marked } from 'marked';
 import { onMount } from 'svelte';
 import { api, apiValidated } from '../lib/api';
 import { applyNotePatch, isNotePath } from '../lib/client/apply-doc-patch';
-import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
+import { noteFilePath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { savePatchWithRebase } from '../lib/client/patch-save';
 import { isProjectReadOnly } from '../lib/client/project-access';
 import { computeNotePatch } from '../lib/notes/patch';
 import { settingsResponseSchema } from '../lib/schema/api-responses';
@@ -79,17 +80,26 @@ async function saveNow(content: string) {
 	status = 'Saving…';
 	markDirty();
 	try {
-		const res = await api<{ content: string; contentHash: string }>(
-			`/api/projects/${slug}/notes/${NOTE_PATH}`,
-			{
-				method: 'PATCH',
-				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+		const result = await savePatchWithRebase({
+			url: `/api/projects/${slug}/notes/${NOTE_PATH}`,
+			path: noteFilePath(NOTE_PATH),
+			saved: loadedContent,
+			next: content,
+			contentHash,
+			ops,
+			computeOps: computeNotePatch,
+			parseSuccess: (res) => ({ saved: res.content, contentHash: res.contentHash }),
+			parseConflict: (body) => {
+				const noteContent = body.content;
+				const hash = body.currentContentHash;
+				if (typeof noteContent !== 'string' || typeof hash !== 'string') return null;
+				return { saved: noteContent, contentHash: hash };
 			},
-		);
-		overview = res.content;
-		loadedContent = res.content;
-		contentHash = res.contentHash;
-		status = 'Saved';
+		});
+		overview = result.saved;
+		loadedContent = result.saved;
+		contentHash = result.contentHash;
+		status = result.rebased ? 'Merged teammate edits' : 'Saved';
 		markClean();
 		setTimeout(() => {
 			if (status === 'Saved') status = '';

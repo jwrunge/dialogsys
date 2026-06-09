@@ -55,6 +55,8 @@ export async function applyNotePatch(
 			undefined,
 			undefined,
 			current,
+			undefined,
+			`notes/${notePath}`,
 		);
 	}
 

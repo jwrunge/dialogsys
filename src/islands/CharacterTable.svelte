@@ -6,8 +6,9 @@ import { api, apiValidated } from '../lib/api';
 import { computeCharactersPatch } from '../lib/characters/patch';
 import { defaultPortraitPath, portraitPreviewUrl } from '../lib/characters';
 import { applyCharactersPatch, isCharactersPath } from '../lib/client/apply-doc-patch';
-import { setCoauthorFocusPath } from '../lib/client/coauthor-focus';
+import { charactersFilePath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { savePatchWithRebase } from '../lib/client/patch-save';
 import { uploadPortrait } from '../lib/client/download';
 import { isProjectReadOnly } from '../lib/client/project-access';
 import { settingsResponseSchema } from '../lib/schema/api-responses';
@@ -157,18 +158,27 @@ async function persistCharacters() {
 	saveMessage = 'Saving…';
 	markDirty();
 	try {
-		const res = await api<{ characters: CharactersFile; contentHash: string }>(
-			`/api/projects/${slug}/characters`,
-			{
-				method: 'PATCH',
-				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+		const result = await savePatchWithRebase({
+			url: `/api/projects/${slug}/characters`,
+			path: charactersFilePath(),
+			saved: savedCharacters,
+			next,
+			contentHash,
+			ops,
+			computeOps: computeCharactersPatch,
+			parseSuccess: (res) => ({ saved: res.characters, contentHash: res.contentHash }),
+			parseConflict: (body) => {
+				const charactersDoc = body.characters as CharactersFile | undefined;
+				const hash = body.currentContentHash;
+				if (!charactersDoc || typeof hash !== 'string') return null;
+				return { saved: charactersDoc, contentHash: hash };
 			},
-		);
-		savedCharacters = res.characters;
-		characters = res.characters.characters;
-		contentHash = res.contentHash;
+		});
+		savedCharacters = result.saved;
+		characters = result.saved.characters;
+		contentHash = result.contentHash;
 		saveStatus = 'saved';
-		saveMessage = 'Saved';
+		saveMessage = result.rebased ? 'Merged teammate edits' : 'Saved';
 		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'saved') {

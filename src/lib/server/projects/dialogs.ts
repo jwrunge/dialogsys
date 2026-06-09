@@ -85,6 +85,7 @@ export class GraphPatchConflictError extends Error {
 		readonly characters?: CharactersFile,
 		readonly noteContent?: string,
 		readonly gameState?: GameStateFile,
+		readonly path?: string,
 	) {
 		super(message);
 		this.name = 'GraphPatchConflictError';
@@ -100,7 +101,15 @@ export async function applyDialogGraphPatch(
 	const current = await getDialog(slug, id);
 	const currentHash = hashDialogGraph(current);
 	if (baseContentHash !== currentHash) {
-		throw new GraphPatchConflictError('Scene changed since baseContentHash', currentHash, current);
+		throw new GraphPatchConflictError(
+			'Scene changed since baseContentHash',
+			currentHash,
+			current,
+			undefined,
+			undefined,
+			undefined,
+			`dialogs/${id}.graph.json`,
+		);
 	}
 
 	const patched = dialogGraphSchema.parse(applyGraphPatchOps(current, ops));

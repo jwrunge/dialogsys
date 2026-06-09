@@ -7,6 +7,7 @@ import { applySequencePatch, isSequenceGraphPath } from '../lib/client/apply-doc
 import { sequenceGraphPath, setCoauthorFocusPath } from '../lib/client/coauthor-focus';
 import { DebouncedTask, SAVE_DEBOUNCE_MS } from '../lib/client/debouncedSave';
 import { markClean, markDirty, notifySaveConflict } from '../lib/client/dirty-state';
+import { savePatchWithRebase } from '../lib/client/patch-save';
 import { isProjectReadOnly } from '../lib/client/project-access';
 import { analyzeFlowBranches, applyFirstMeetings } from '../lib/flow/branchAnalyzer';
 import { createSceneNode } from '../lib/flow/flowFactory';
@@ -125,19 +126,28 @@ async function save() {
 	}
 	saveStatus = 'Saving…';
 	try {
-		const res = await api<{ graph: FlowGraph; contentHash: string }>(
-			`/api/projects/${slug}/sequences/${sequenceId}/graph`,
-			{
-				method: 'PATCH',
-				body: JSON.stringify({ baseContentHash: contentHash, ops }),
+		const result = await savePatchWithRebase({
+			url: `/api/projects/${slug}/sequences/${sequenceId}/graph`,
+			path: sequenceGraphPath(sequenceId),
+			saved: savedGraph,
+			next,
+			contentHash,
+			ops,
+			computeOps: computeFlowPatch,
+			parseSuccess: (res) => ({ saved: res.graph, contentHash: res.contentHash }),
+			parseConflict: (body) => {
+				const graph = body.graph as FlowGraph | undefined;
+				const hash = body.currentContentHash;
+				if (!graph || typeof hash !== 'string') return null;
+				return { saved: graph, contentHash: hash };
 			},
-		);
-		savedGraph = res.graph;
-		contentHash = res.contentHash;
-		sequenceDisplayName = res.graph.displayName || sequenceId;
-		flowNodes = res.graph.nodes;
-		flowEdges = res.graph.edges;
-		saveStatus = 'Saved';
+		});
+		savedGraph = result.saved;
+		contentHash = result.contentHash;
+		sequenceDisplayName = result.saved.displayName || sequenceId;
+		flowNodes = result.saved.nodes;
+		flowEdges = result.saved.edges;
+		saveStatus = result.rebased ? 'Merged teammate edits and saved' : 'Saved';
 		markClean();
 		setTimeout(() => {
 			if (saveStatus === 'Saved') saveStatus = '';
