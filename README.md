@@ -83,7 +83,7 @@ Dialogsys includes a Rust sync server in `sync-server/`. In **Settings**, choose
 
 Each app install gets a **device ID** (UUID). Saves go to that device's **origin thread** on the server. Inside a project, use **Working thread** to switch to another device's latest saved version.
 
-**Live coauthoring:** with remote storage, scene and sequence graph editors send incremental **patches** (node/edge/meta ops) instead of full-file PUTs. Teammates connected to the same project receive patches over SSE and see edits applied in place.
+**Live coauthoring:** with remote storage, editors send incremental **patches** (with `baseContentHash` conflict detection) instead of full-file PUTs for scenes, sequences, characters, game state, and notes. Teammates connected to the same project receive patches over SSE and see edits applied in place.
 
 Local mode keeps projects on disk only. Remote mode reads and writes through the sync server (with a local cache for performance). You can add your own Git repo inside a project if you want; `.git` files sync like any other project files.
 

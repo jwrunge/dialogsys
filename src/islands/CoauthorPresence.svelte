@@ -46,6 +46,9 @@ function focusLabel(path: string | undefined): string {
 	if (path.startsWith('sequences/') && path.endsWith('.graph.json')) {
 		return `sequence:${path.slice('sequences/'.length, -'.graph.json'.length)}`;
 	}
+	if (path === 'characters.json') return 'characters';
+	if (path === 'gameState.json') return 'game state';
+	if (path.startsWith('notes/')) return path.slice('notes/'.length);
 	return path;
 }
 

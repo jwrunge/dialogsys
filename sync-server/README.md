@@ -58,6 +58,7 @@ SSE event payloads (JSON `data:`):
 
 - `{ "type": "presence", "peers": [ … ] }` — who is connected and what file they are editing
 - `{ "type": "fileUpdated", "originId": "…", "path": "…", "contentHash": "…" }` — after a file write or delete on any origin thread
+- `{ "type": "graphPatch", "deviceId": "…", "displayName": "…", "originId": "…", "path": "…", "baseContentHash": "…", "contentHash": "…", "ops": [ … ] }` — incremental doc patch broadcast by the app server after a successful PATCH save
 
 The app connects when **remote storage** is enabled; async file sync and thread switching remain the source of truth for saved data.
 
