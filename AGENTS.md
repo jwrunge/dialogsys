@@ -29,6 +29,8 @@ See `README.md` for full documentation. Common commands:
 | `npm run lint` | Biome lint + format check |
 | `npm run check` | Astro TypeScript check (`astro check`) |
 | `npm run seed:translations` | Build `i18n/translations.sqlite` from `src/lib/i18n/catalog/*.json` |
+| `npm run check:i18n` | Validate bundled locale catalogs against `messages.manifest.json` |
+| `npm run generate:catalogs` | Machine-translate missing bundled catalogs from English keys |
 | `npm run version:sync` | Sync `package.json` version into Rust `Cargo.toml` files |
 | `npm version patch` | Bump `package.json` version (Tauri reads it via `tauri.conf.json`; preversion syncs Cargo.toml) |
 
@@ -90,7 +92,8 @@ The graph editor should show Entry, Direction, Line, Condition, Set var, and End
 
 - Client: `@jwrunge/transmut` `TranslationObserver` with `requireExplicitOptIn: true` (mark app UI with `data-transmut="include"`).
 - User/project content: `data-transmut-skip` on names, dialogue, notes, validation messages with dynamic IDs.
-- Locale preference: `locale` in `dialogsys.config.json` / Settings; catalogs in `src/lib/i18n/catalog/` (seeded to `i18n/translations.sqlite`).
+- Locale preference: `locale` in `dialogsys.config.json` / Settings (searchable modal, 90+ options); **15 bundled** locales in `src/lib/i18n/bundled-locales.ts` with full catalogs in `src/lib/i18n/catalog/` (seeded to `i18n/translations.sqlite`, bundled in Tauri via `DIALOGSYS_TRANSLATIONS_DB`).
+- Keep translatable copy on one line in Astro/Svelte; inline `<code>` breaks catalog key matching — use `<span>` fragments (see Settings page).
 
 ### Gotchas
 

@@ -270,6 +270,7 @@ function parseCompareValue(raw: string, prop: GameStateProperty): boolean | numb
 }
 </script>
 
+<div data-transmut="include">
 {#if !node}
 	<p class="muted">Click a node to assign a scene or edit its label.</p>
 {:else}
@@ -486,9 +487,10 @@ function parseCompareValue(raw: string, prop: GameStateProperty): boolean | numb
 		</div>
 	{/if}
 {/if}
+</div>
 
 <dialog bind:this={selectStateDialogEl} class="modal" onclose={closeSelectStateModal}>
-	<div class="modal-panel">
+	<div class="modal-panel" data-transmut="include">
 		<header class="modal-header">
 			<h2>Select state</h2>
 		</header>
@@ -527,7 +529,7 @@ function parseCompareValue(raw: string, prop: GameStateProperty): boolean | numb
 </dialog>
 
 <dialog bind:this={selectSceneDialogEl} class="modal" onclose={closeSelectSceneModal}>
-	<div class="modal-panel">
+	<div class="modal-panel" data-transmut="include">
 		<header class="modal-header">
 			<h2>Select scene</h2>
 		</header>
@@ -563,7 +565,7 @@ function parseCompareValue(raw: string, prop: GameStateProperty): boolean | numb
 </dialog>
 
 <dialog bind:this={createDialogEl} class="modal" onclose={closeCreateModal}>
-	<form class="modal-panel" onsubmit={submitCreate}>
+	<form class="modal-panel" data-transmut="include" onsubmit={submitCreate}>
 		<header class="modal-header">
 			<h2>Create scene</h2>
 		</header>

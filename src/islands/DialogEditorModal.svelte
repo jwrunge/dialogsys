@@ -47,7 +47,7 @@ function handleClose() {
 		if (e.target === dialogEl) handleClose();
 	}}
 >
-	<div class="modal-panel" role="document" onclick={(e) => e.stopPropagation()}>
+	<div class="modal-panel" data-transmut="include" role="document" onclick={(e) => e.stopPropagation()}>
 		<header class="modal-header">
 			<h2>{title}</h2>
 			<div class="header-actions">
@@ -64,7 +64,7 @@ function handleClose() {
 		</header>
 		<div class="modal-body">
 			{#if loadError}
-				<p class="error">{loadError}</p>
+				<p class="error" data-transmut-skip>{loadError}</p>
 			{:else if dialogId && Editor}
 				{#key dialogId}
 					<Editor {slug} {dialogId} embedded />

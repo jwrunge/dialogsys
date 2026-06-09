@@ -123,6 +123,7 @@ function branchLabel(edge: GraphEdge): string {
 }
 </script>
 
+<div data-transmut="include">
 {#if !node}
 	<p class="muted">Click a node on the canvas to edit its properties.</p>
 {:else}
@@ -316,6 +317,7 @@ function branchLabel(edge: GraphEdge): string {
 		</div>
 	{/if}
 {/if}
+</div>
 
 {#snippet BranchEdgeList(nodeEdges: GraphEdge[], branchLabel: (e: GraphEdge) => string, updateEdge: (id: string, patch: Partial<GraphEdge['data']>) => void)}
 	<div class="branch-edges">

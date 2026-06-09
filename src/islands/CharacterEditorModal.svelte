@@ -163,7 +163,7 @@ async function applyCharacterDraft(e: Event) {
 
 <dialog bind:this={dialogEl} class="modal" onclose={closeModal}>
 	{#if characterDraft}
-		<form class="modal-panel" onsubmit={applyCharacterDraft}>
+		<form class="modal-panel" data-transmut="include" onsubmit={applyCharacterDraft}>
 			<header class="modal-header">
 				<h2>{characterEditIndex === null ? 'Add character' : 'Edit character'}</h2>
 			</header>

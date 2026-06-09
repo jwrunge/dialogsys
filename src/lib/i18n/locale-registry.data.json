@@ -1,0 +1,632 @@
+[
+	{
+		"tag": "en",
+		"nativeName": "English",
+		"englishName": "English",
+		"aliases": ["english", "english"],
+		"bundled": false
+	},
+	{
+		"tag": "es",
+		"nativeName": "Español",
+		"englishName": "Spanish",
+		"aliases": ["spanish", "español"],
+		"bundled": true
+	},
+	{
+		"tag": "zh",
+		"nativeName": "中文",
+		"englishName": "Chinese",
+		"aliases": ["chinese", "中文"],
+		"bundled": true
+	},
+	{
+		"tag": "hi",
+		"nativeName": "हिन्दी",
+		"englishName": "Hindi",
+		"aliases": ["hindi", "हिन्दी"],
+		"bundled": true
+	},
+	{
+		"tag": "ar",
+		"nativeName": "العربية",
+		"englishName": "Arabic",
+		"aliases": ["arabic", "العربية"],
+		"bundled": true
+	},
+	{
+		"tag": "fr",
+		"nativeName": "Français",
+		"englishName": "French",
+		"aliases": ["french", "français"],
+		"bundled": true
+	},
+	{
+		"tag": "bn",
+		"nativeName": "বাংলা",
+		"englishName": "Bengali",
+		"aliases": ["bengali", "বাংলা"],
+		"bundled": false
+	},
+	{
+		"tag": "pt",
+		"nativeName": "Português",
+		"englishName": "Portuguese",
+		"aliases": ["portuguese", "português"],
+		"bundled": true
+	},
+	{
+		"tag": "ru",
+		"nativeName": "Русский",
+		"englishName": "Russian",
+		"aliases": ["russian", "русский"],
+		"bundled": true
+	},
+	{
+		"tag": "ur",
+		"nativeName": "اردو",
+		"englishName": "Urdu",
+		"aliases": ["urdu", "اردو"],
+		"bundled": false
+	},
+	{
+		"tag": "id",
+		"nativeName": "Bahasa Indonesia",
+		"englishName": "Indonesian",
+		"aliases": ["indonesian", "bahasa indonesia"],
+		"bundled": false
+	},
+	{
+		"tag": "de",
+		"nativeName": "Deutsch",
+		"englishName": "German",
+		"aliases": ["german", "deutsch"],
+		"bundled": true
+	},
+	{
+		"tag": "ja",
+		"nativeName": "日本語",
+		"englishName": "Japanese",
+		"aliases": ["japanese", "日本語"],
+		"bundled": true
+	},
+	{
+		"tag": "sw",
+		"nativeName": "Kiswahili",
+		"englishName": "Swahili",
+		"aliases": ["swahili", "kiswahili"],
+		"bundled": false
+	},
+	{
+		"tag": "mr",
+		"nativeName": "मराठी",
+		"englishName": "Marathi",
+		"aliases": ["marathi", "मराठी"],
+		"bundled": false
+	},
+	{
+		"tag": "te",
+		"nativeName": "తెలుగు",
+		"englishName": "Telugu",
+		"aliases": ["telugu", "తెలుగు"],
+		"bundled": false
+	},
+	{
+		"tag": "tr",
+		"nativeName": "Türkçe",
+		"englishName": "Turkish",
+		"aliases": ["turkish", "türkçe"],
+		"bundled": true
+	},
+	{
+		"tag": "ta",
+		"nativeName": "தமிழ்",
+		"englishName": "Tamil",
+		"aliases": ["tamil", "தமிழ்"],
+		"bundled": false
+	},
+	{
+		"tag": "vi",
+		"nativeName": "Tiếng Việt",
+		"englishName": "Vietnamese",
+		"aliases": ["vietnamese", "tiếng việt"],
+		"bundled": true
+	},
+	{
+		"tag": "ko",
+		"nativeName": "한국어",
+		"englishName": "Korean",
+		"aliases": ["korean", "한국어"],
+		"bundled": true
+	},
+	{
+		"tag": "it",
+		"nativeName": "Italiano",
+		"englishName": "Italian",
+		"aliases": ["italian", "italiano"],
+		"bundled": true
+	},
+	{
+		"tag": "th",
+		"nativeName": "ไทย",
+		"englishName": "Thai",
+		"aliases": ["thai", "ไทย"],
+		"bundled": false
+	},
+	{
+		"tag": "fa",
+		"nativeName": "فارسی",
+		"englishName": "Persian",
+		"aliases": ["persian", "فارسی"],
+		"bundled": false
+	},
+	{
+		"tag": "pl",
+		"nativeName": "Polski",
+		"englishName": "Polish",
+		"aliases": ["polish", "polski"],
+		"bundled": true
+	},
+	{
+		"tag": "uk",
+		"nativeName": "Українська",
+		"englishName": "Ukrainian",
+		"aliases": ["ukrainian", "українська"],
+		"bundled": false
+	},
+	{
+		"tag": "nl",
+		"nativeName": "Nederlands",
+		"englishName": "Dutch",
+		"aliases": ["dutch", "nederlands"],
+		"bundled": true
+	},
+	{
+		"tag": "ms",
+		"nativeName": "Bahasa Melayu",
+		"englishName": "Malay",
+		"aliases": ["malay", "bahasa melayu"],
+		"bundled": false
+	},
+	{
+		"tag": "kn",
+		"nativeName": "ಕನ್ನಡ",
+		"englishName": "Kannada",
+		"aliases": ["kannada", "ಕನ್ನಡ"],
+		"bundled": false
+	},
+	{
+		"tag": "or",
+		"nativeName": "ଓଡ଼ିଆ",
+		"englishName": "Odia",
+		"aliases": ["odia", "ଓଡ଼ିଆ"],
+		"bundled": false
+	},
+	{
+		"tag": "pa",
+		"nativeName": "ਪੰਜਾਬੀ",
+		"englishName": "Punjabi",
+		"aliases": ["punjabi", "ਪੰਜਾਬੀ"],
+		"bundled": false
+	},
+	{
+		"tag": "ro",
+		"nativeName": "Română",
+		"englishName": "Romanian",
+		"aliases": ["romanian", "română"],
+		"bundled": false
+	},
+	{
+		"tag": "cs",
+		"nativeName": "Čeština",
+		"englishName": "Czech",
+		"aliases": ["czech", "čeština"],
+		"bundled": false
+	},
+	{
+		"tag": "el",
+		"nativeName": "Ελληνικά",
+		"englishName": "Greek",
+		"aliases": ["greek", "ελληνικά"],
+		"bundled": false
+	},
+	{
+		"tag": "hu",
+		"nativeName": "Magyar",
+		"englishName": "Hungarian",
+		"aliases": ["hungarian", "magyar"],
+		"bundled": false
+	},
+	{
+		"tag": "sv",
+		"nativeName": "Svenska",
+		"englishName": "Swedish",
+		"aliases": ["swedish", "svenska"],
+		"bundled": false
+	},
+	{
+		"tag": "he",
+		"nativeName": "עברית",
+		"englishName": "Hebrew",
+		"aliases": ["hebrew", "עברית"],
+		"bundled": false
+	},
+	{
+		"tag": "fi",
+		"nativeName": "Suomi",
+		"englishName": "Finnish",
+		"aliases": ["finnish", "suomi"],
+		"bundled": false
+	},
+	{
+		"tag": "da",
+		"nativeName": "Dansk",
+		"englishName": "Danish",
+		"aliases": ["danish", "dansk"],
+		"bundled": false
+	},
+	{
+		"tag": "no",
+		"nativeName": "Norsk",
+		"englishName": "Norwegian",
+		"aliases": ["norwegian", "norsk"],
+		"bundled": false
+	},
+	{
+		"tag": "sk",
+		"nativeName": "Slovenčina",
+		"englishName": "Slovak",
+		"aliases": ["slovak", "slovenčina"],
+		"bundled": false
+	},
+	{
+		"tag": "bg",
+		"nativeName": "Български",
+		"englishName": "Bulgarian",
+		"aliases": ["bulgarian", "български"],
+		"bundled": false
+	},
+	{
+		"tag": "hr",
+		"nativeName": "Hrvatski",
+		"englishName": "Croatian",
+		"aliases": ["croatian", "hrvatski"],
+		"bundled": false
+	},
+	{
+		"tag": "sr",
+		"nativeName": "Српски",
+		"englishName": "Serbian",
+		"aliases": ["serbian", "српски"],
+		"bundled": false
+	},
+	{
+		"tag": "lt",
+		"nativeName": "Lietuvių",
+		"englishName": "Lithuanian",
+		"aliases": ["lithuanian", "lietuvių"],
+		"bundled": false
+	},
+	{
+		"tag": "sl",
+		"nativeName": "Slovenščina",
+		"englishName": "Slovenian",
+		"aliases": ["slovenian", "slovenščina"],
+		"bundled": false
+	},
+	{
+		"tag": "lv",
+		"nativeName": "Latviešu",
+		"englishName": "Latvian",
+		"aliases": ["latvian", "latviešu"],
+		"bundled": false
+	},
+	{
+		"tag": "et",
+		"nativeName": "Eesti",
+		"englishName": "Estonian",
+		"aliases": ["estonian", "eesti"],
+		"bundled": false
+	},
+	{
+		"tag": "ca",
+		"nativeName": "Català",
+		"englishName": "Catalan",
+		"aliases": ["catalan", "català"],
+		"bundled": false
+	},
+	{
+		"tag": "eu",
+		"nativeName": "Euskara",
+		"englishName": "Basque",
+		"aliases": ["basque", "euskara"],
+		"bundled": false
+	},
+	{
+		"tag": "gl",
+		"nativeName": "Galego",
+		"englishName": "Galician",
+		"aliases": ["galician", "galego"],
+		"bundled": false
+	},
+	{
+		"tag": "af",
+		"nativeName": "Afrikaans",
+		"englishName": "Afrikaans",
+		"aliases": ["afrikaans", "afrikaans"],
+		"bundled": false
+	},
+	{
+		"tag": "sq",
+		"nativeName": "Shqip",
+		"englishName": "Albanian",
+		"aliases": ["albanian", "shqip"],
+		"bundled": false
+	},
+	{
+		"tag": "am",
+		"nativeName": "አማርኛ",
+		"englishName": "Amharic",
+		"aliases": ["amharic", "አማርኛ"],
+		"bundled": false
+	},
+	{
+		"tag": "az",
+		"nativeName": "Azərbaycan",
+		"englishName": "Azerbaijani",
+		"aliases": ["azerbaijani", "azərbaycan"],
+		"bundled": false
+	},
+	{
+		"tag": "be",
+		"nativeName": "Беларуская",
+		"englishName": "Belarusian",
+		"aliases": ["belarusian", "беларуская"],
+		"bundled": false
+	},
+	{
+		"tag": "bs",
+		"nativeName": "Bosanski",
+		"englishName": "Bosnian",
+		"aliases": ["bosnian", "bosanski"],
+		"bundled": false
+	},
+	{
+		"tag": "cy",
+		"nativeName": "Cymraeg",
+		"englishName": "Welsh",
+		"aliases": ["welsh", "cymraeg"],
+		"bundled": false
+	},
+	{
+		"tag": "ga",
+		"nativeName": "Gaeilge",
+		"englishName": "Irish",
+		"aliases": ["irish", "gaeilge"],
+		"bundled": false
+	},
+	{
+		"tag": "is",
+		"nativeName": "Íslenska",
+		"englishName": "Icelandic",
+		"aliases": ["icelandic", "íslenska"],
+		"bundled": false
+	},
+	{
+		"tag": "mk",
+		"nativeName": "Македонски",
+		"englishName": "Macedonian",
+		"aliases": ["macedonian", "македонски"],
+		"bundled": false
+	},
+	{
+		"tag": "mt",
+		"nativeName": "Malti",
+		"englishName": "Maltese",
+		"aliases": ["maltese", "malti"],
+		"bundled": false
+	},
+	{
+		"tag": "ne",
+		"nativeName": "नेपाली",
+		"englishName": "Nepali",
+		"aliases": ["nepali", "नेपाली"],
+		"bundled": false
+	},
+	{
+		"tag": "si",
+		"nativeName": "සිංහල",
+		"englishName": "Sinhala",
+		"aliases": ["sinhala", "සිංහල"],
+		"bundled": false
+	},
+	{
+		"tag": "km",
+		"nativeName": "ភាសាខ្មែរ",
+		"englishName": "Khmer",
+		"aliases": ["khmer", "ភាសាខ្មែរ"],
+		"bundled": false
+	},
+	{
+		"tag": "lo",
+		"nativeName": "ລາວ",
+		"englishName": "Lao",
+		"aliases": ["lao", "ລາວ"],
+		"bundled": false
+	},
+	{
+		"tag": "my",
+		"nativeName": "မြန်မာ",
+		"englishName": "Burmese",
+		"aliases": ["burmese", "မြန်မာ"],
+		"bundled": false
+	},
+	{
+		"tag": "ka",
+		"nativeName": "ქართული",
+		"englishName": "Georgian",
+		"aliases": ["georgian", "ქართული"],
+		"bundled": false
+	},
+	{
+		"tag": "kk",
+		"nativeName": "Қазақ",
+		"englishName": "Kazakh",
+		"aliases": ["kazakh", "қазақ"],
+		"bundled": false
+	},
+	{
+		"tag": "ky",
+		"nativeName": "Кыргызча",
+		"englishName": "Kyrgyz",
+		"aliases": ["kyrgyz", "кыргызча"],
+		"bundled": false
+	},
+	{
+		"tag": "mn",
+		"nativeName": "Монгол",
+		"englishName": "Mongolian",
+		"aliases": ["mongolian", "монгол"],
+		"bundled": false
+	},
+	{
+		"tag": "uz",
+		"nativeName": "Oʻzbek",
+		"englishName": "Uzbek",
+		"aliases": ["uzbek", "oʻzbek"],
+		"bundled": false
+	},
+	{
+		"tag": "ps",
+		"nativeName": "پښتو",
+		"englishName": "Pashto",
+		"aliases": ["pashto", "پښتو"],
+		"bundled": false
+	},
+	{
+		"tag": "sd",
+		"nativeName": "سنڌي",
+		"englishName": "Sindhi",
+		"aliases": ["sindhi", "سنڌي"],
+		"bundled": false
+	},
+	{
+		"tag": "so",
+		"nativeName": "Soomaali",
+		"englishName": "Somali",
+		"aliases": ["somali", "soomaali"],
+		"bundled": false
+	},
+	{
+		"tag": "tg",
+		"nativeName": "Тоҷикӣ",
+		"englishName": "Tajik",
+		"aliases": ["tajik", "тоҷикӣ"],
+		"bundled": false
+	},
+	{
+		"tag": "tk",
+		"nativeName": "Türkmen",
+		"englishName": "Turkmen",
+		"aliases": ["turkmen", "türkmen"],
+		"bundled": false
+	},
+	{
+		"tag": "ug",
+		"nativeName": "ئۇيغۇرچە",
+		"englishName": "Uyghur",
+		"aliases": ["uyghur", "ئۇيغۇرچە"],
+		"bundled": false
+	},
+	{
+		"tag": "xh",
+		"nativeName": "isiXhosa",
+		"englishName": "Xhosa",
+		"aliases": ["xhosa", "isixhosa"],
+		"bundled": false
+	},
+	{
+		"tag": "zu",
+		"nativeName": "isiZulu",
+		"englishName": "Zulu",
+		"aliases": ["zulu", "isizulu"],
+		"bundled": false
+	},
+	{
+		"tag": "fil",
+		"nativeName": "Filipino",
+		"englishName": "Filipino",
+		"aliases": ["filipino", "filipino"],
+		"bundled": false
+	},
+	{
+		"tag": "ceb",
+		"nativeName": "Cebuano",
+		"englishName": "Cebuano",
+		"aliases": ["cebuano", "cebuano"],
+		"bundled": false
+	},
+	{
+		"tag": "gu",
+		"nativeName": "ગુજરાતી",
+		"englishName": "Gujarati",
+		"aliases": ["gujarati", "ગુજરાતી"],
+		"bundled": false
+	},
+	{
+		"tag": "ml",
+		"nativeName": "മലയാളം",
+		"englishName": "Malayalam",
+		"aliases": ["malayalam", "മലയാളം"],
+		"bundled": false
+	},
+	{
+		"tag": "as",
+		"nativeName": "অসমীয়া",
+		"englishName": "Assamese",
+		"aliases": ["assamese", "অসমীয়া"],
+		"bundled": false
+	},
+	{
+		"tag": "hy",
+		"nativeName": "Հայերեն",
+		"englishName": "Armenian",
+		"aliases": ["armenian", "հայերեն"],
+		"bundled": false
+	},
+	{
+		"tag": "ku",
+		"nativeName": "Kurdî",
+		"englishName": "Kurdish",
+		"aliases": ["kurdish", "kurdî"],
+		"bundled": false
+	},
+	{
+		"tag": "la",
+		"nativeName": "Latina",
+		"englishName": "Latin",
+		"aliases": ["latin", "latina"],
+		"bundled": false
+	},
+	{
+		"tag": "mi",
+		"nativeName": "Te Reo Māori",
+		"englishName": "Maori",
+		"aliases": ["maori", "te reo māori"],
+		"bundled": false
+	},
+	{
+		"tag": "nb",
+		"nativeName": "Norsk Bokmål",
+		"englishName": "Norwegian Bokmål",
+		"aliases": ["norwegian bokmål", "norsk bokmål"],
+		"bundled": false
+	},
+	{
+		"tag": "nn",
+		"nativeName": "Norsk Nynorsk",
+		"englishName": "Norwegian Nynorsk",
+		"aliases": ["norwegian nynorsk", "norsk nynorsk"],
+		"bundled": false
+	}
+]

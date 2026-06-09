@@ -15,8 +15,7 @@ async function loadSqlJs(): Promise<SqlJsStatic> {
 	if (!sqlJsInstancePromise) {
 		const initSqlJs = resolveInitSqlJs();
 		sqlJsInstancePromise = initSqlJs({
-			locateFile: (file: string) =>
-				file === 'sql-wasm.wasm' ? SQL_WASM_PATH : path.resolve(file),
+			locateFile: (file: string) => (file === 'sql-wasm.wasm' ? SQL_WASM_PATH : path.resolve(file)),
 		});
 	}
 	return sqlJsInstancePromise;

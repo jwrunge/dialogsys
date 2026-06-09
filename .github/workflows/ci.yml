@@ -21,6 +21,8 @@ jobs:
 
       - run: npm run seed:translations
 
+      - run: npm run check:i18n
+
       - run: npm run lint
 
       - run: npm run test

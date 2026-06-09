@@ -1,6 +1,7 @@
 {
 	"extends": "astro/tsconfigs/strict",
 	"compilerOptions": {
+		"resolveJsonModule": true,
 		"paths": {
 			"@jwrunge/transmut": ["./node_modules/@jwrunge/transmut/src/index.ts"],
 			"@jwrunge/transmut/*": ["./node_modules/@jwrunge/transmut/src/*"]

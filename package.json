@@ -8,6 +8,8 @@
 	"scripts": {
 		"predev": "node scripts/ensure-demo.mjs && node scripts/seed-translations.mjs",
 		"seed:translations": "node scripts/seed-translations.mjs",
+		"generate:catalogs": "node scripts/generate-locale-catalogs.mjs",
+		"check:i18n": "node scripts/check-i18n.mjs",
 		"dev": "astro dev",
 		"build": "astro build",
 		"preview": "astro preview",

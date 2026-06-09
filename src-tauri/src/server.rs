@@ -90,7 +90,8 @@ pub fn start_local_server(app: &AppHandle) -> Result<(u16, CommandChild), String
 
     let port = DEFAULT_PORT;
     let token_file = app_data.join("sync.token");
-    let command = app
+    let translations_db = web_root.join("i18n/translations.sqlite");
+    let mut command = app
         .shell()
         .sidecar("dialogsys-node")
         .map_err(|e| format!("Node runtime sidecar missing: {e}"))?
@@ -108,6 +109,13 @@ pub fn start_local_server(app: &AppHandle) -> Result<(u16, CommandChild), String
             token_file.to_string_lossy().to_string(),
         )
         .env("ASTRO_NODE_LOGGING", "disabled");
+
+    if translations_db.exists() {
+        command = command.env(
+            "DIALOGSYS_TRANSLATIONS_DB",
+            translations_db.to_string_lossy().to_string(),
+        );
+    }
 
     let (_, child) = command
         .spawn()

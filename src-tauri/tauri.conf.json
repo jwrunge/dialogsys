@@ -39,9 +39,7 @@
 		"resources": {
 			"resources/**/*": "resources/"
 		},
-		"externalBin": [
-			"binaries/dialogsys-node"
-		],
+		"externalBin": ["binaries/dialogsys-node"],
 		"android": {
 			"minSdkVersion": 24
 		},

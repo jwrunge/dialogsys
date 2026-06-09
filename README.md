@@ -17,15 +17,22 @@ Projects are saved as folders on disk (default: `./projects` in the app director
 
 ## Localization
 
-App menus and labels can be translated via [`@jwrunge/transmut`](https://www.npmjs.com/package/@jwrunge/transmut). Choose **Language** in Settings (English or Spanish today). Project content—scene names, dialogue lines, character bios, notes—is **not** translated (`data-transmut-skip`).
+App menus and labels can be translated via [`@jwrunge/transmut`](https://www.npmjs.com/package/@jwrunge/transmut). Open **Settings → Language** and pick from the searchable language dialog (90+ languages; 15 ship with full UI catalogs). Project content—scene names, dialogue lines, character bios, notes—is **not** translated (`data-transmut-skip`).
 
-Translation catalogs live in `src/lib/i18n/catalog/` (JSON keyed by English source text). Seed the SQLite store with:
+Translation catalogs live in `src/lib/i18n/catalog/` (JSON keyed by English source text). Seed the local SQLite runtime store with:
 
 ```bash
 npm run seed:translations
+npm run check:i18n    # validate bundled catalogs + message manifest
 ```
 
-(`predev` runs this automatically.) Add a new locale by creating `src/lib/i18n/catalog/<lang>.json` and re-seeding.
+(`predev` runs seed automatically.) Regenerate machine-assisted catalogs after string changes:
+
+```bash
+npm run generate:catalogs   # writes catalog/*.json from es.json keys
+```
+
+Desktop bundles include `i18n/translations.sqlite` via `npm run tauri:prepare`.
 
 ## Project structure
 

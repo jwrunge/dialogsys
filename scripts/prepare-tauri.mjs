@@ -39,6 +39,13 @@ function main() {
 	copyDir(dist, path.join(WEB_RESOURCE, 'dist'));
 	copyDir(path.join(ROOT, 'seed', 'projects'), path.join(WEB_RESOURCE, 'seed', 'projects'));
 
+	console.log('Seeding translation database for desktop bundle…');
+	run('npm', ['run', 'seed:translations']);
+	const i18nSrc = path.join(ROOT, 'i18n');
+	if (fs.existsSync(i18nSrc)) {
+		copyDir(i18nSrc, path.join(WEB_RESOURCE, 'i18n'));
+	}
+
 	console.log('Downloading Node runtime for target triple…');
 	execSync('node scripts/download-node-runtime.mjs', { stdio: 'inherit', cwd: ROOT });
 

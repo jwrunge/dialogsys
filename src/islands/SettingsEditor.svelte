@@ -7,13 +7,14 @@ import {
 	saveSyncTokenToKeychain,
 } from '../lib/client/tauri-secrets';
 import { dispatchLocaleChange } from '../lib/i18n/events';
-import { LOCALE_OPTIONS } from '../lib/i18n/locales';
+import { getLocaleOption } from '../lib/i18n/locales';
 import {
 	type SettingsResponse,
 	settingsResponseSchema,
 	syncTestResponseSchema,
 } from '../lib/schema/api-responses';
 import { testSyncConnection } from '../lib/sync/client';
+import LanguagePickerModal from './LanguagePickerModal.svelte';
 import PairingCard from './PairingCard.svelte';
 
 let projectsRoot = $state('./projects');
@@ -38,6 +39,9 @@ let connectionProjectCount = $state(0);
 let locale = $state('en');
 let deviceDisplayName = $state('');
 let syncAccessRole = $state<'read' | 'write'>('write');
+let languagePickerOpen = $state(false);
+
+const selectedLocale = $derived(getLocaleOption(locale));
 
 async function load() {
 	ready = false;
@@ -183,12 +187,46 @@ onMount(load);
 				Interface language for app menus and labels. Project content (dialogue, names, notes) is not translated.
 			</p>
 			<div class="field">
-				<label for="locale">Language</label>
-				<select id="locale" bind:value={locale} disabled={envOverride}>
-					{#each LOCALE_OPTIONS as option (option.tag)}
-						<option value={option.tag}>{option.label}</option>
-					{/each}
-				</select>
+				<span class="field-label" id="locale-label">Language</span>
+				<div class="locale-picker-row">
+					<button
+						type="button"
+						class="locale-picker-trigger"
+						aria-labelledby="locale-label"
+						disabled={envOverride}
+						onclick={() => {
+							languagePickerOpen = true;
+						}}
+					>
+						<span class="locale-native" data-transmut-skip
+							>{selectedLocale?.nativeName ?? locale}</span
+						>
+						{#if selectedLocale && selectedLocale.englishName !== selectedLocale.nativeName}
+							<span class="locale-english" data-transmut-skip>{selectedLocale.englishName}</span>
+						{/if}
+					</button>
+					<button
+						type="button"
+						class="btn"
+						disabled={envOverride}
+						onclick={() => {
+							languagePickerOpen = true;
+						}}
+					>
+						Change
+					</button>
+				</div>
+				<LanguagePickerModal
+					open={languagePickerOpen}
+					selectedTag={locale}
+					disabled={envOverride}
+					onselect={(tag) => {
+						locale = tag;
+					}}
+					onclose={() => {
+						languagePickerOpen = false;
+					}}
+				/>
 			</div>
 		</section>
 
@@ -431,6 +469,54 @@ onMount(load);
 
 	.field {
 		margin-bottom: 1.25rem;
+	}
+
+	.field-label {
+		display: block;
+		margin-bottom: 0.35rem;
+		font-size: 0.9rem;
+	}
+
+	.locale-picker-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: stretch;
+		gap: 0.5rem;
+	}
+
+	.locale-picker-trigger {
+		flex: 1;
+		min-width: 12rem;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.1rem;
+		padding: 0.55rem 0.75rem;
+		text-align: left;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--bg-elevated);
+		cursor: pointer;
+	}
+
+	.locale-picker-trigger:hover:not(:disabled) {
+		border-color: var(--accent-dim);
+		background: var(--bg-hover);
+	}
+
+	.locale-picker-trigger:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.locale-native {
+		font-weight: 600;
+		font-size: 0.95rem;
+	}
+
+	.locale-english {
+		font-size: 0.8rem;
+		color: var(--text-muted);
 	}
 
 	.hint {

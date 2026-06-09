@@ -49,7 +49,7 @@ function onVarChange(index: number, varId: string) {
 }
 </script>
 
-<div class="condition-editor">
+<div class="condition-editor" data-transmut="include">
 	{#if properties.length === 0}
 		<p class="muted">Define global state properties on the State page first.</p>
 	{:else if atoms.length === 0}
